@@ -1,0 +1,298 @@
+//! Supports for filament prints: grid (block) supports and tree supports.
+
+use crate::geom::{self, EdgeIndex, Region};
+use crate::profiles::{FdmProcess, SupportKind};
+use glam::DVec2;
+use rayon::prelude::*;
+
+#[derive(Clone, Default)]
+pub struct SupportLayer {
+    pub body: Region,
+    pub interface: Region,
+}
+
+/// What needs holding up on each layer.
+fn overhangs(slices: &[Region], heights: &[f64], angle_deg: f64) -> Vec<Region> {
+    let tan = angle_deg.to_radians().tan().max(0.05);
+    (0..slices.len())
+        .into_par_iter()
+        .map(|i| {
+            if i == 0 || slices[i].is_empty() {
+                return Vec::new();
+            }
+            let reach = heights[i] / tan;
+            let held = geom::offset_round(&slices[i - 1], reach);
+            let bare = geom::diff(&slices[i], &held);
+            geom::remove_small(&geom::opening(&bare, 0.1), 0.05)
+        })
+        .collect()
+}
+
+pub fn generate(slices: &[Region], heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
+    match p.support {
+        SupportKind::None => vec![SupportLayer::default(); slices.len()],
+        SupportKind::Normal => block_supports(slices, heights, p),
+        SupportKind::Tree => tree_supports(slices, heights, p),
+    }
+}
+
+fn clearance(slices: &[Region], xy: f64) -> Vec<Region> {
+    slices
+        .par_iter()
+        .map(|s| geom::offset_round(s, xy))
+        .collect()
+}
+
+/// Everything the model occupies at or below each layer.
+fn occupied_below(slices: &[Region]) -> Vec<Region> {
+    let mut out = Vec::with_capacity(slices.len());
+    let mut acc: Region = Vec::new();
+    for s in slices {
+        acc = geom::union2(&acc, s);
+        out.push(acc.clone());
+    }
+    out
+}
+
+fn block_supports(slices: &[Region], heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
+    let n = slices.len();
+    let over = overhangs(slices, heights, p.support_angle as f64);
+    let clear = clearance(slices, p.support_xy_gap as f64);
+    let gap = p.support_z_gap as usize;
+    let below = if p.support_plate_only {
+        occupied_below(slices)
+    } else {
+        Vec::new()
+    };
+    let mut body: Vec<Region> = vec![Vec::new(); n];
+    let mut acc: Region = Vec::new();
+    for i in (0..n).rev() {
+        // Overhangs at layer i + gap + 1 start support at layer i.
+        if let Some(o) = over.get(i + gap + 1) {
+            if !o.is_empty() {
+                acc = geom::union2(&acc, &geom::offset_round(o, 0.6));
+            }
+        }
+        if acc.is_empty() {
+            continue;
+        }
+        let mut here = geom::diff(&acc, &clear[i]);
+        if p.support_plate_only {
+            here = geom::diff(&here, &below[i]);
+        }
+        here = geom::remove_small(&geom::opening(&here, 0.3), 1.0);
+        acc = here.clone();
+        body[i] = here;
+    }
+    // The last few layers under the model become a dense interface.
+    let iface_count = p.support_interface_layers as usize;
+    let mut out: Vec<SupportLayer> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            if body[i].is_empty() {
+                return SupportLayer::default();
+            }
+            let mut interface: Region = Vec::new();
+            for j in 0..iface_count {
+                if let Some(o) = over.get(i + gap + 1 + j) {
+                    if !o.is_empty() {
+                        interface = geom::union2(&interface, &geom::offset_round(o, 0.6));
+                    }
+                }
+            }
+            let interface = geom::inter(&body[i], &interface);
+            SupportLayer {
+                body: geom::diff(&body[i], &interface),
+                interface,
+            }
+        })
+        .collect();
+    out.truncate(n);
+    out
+}
+
+#[derive(Clone, Copy)]
+struct Node {
+    p: DVec2,
+    radius: f64,
+    weight: u32,
+}
+
+/// Branches grow from the overhang tips down to the bed, merging as they go.
+fn tree_supports(slices: &[Region], heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
+    let n = slices.len();
+    let over = overhangs(slices, heights, p.support_angle as f64);
+    let clear: Vec<Region> = clearance(slices, p.support_xy_gap as f64 + 0.2);
+    let clear_idx: Vec<EdgeIndex> = clear.par_iter().map(EdgeIndex::new).collect();
+    let gap = p.support_z_gap as usize;
+    let spacing = (p.support_spacing as f64 * 1.6).max(2.0);
+    let tip = p.tree_tip_radius as f64;
+    let tan_branch = (p.tree_branch_angle as f64).to_radians().tan();
+    let mut nodes: Vec<Node> = Vec::new();
+    let mut layers: Vec<Vec<Node>> = vec![Vec::new(); n];
+
+    for i in (0..n).rev() {
+        // New tips below every overhang.
+        if let Some(o) = over.get(i + gap + 1) {
+            if !o.is_empty() {
+                let mut seeded = false;
+                for isl in geom::islands(o) {
+                    let reg = isl.region();
+                    let lines = geom::hatch(&reg, 0.0, spacing, 0.0);
+                    let before = nodes.len();
+                    for (a, b) in lines {
+                        let len = a.distance(b);
+                        let count = (len / spacing).ceil().max(1.0) as usize;
+                        for k in 0..count {
+                            let t = (k as f64 + 0.5) / count as f64;
+                            nodes.push(Node {
+                                p: a.lerp(b, t),
+                                radius: tip,
+                                weight: 1,
+                            });
+                        }
+                    }
+                    if nodes.len() == before {
+                        // A tiny island still needs one tip.
+                        if let Some((mn, mx)) = geom::bbox(&reg) {
+                            nodes.push(Node {
+                                p: (mn + mx) * 0.5,
+                                radius: tip,
+                                weight: 1,
+                            });
+                        }
+                    }
+                    seeded = true;
+                }
+                let _ = seeded;
+            }
+        }
+        if nodes.is_empty() {
+            continue;
+        }
+        let reach = heights[i] * tan_branch.max(0.1);
+        // Each node drifts toward its nearest neighbour so branches join.
+        let snapshot = nodes.clone();
+        let cell = (spacing * 2.5).max(4.0);
+        let mut grid: ahash::AHashMap<(i32, i32), Vec<u32>> = ahash::AHashMap::with_capacity(snapshot.len());
+        for (k, nd) in snapshot.iter().enumerate() {
+            let key = ((nd.p.x / cell).floor() as i32, (nd.p.y / cell).floor() as i32);
+            grid.entry(key).or_default().push(k as u32);
+        }
+        for (k, nd) in nodes.iter_mut().enumerate() {
+            let key = ((nd.p.x / cell).floor() as i32, (nd.p.y / cell).floor() as i32);
+            let mut best: Option<DVec2> = None;
+            let mut bd = f64::MAX;
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    if let Some(list) = grid.get(&(key.0 + dx, key.1 + dy)) {
+                        for &o in list {
+                            if o as usize == k {
+                                continue;
+                            }
+                            let d = snapshot[o as usize].p.distance_squared(nd.p);
+                            if d < bd {
+                                bd = d;
+                                best = Some(snapshot[o as usize].p);
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(t) = best {
+                let dir = t - nd.p;
+                let len = dir.length();
+                if len > 1e-6 {
+                    nd.p += dir / len * reach.min(len);
+                }
+            }
+        }
+        // Dodge the model.
+        let idx = &clear_idx[i];
+        nodes.retain_mut(|nd| {
+            if idx.is_empty() || !idx.inside(nd.p) {
+                return true;
+            }
+            match idx.nearest_boundary(nd.p) {
+                Some(q) => {
+                    let move_to = q + (q - nd.p).normalize_or_zero() * (nd.radius * 0.5 + 0.1);
+                    if q.distance(nd.p) <= reach * 3.0 + nd.radius && !idx.inside(move_to) {
+                        nd.p = move_to;
+                        true
+                    } else {
+                        // Landed on the model: the branch stops here.
+                        false
+                    }
+                }
+                None => true,
+            }
+        });
+        // Merge branches that came together.
+        let mut merged: Vec<Node> = Vec::with_capacity(nodes.len());
+        let mut grid2: ahash::AHashMap<(i32, i32), Vec<usize>> = ahash::AHashMap::new();
+        let mc = 2.0f64;
+        'outer: for nd in nodes.iter() {
+            let key = ((nd.p.x / mc).floor() as i32, (nd.p.y / mc).floor() as i32);
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    if let Some(list) = grid2.get(&(key.0 + dx, key.1 + dy)) {
+                        for &m in list {
+                            let other: &mut Node = &mut merged[m];
+                            if other.p.distance(nd.p) < (other.radius + nd.radius) * 0.4 + reach {
+                                let w = (other.weight + nd.weight) as f64;
+                                other.p = (other.p * other.weight as f64 + nd.p * nd.weight as f64) / w;
+                                other.weight += nd.weight;
+                                other.radius = (tip * (other.weight as f64).sqrt() * 0.75).clamp(tip, 6.0);
+                                continue 'outer;
+                            }
+                        }
+                    }
+                }
+            }
+            grid2.entry(key).or_default().push(merged.len());
+            merged.push(*nd);
+        }
+        for nd in merged.iter_mut() {
+            // Trunks get a little thicker toward the bed.
+            nd.radius = (nd.radius + heights[i] * 0.02).min(8.0);
+        }
+        nodes = merged;
+        layers[i] = nodes.clone();
+    }
+
+    let iface_count = p.support_interface_layers as usize;
+    let mut out: Vec<SupportLayer> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            if layers[i].is_empty() {
+                return SupportLayer::default();
+            }
+            let circles: Region = layers[i]
+                .iter()
+                .map(|nd| geom::circle(nd.p, nd.radius, 20))
+                .collect();
+            let mut u = geom::union(&circles);
+            // Spread the footing on the first layer so trunks stay put.
+            if i == 0 {
+                u = geom::offset_round(&u, 1.2);
+            }
+            let body = geom::diff(&u, &clear[i]);
+            let body = geom::remove_small(&body, 0.2);
+            let mut interface: Region = Vec::new();
+            for j in 0..iface_count {
+                if let Some(o) = over.get(i + gap + 1 + j) {
+                    if !o.is_empty() {
+                        interface = geom::union2(&interface, o);
+                    }
+                }
+            }
+            let interface = geom::inter(&body, &geom::offset_round(&interface, 0.8));
+            SupportLayer {
+                body: geom::diff(&body, &interface),
+                interface,
+            }
+        })
+        .collect();
+    out.truncate(n);
+    out
+}

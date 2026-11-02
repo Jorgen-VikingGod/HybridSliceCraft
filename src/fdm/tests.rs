@@ -1,0 +1,360 @@
+//! End-to-end checks of the filament slicer. The key test reads the finished
+//! G-code the way a printer would and compares the plastic used with the model.
+
+use super::*;
+use crate::mesh::{make_box, make_cylinder, Mesh};
+use crate::profiles::*;
+use glam::{Mat4, Vec3};
+
+fn job(mesh: Mesh, process: FdmProcess) -> FdmJob {
+    let cat = Catalogue::builtin();
+    FdmJob {
+        objects: vec![JobObject {
+            name: "test".into(),
+            mesh,
+            extruder: 0,
+            flow: 1.0,
+            infill: None,
+            walls: None,
+        }],
+        printer: cat.fdm_printers[0].clone(),
+        filaments: vec![cat.filaments[0].clone()],
+        process,
+        z_changes: Vec::new(),
+        thumbnail: None,
+    }
+}
+
+fn centered(m: Mesh) -> Mesh {
+    m.transformed(&Mat4::from_translation(Vec3::new(90.0, 90.0, 0.0)))
+}
+
+/// Reads G-code like a printer does: tracks position and total extrusion.
+fn replay(gcode: &str) -> (f64, Vec3, Vec3, f64) {
+    let mut pos = [0f64; 4];
+    let mut relative_e = false;
+    let mut e_total = 0.0;
+    let mut mn = Vec3::splat(f32::MAX);
+    let mut mx = Vec3::splat(f32::MIN);
+    let mut z_max = 0.0;
+    for line in gcode.lines() {
+        let line = line.split(';').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut words = line.split_whitespace();
+        let cmd = words.next().unwrap();
+        match cmd {
+            "M83" => relative_e = true,
+            "M82" => relative_e = false,
+            "G92" => {
+                for w in words {
+                    if let Some(v) = w.strip_prefix('E') {
+                        pos[3] = v.parse().unwrap_or(0.0);
+                    }
+                }
+            }
+            "G0" | "G1" | "G2" | "G3" => {
+                let mut e = None;
+                for w in words {
+                    let (k, v) = w.split_at(1);
+                    let v: f64 = v.parse().unwrap_or(0.0);
+                    match k {
+                        "X" => pos[0] = v,
+                        "Y" => pos[1] = v,
+                        "Z" => pos[2] = v,
+                        "E" => e = Some(v),
+                        _ => {}
+                    }
+                }
+                if let Some(v) = e {
+                    let d = if relative_e { v } else { v - pos[3] };
+                    pos[3] = if relative_e { pos[3] + v } else { v };
+                    if pos[2] > 0.0 {
+                        e_total += d;
+                        if d > 0.0 {
+                            let p = Vec3::new(pos[0] as f32, pos[1] as f32, pos[2] as f32);
+                            mn = mn.min(p);
+                            mx = mx.max(p);
+                        }
+                    }
+                }
+                if pos[2] > z_max {
+                    z_max = pos[2];
+                }
+            }
+            _ => {}
+        }
+    }
+    (e_total, mn, mx, z_max)
+}
+
+#[test]
+fn solid_cube_uses_the_right_amount_of_plastic() {
+    let mut p = FdmProcess::default();
+    p.infill_density = 100.0;
+    p.infill_pattern = InfillPattern::Rectilinear;
+    p.skirt_loops = 0;
+    p.elephant_foot = 0.0;
+    let mut j = job(centered(make_box(Vec3::splat(20.0))), p);
+    // Remove the prime line from the count.
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+    let (e_mm, mn, mx, z_top) = replay(&r.gcode);
+    let f = &j.filaments[0];
+    let area = std::f64::consts::PI * (f.diameter as f64).powi(2) / 4.0;
+    let volume = e_mm * area / f.flow as f64;
+    // 20 mm cube = 8000 mm³. A slicer should land within a few percent.
+    assert!((volume - 8000.0).abs() / 8000.0 < 0.08, "plastic used {volume:.0} mm³");
+    assert!(mn.x >= 90.0 && mn.y >= 90.0, "{mn:?}");
+    assert!(mx.x <= 110.0 && mx.y <= 110.0, "{mx:?}");
+    assert!((z_top - 20.0).abs() < 1.0, "z top {z_top}");
+    assert_eq!(r.layers.len(), 100);
+    assert!(r.total_time > 0.0);
+    let sum: f32 = r.time_by_feature.iter().sum();
+    assert!(sum <= r.total_time + 1.0);
+}
+
+#[test]
+fn hollow_print_has_every_feature() {
+    let j = job(centered(make_cylinder(15.0, 20.0, 64)), FdmProcess::default());
+    let r = slice(&j, &Progress::default()).unwrap();
+    for f in [
+        Feature::OuterWall,
+        Feature::InnerWall,
+        Feature::SparseInfill,
+        Feature::TopSurface,
+        Feature::BottomSurface,
+        Feature::Skirt,
+    ] {
+        assert!(r.segs.iter().any(|s| s.feature == f as u32), "missing {f:?}");
+    }
+    // Sparse fill must weigh far less than solid.
+    let (e_mm, _, _, _) = replay(&r.gcode);
+    let area = std::f64::consts::PI * 1.75f64.powi(2) / 4.0;
+    let full = std::f64::consts::PI * 225.0 * 20.0;
+    assert!(e_mm * area < full * 0.75, "{:.0} vs {full:.0}", e_mm * area);
+}
+
+#[test]
+fn all_infill_patterns_produce_a_print() {
+    for pattern in InfillPattern::ALL {
+        let mut p = FdmProcess::default();
+        p.infill_pattern = pattern;
+        let j = job(centered(make_box(Vec3::new(20.0, 20.0, 6.0))), p);
+        let r = slice(&j, &Progress::default()).unwrap();
+        assert!(
+            r.segs.iter().any(|s| s.feature == Feature::SparseInfill as u32),
+            "{pattern:?} has no infill"
+        );
+    }
+}
+
+fn table() -> Mesh {
+    let mut t = make_box(Vec3::new(40.0, 40.0, 3.0));
+    for v in &mut t.v {
+        v.z += 12.0;
+    }
+    let leg = make_box(Vec3::new(10.0, 10.0, 12.0)).transformed(&Mat4::from_translation(Vec3::new(15.0, 15.0, 0.0)));
+    t.append(&leg);
+    t
+}
+
+#[test]
+fn supports_appear_under_overhangs() {
+    for kind in [SupportKind::Normal, SupportKind::Tree] {
+        let mut p = FdmProcess::default();
+        p.support = kind;
+        let j = job(centered(table()), p);
+        let r = slice(&j, &Progress::default()).unwrap();
+        assert!(
+            r.segs.iter().any(|s| s.feature == Feature::Support as u32),
+            "{kind:?} made no support"
+        );
+    }
+    let j = job(centered(table()), FdmProcess::default());
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(!r.segs.iter().any(|s| s.feature == Feature::Support as u32));
+    assert!(r.segs.iter().any(|s| s.feature == Feature::Bridge as u32));
+}
+
+#[test]
+fn options_all_run() {
+    let variants: Vec<fn(&mut FdmProcess)> = vec![
+        |p| p.brim_width = 5.0,
+        |p| p.raft_layers = 3,
+        |p| p.ironing = true,
+        |p| p.fuzzy_skin = true,
+        |p| p.spiral_vase = true,
+        |p| p.adaptive_layers = true,
+        |p| p.outer_wall_first = true,
+        |p| p.seam = SeamMode::Random,
+        |p| p.seam = SeamMode::Back,
+        |p| p.seam = SeamMode::Nearest,
+        |p| p.top_pattern = SurfacePattern::Concentric,
+    ];
+    for (i, v) in variants.iter().enumerate() {
+        let mut p = FdmProcess::default();
+        v(&mut p);
+        let j = job(centered(make_cylinder(10.0, 8.0, 48)), p);
+        let r = slice(&j, &Progress::default()).unwrap_or_else(|e| panic!("variant {i}: {e}"));
+        assert!(r.gcode.len() > 200, "variant {i}");
+    }
+}
+
+#[test]
+fn vase_rises_continuously() {
+    let mut p = FdmProcess::default();
+    p.spiral_vase = true;
+    p.bottom_layers = 2;
+    p.walls = 1;
+    p.infill_density = 0.0;
+    p.top_layers = 0;
+    let j = job(centered(make_cylinder(15.0, 10.0, 64)), p);
+    let r = slice(&j, &Progress::default()).unwrap();
+    let spiral: Vec<f32> = r
+        .segs
+        .iter()
+        .filter(|s| s.layer >= 5 && s.feature == Feature::OuterWall as u32)
+        .map(|s| s.b[2])
+        .collect();
+    assert!(spiral.len() > 100);
+    let rising = spiral.windows(2).filter(|w| w[1] >= w[0]).count();
+    assert!(rising as f32 / spiral.len() as f32 > 0.98);
+}
+
+#[test]
+fn two_filaments_change_tools() {
+    let cat = Catalogue::builtin();
+    let mut j = job(
+        make_box(Vec3::splat(10.0)).transformed(&Mat4::from_translation(Vec3::new(40.0, 40.0, 0.0))),
+        FdmProcess::default(),
+    );
+    j.printer = cat.fdm_printers.iter().find(|p| p.extruders == 2).unwrap().clone();
+    j.filaments = vec![cat.filaments[0].clone(), cat.filaments[1].clone()];
+    j.objects.push(JobObject {
+        name: "second".into(),
+        mesh: make_box(Vec3::splat(10.0)).transformed(&Mat4::from_translation(Vec3::new(70.0, 40.0, 0.0))),
+        extruder: 1,
+        flow: 1.0,
+        infill: None,
+        walls: None,
+    });
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.tool_changes > 10, "{}", r.tool_changes);
+    assert!(r.gcode.contains("\nT1\n"));
+    assert!(r.gcode.contains("\nT0\n"));
+    assert!(r.segs.iter().any(|s| s.feature == Feature::PrimeTower as u32));
+    assert!(r.filament_g[0] > 0.0 && r.filament_g[1] > 0.0);
+}
+
+#[test]
+fn arc_fitting_keeps_the_plastic_amount() {
+    let mut j = job(centered(make_cylinder(20.0, 3.0, 256)), FdmProcess::default());
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    let lines = slice(&j, &Progress::default()).unwrap();
+    j.printer.arc_fitting = true;
+    let arcs = slice(&j, &Progress::default()).unwrap();
+    assert!(arcs.gcode.contains("\nG3 ") || arcs.gcode.contains("\nG2 "));
+    assert!(arcs.gcode.len() < lines.gcode.len());
+    let (a, _, _, _) = replay(&lines.gcode);
+    let (b, _, _, _) = replay(&arcs.gcode);
+    assert!((a - b).abs() / a < 0.002, "{a} vs {b}");
+}
+
+#[test]
+fn bad_settings_are_refused_not_crashed() {
+    let mut p = FdmProcess::default();
+    p.layer_height = 0.0;
+    assert!(slice(&job(centered(make_box(Vec3::splat(5.0))), p), &Progress::default()).is_err());
+    let mut p = FdmProcess::default();
+    p.line_width = 0.1;
+    assert!(slice(&job(centered(make_box(Vec3::splat(5.0))), p), &Progress::default()).is_err());
+    assert!(slice(&job(Mesh::default(), FdmProcess::default()), &Progress::default()).is_err());
+}
+
+#[test]
+fn cancel_stops_work() {
+    let pr = Progress::default();
+    pr.cancel();
+    let j = job(centered(make_box(Vec3::splat(20.0))), FdmProcess::default());
+    assert!(slice(&j, &pr).is_err());
+}
+
+#[test]
+fn calibration_tests_really_change_settings_as_they_rise() {
+    use crate::shapes;
+    let f = Filament::default();
+    let run = |c: shapes::Calibration| {
+        let mut x = 30.0;
+        let objects: Vec<JobObject> = c
+            .parts
+            .iter()
+            .map(|p| {
+                let (a, b) = p.mesh.bounds();
+                let m = p.mesh.transformed(&Mat4::from_translation(Vec3::new(x - a.x, 40.0 - a.y, -a.z)));
+                x += b.x - a.x + 5.0;
+                JobObject {
+                    name: p.name.clone(),
+                    mesh: m,
+                    extruder: 0,
+                    flow: p.flow,
+                    infill: p.infill,
+                    walls: p.walls,
+                }
+            })
+            .collect();
+        let mut j = job(Mesh::default(), FdmProcess::default());
+        j.printer.bed_x = 400.0;
+        j.printer.bed_y = 400.0;
+        j.objects = objects;
+        j.z_changes = c.z_changes;
+        slice(&j, &Progress::default()).unwrap()
+    };
+    let t = run(shapes::temperature_tower(&f));
+    assert!(t.gcode.matches("; calibration step").count() >= 7);
+    let r = run(shapes::retraction_test(0.8));
+    assert!(r.gcode.matches("; calibration: retraction").count() >= 8);
+    let p = run(shapes::pressure_advance_tower(0.1));
+    assert!(p.gcode.matches("M900 K").count() >= 30);
+    let fl = run(shapes::flow_test());
+    let flows: Vec<f32> = fl.segs.iter().filter(|s| s.feature == Feature::OuterWall as u32 && s.layer > 2).map(|s| s.flow / s.speed).collect();
+    let (lo, hi) = flows.iter().fold((f32::MAX, 0f32), |(a, b), v| (a.min(*v), b.max(*v)));
+    assert!(hi / lo > 1.15, "flow should differ between slabs: {lo} {hi}");
+    run(shapes::first_layer_test());
+}
+
+#[test]
+fn awkward_models_slice_or_explain() {
+    // Flat as paper: refused politely.
+    let flat = Mesh {
+        v: vec![Vec3::ZERO, Vec3::X, Vec3::Y],
+        t: vec![[0, 1, 2]],
+    };
+    assert!(slice(&job(flat, FdmProcess::default()), &Progress::default()).is_err());
+    // Thinner than a wall: the sliver still prints as thin lines.
+    let sliver = centered(make_box(Vec3::new(0.5, 30.0, 5.0)));
+    let r = slice(&job(sliver, FdmProcess::default()), &Progress::default()).unwrap();
+    assert!(r.segs.iter().any(|s| s.feature != Feature::Travel as u32 && s.feature != Feature::Skirt as u32));
+    // A surface with a piece missing still produces a print and a warning.
+    let mut open = centered(make_box(Vec3::splat(10.0)));
+    open.t.remove(5);
+    let r = slice(&job(open, FdmProcess::default()), &Progress::default()).unwrap();
+    assert!(!r.warnings.is_empty());
+    assert!(r.segs.iter().any(|s| s.feature == Feature::OuterWall as u32));
+    // Far off the bed: a warning, not a crash.
+    let away = make_box(Vec3::splat(10.0)).transformed(&Mat4::from_translation(Vec3::new(900.0, 0.0, 0.0)));
+    let r = slice(&job(away, FdmProcess::default()), &Progress::default()).unwrap();
+    assert!(r.warnings.iter().any(|w| w.contains("outside")));
+    // Interior walls and many small bits together.
+    let mut many = make_box(Vec3::splat(4.0));
+    for i in 1..30 {
+        many.append(&make_box(Vec3::splat(4.0)).transformed(&Mat4::from_translation(Vec3::new(i as f32 * 5.0, 0.0, 0.0))));
+    }
+    let many = many.transformed(&Mat4::from_translation(Vec3::new(20.0, 50.0, 0.0)));
+    let r = slice(&job(many, FdmProcess::default()), &Progress::default()).unwrap();
+    assert!(r.layers.len() >= 19);
+}
