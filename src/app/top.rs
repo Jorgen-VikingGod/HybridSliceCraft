@@ -52,7 +52,7 @@ impl App {
         egui::Panel::top("top_bar")
             .exact_size(46.0)
             .frame(egui::Frame::new().fill(Color32::from_rgb(20, 22, 27)).inner_margin(egui::Margin::symmetric(10, 0)))
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal_centered(|ui| {
                     let (rect, _) = ui.allocate_exact_size(Vec2::splat(22.0), Sense::hover());
                     draw_icon(ui.painter(), rect, Icon::Layers, self.accent());
@@ -273,7 +273,7 @@ impl App {
         egui::Panel::bottom("status_bar")
             .exact_size(26.0)
             .frame(egui::Frame::new().fill(Color32::from_rgb(20, 22, 27)).inner_margin(egui::Margin::symmetric(10, 0)))
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal_centered(|ui| {
                     let mut cancel = false;
                     if let Some(job) = &self.job {
@@ -343,7 +343,7 @@ impl App {
                 ToastKind::Warn => YELLOW,
                 ToastKind::Bad => RED,
             };
-            let area = egui::Area::new(egui::Id::new(("toast", i)))
+            let area = egui::Area::new(egui::Id::unique(("toast", i)))
                 .order(egui::Order::Foreground)
                 .pivot(egui::Align2::CENTER_TOP)
                 .fixed_pos(egui::pos2(screen.center().x, y))

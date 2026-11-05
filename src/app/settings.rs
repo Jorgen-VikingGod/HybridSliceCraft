@@ -145,7 +145,7 @@ impl App {
             .default_size(318.0)
             .size_range(270.0..=460.0)
             .frame(egui::Frame::new().fill(PANEL).inner_margin(egui::Margin::same(10)))
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 if self.resin() {
                     self.resin_choices(ui);
                 } else {

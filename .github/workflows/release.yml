@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Take the version from the release tag
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || github.ref_type == 'tag'
         shell: bash
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -120,7 +120,7 @@ jobs:
           if-no-files-found: error
 
       - name: Attach the installers to the release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           files: |

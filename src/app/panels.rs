@@ -23,7 +23,7 @@ impl App {
             .default_size(286.0)
             .size_range(240.0..=420.0)
             .frame(egui::Frame::new().fill(PANEL).inner_margin(egui::Margin::same(10)))
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     ui.set_max_width(ui.available_width() - 12.0);
                     if self.stage == Stage::Prepare {

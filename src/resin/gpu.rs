@@ -469,6 +469,11 @@ mod tests {
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).ok()?;
+        // A software adapter (build machines without a graphics card) proves nothing
+        // about the card path, and can crash; leave these tests out there.
+        if adapter.get_info().device_type == wgpu::DeviceType::Cpu {
+            return None;
+        }
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             required_limits: adapter.limits(),
             ..Default::default()
@@ -489,7 +494,7 @@ mod tests {
     #[test]
     fn card_and_software_agree() {
         let Some(g) = device() else {
-            eprintln!("no graphics adapter here; skipping");
+            eprintln!("no real graphics card here; skipping");
             return;
         };
         for samples in [1u32, 4] {

@@ -609,7 +609,7 @@ impl eframe::App for App {
         self.side_panel(ui);
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(theme::BG))
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 self.central(ui, frame);
             });
         self.windows(&ctx);

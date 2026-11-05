@@ -172,7 +172,7 @@ impl App {
         let active = Rect::from_min_max(Pos2::new(track.left(), y_high), Pos2::new(track.right(), y_low));
         painter.rect_filled(active, 3.0, accent.gamma_multiply(0.8));
 
-        let id = ui.id().with("layer_slider");
+        let id = ui.scope_id().with("layer_slider");
         let resp = ui.interact(rect, id, Sense::click_and_drag());
         let which = ui.memory_mut(|m| *m.data.get_temp_mut_or_insert_with::<u8>(id, || 0));
         if resp.drag_started() || resp.clicked() {
@@ -233,7 +233,7 @@ impl App {
             return;
         }
         self.resin_layer = self.resin_layer.min(n - 1);
-        let id = ui.id().with("layer_picture");
+        let id = ui.scope_id().with("layer_picture");
         let resp = ui.interact(rect, id, Sense::click_and_drag());
         if resp.double_clicked() {
             self.layer_zoom = 1.0;
