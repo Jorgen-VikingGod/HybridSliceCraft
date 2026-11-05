@@ -324,6 +324,7 @@ impl App {
             pos: local.to_array(),
             normal: local_n.to_array(),
             manual: true,
+            critical: true,
         });
         // Clear the plate so a first support has room to reach it.
         if first {

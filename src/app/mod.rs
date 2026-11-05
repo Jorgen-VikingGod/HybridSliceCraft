@@ -126,6 +126,7 @@ pub struct SupportCache {
     pub branches: usize,
     pub landed: usize,
     pub unreachable: usize,
+    pub skipped: usize,
 }
 
 /// Dragging a move, turn or size handle.

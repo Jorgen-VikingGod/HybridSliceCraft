@@ -630,11 +630,13 @@ fn resin_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut ResinProcess, 
             r.num(ui, "Spacing", "Closer supports hold better but leave more marks.", &mut p.support_spacing, b.support_spacing, 1.0..=20.0, "mm", 1, false);
             group(ui, r, "SHAPE");
             r.num(ui, "Tip diameter", "Where the support touches the model.", &mut p.tip_diameter, b.tip_diameter, 0.1..=2.0, "mm", 2, false);
+            r.num(ui, "Contact depth", "How far a tip sinks into the surface. Shallower snaps off more cleanly; deeper holds better.", &mut p.contact_depth, b.contact_depth, 0.0..=0.6, "mm", 2, false);
             r.num(ui, "Tip length", "", &mut p.tip_length, b.tip_length, 0.5..=8.0, "mm", 1, true);
             r.num(ui, "Pillar diameter", "", &mut p.pillar_diameter, b.pillar_diameter, 0.4..=6.0, "mm", 1, false);
             r.num(ui, "Base diameter", "", &mut p.base_diameter, b.base_diameter, 1.0..=15.0, "mm", 1, true);
             r.num(ui, "Join pillars within", "Nearby supports share a pillar, like a tree.", &mut p.branch_merge, b.branch_merge, 0.0..=30.0, "mm", 1, true);
             r.flag(ui, "Cross-bracing", "Links tall pillars so they don't sway.", &mut p.brace, b.brace, false);
+            r.flag(ui, "Allow on the model", "Let a support stand on the model, only where a part would otherwise fall off and nothing else can reach it.", &mut p.supports_on_model, b.supports_on_model, true);
             group(ui, r, "RAFT");
             r.flag(ui, "Raft", "A flat base tying all pillars together on the plate.", &mut p.raft, b.raft, false);
             r.num(ui, "Raft thickness", "", &mut p.raft_height, b.raft_height, 0.2..=5.0, "mm", 1, true);

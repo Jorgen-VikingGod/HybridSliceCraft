@@ -18,12 +18,30 @@ pub struct SupportPoint {
     pub pos: [f32; 3],
     pub normal: [f32; 3],
     pub manual: bool,
+    /// Must be held even if that means standing on the model: the start of a
+    /// part that would otherwise fall off, or a point placed by hand.
+    #[serde(default)]
+    pub critical: bool,
+}
+
+/// A place to hold, in printing position.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Target {
+    pub pos: Vec3,
+    pub normal: Vec3,
+    pub critical: bool,
+}
+
+impl From<(Vec3, Vec3)> for Target {
+    fn from((pos, normal): (Vec3, Vec3)) -> Self {
+        Target { pos, normal, critical: true }
+    }
 }
 
 /// Lowest points of the model and every shallow down-facing surface, sampled
 /// on a staggered grid so density stays even.
-pub fn find_points(mesh: &Mesh, p: &ResinProcess) -> Vec<(Vec3, Vec3)> {
-    let mut out: Vec<(Vec3, Vec3)> = Vec::new();
+pub fn find_points(mesh: &Mesh, p: &ResinProcess) -> Vec<Target> {
+    let mut out: Vec<Target> = Vec::new();
     if mesh.is_empty() {
         return out;
     }
@@ -103,8 +121,9 @@ pub fn find_points(mesh: &Mesh, p: &ResinProcess) -> Vec<(Vec3, Vec3)> {
             }
             let n = corner_normal[i as usize].normalize_or_zero();
             let n = if n.z < -0.05 { n } else { -Vec3::Z };
-            if !out.iter().any(|o| o.0.distance(p) < 0.6) {
-                out.push((p, n));
+            if !out.iter().any(|o| o.pos.distance(p) < 0.6) {
+                // Where a part starts in mid-air: it must be held.
+                out.push(Target { pos: p, normal: n, critical: true });
             }
         }
     }
@@ -136,9 +155,9 @@ pub fn find_points(mesh: &Mesh, p: &ResinProcess) -> Vec<(Vec3, Vec3)> {
                 if entering_from_air && facing_down > cos_limit && hit.point.z > 0.1 {
                     let close = out
                         .iter()
-                        .any(|o| o.0.truncate().distance(hit.point.truncate()) < spacing * 0.55 && (o.0.z - hit.point.z).abs() < spacing);
+                        .any(|o| o.pos.truncate().distance(hit.point.truncate()) < spacing * 0.55 && (o.pos.z - hit.point.z).abs() < spacing);
                     if !close {
-                        out.push((hit.point, hit.normal));
+                        out.push(Target { pos: hit.point, normal: hit.normal, critical: false });
                     }
                 }
                 origin = hit.point + Vec3::Z * 0.01;
@@ -155,8 +174,11 @@ pub struct Structure {
     pub pillars: usize,
     pub branches: usize,
     pub landed_on_model: usize,
-    /// Touch points with no clear way out for a support.
+    /// Parts that would fall off but have no clear way to hold them.
     pub unreachable: usize,
+    /// Surface spots left out because no clean path reached them; their
+    /// neighbours hold that area.
+    pub skipped: usize,
 }
 
 struct Pillar {
@@ -166,154 +188,211 @@ struct Pillar {
     branches: u32,
 }
 
+/// Room kept between any support and the model, so supports never fuse to
+/// it anywhere but at their tips.
+const CLEARANCE: f32 = 0.5;
+/// Most branches one pillar takes (PrusaSlicer uses 3 too).
+const MAX_BRANCHES: u32 = 3;
+/// Steepest a head or branch may lean away from straight down.
+const MAX_LEAN_DEG: f32 = 45.0;
+
 /// Build everything from contact points given in printing position.
-pub fn build_structure(points: &[(Vec3, Vec3)], model: &Mesh, p: &ResinProcess) -> Structure {
+///
+/// Heads follow the pinhead idea from open-source slicers: a thin tip that
+/// sinks only slightly into the surface, then widens to a neck, so it snaps off
+/// cleanly. Every rod is checked against the model by its full thickness plus a
+/// clearance, so nothing grazes or fuses to the model. Supports only stand on the
+/// model when a part would otherwise fall off and there's no path to the plate.
+pub fn build_structure(points: &[Target], model: &Mesh, p: &ResinProcess) -> Structure {
     let mut s = Structure::default();
     if points.is_empty() {
         return s;
     }
     let bvh = Bvh::new(model);
-    let tip_r = p.tip_diameter * 0.5;
-    let shaft_r = p.pillar_diameter * 0.5;
-    let joint_r = shaft_r * 0.72;
+    let tip_r = (p.tip_diameter * 0.5).max(0.05);
+    let depth = p.contact_depth.clamp(0.0, 1.0);
+    let shaft_r = (p.pillar_diameter * 0.5).max(tip_r);
+    let neck_r = (shaft_r * 0.6).max(tip_r * 1.4);
     let sides = 10;
     let base_z = if p.raft { p.raft_height * 0.5 } else { 0.0 };
+    let max_lean = MAX_LEAN_DEG.to_radians();
 
-    // Clearance test against the model along a straight line.
-    let clear = |a: Vec3, b: Vec3| -> bool {
+    // A straight rod of radius `r` from a to b stays clear of the model when
+    // its centre line and lines along its sides all miss it.
+    let clear = |a: Vec3, b: Vec3, r: f32| -> bool {
         let d = b - a;
         let len = d.length();
         if len < 1e-3 {
             return true;
         }
         let dir = d / len;
-        bvh.cast(a, dir, len).is_none()
+        let helper = if dir.z.abs() < 0.9 { Vec3::Z } else { Vec3::X };
+        let u = dir.cross(helper).normalize();
+        let w = dir.cross(u);
+        let reach = r + CLEARANCE;
+        if bvh.cast(a, dir, len).is_some() {
+            return false;
+        }
+        (0..8).all(|k| {
+            let an = k as f32 / 8.0 * std::f32::consts::TAU;
+            let off = (u * an.cos() + w * an.sin()) * reach;
+            bvh.cast(a + off, dir, len).is_none()
+        })
     };
+    // A pillar from here straight down to the plate.
+    let drops_clear = |from: Vec3| clear(from, Vec3::new(from.x, from.y, base_z), shaft_r);
 
     // Highest points first, so lower ones can attach to pillars that exist.
-    let mut ordered: Vec<(Vec3, Vec3)> = points.to_vec();
-    ordered.sort_by(|a, b| b.0.z.total_cmp(&a.0.z));
+    let mut ordered: Vec<Target> = points.to_vec();
+    ordered.sort_by(|a, b| b.pos.z.total_cmp(&a.pos.z));
 
     let mut pillars: Vec<Pillar> = Vec::new();
     let mut out = Mesh::default();
-    for (point, normal) in ordered {
-        // The head leaves along the surface normal, leaning downward.
-        let mut dir = (normal + Vec3::new(0.0, 0.0, -0.8)).normalize_or_zero();
-        if dir == Vec3::ZERO || dir.z > -0.2 {
-            dir = (dir + Vec3::new(0.0, 0.0, -0.6)).normalize_or_zero();
+    for t in ordered {
+        let (point, normal) = (t.pos, t.normal.normalize_or_zero());
+        // Leave along the surface's own direction, but never lean further
+        // from straight down than the critical angle.
+        let flat = Vec3::new(normal.x, normal.y, 0.0);
+        let mut dir = if normal.z < -max_lean.cos() {
+            normal
+        } else if flat.length() > 1e-3 {
+            (flat.normalize() * max_lean.sin() - Vec3::Z * max_lean.cos()).normalize()
+        } else {
+            -Vec3::Z
+        };
+        if dir == Vec3::ZERO {
+            dir = -Vec3::Z;
         }
-        // Start the contact very slightly inside the surface so it bonds.
-        let contact = point - normal * (tip_r * 0.4);
         let mut tries: Vec<Vec3> = vec![dir, -Vec3::Z];
-        for k in 0..12 {
-            let a = k as f32 / 12.0 * std::f32::consts::TAU;
-            tries.push(Vec3::new(a.cos() * 0.7, a.sin() * 0.7, -0.7).normalize());
+        for lean in [30f32, 45.0] {
+            let (sl, cl) = lean.to_radians().sin_cos();
+            for k in 0..12 {
+                let a = k as f32 / 12.0 * std::f32::consts::TAU;
+                tries.push(Vec3::new(a.cos() * sl, a.sin() * sl, -cl));
+            }
         }
-        let Some(leave) = tries.into_iter().find(|d| clear(point + *d * 0.05, point + *d * p.tip_length)) else {
-            s.unreachable += 1;
+        // The thin tip may sit right against the surface; from just past it the
+        // head must be clear by its full width.
+        let head_clear = |d: &Vec3| {
+            let start = point + *d * (tip_r * 2.0 + CLEARANCE).min(p.tip_length * 0.5);
+            clear(start, point + *d * p.tip_length, neck_r)
+        };
+        let Some(leave) = tries.into_iter().find(|d| d.dot(normal) > -0.2 && head_clear(d)) else {
+            s.unreachable += t.critical as usize;
+            s.skipped += (!t.critical) as usize;
             continue;
         };
         let mut joint = point + leave * p.tip_length;
         if joint.z < base_z + shaft_r {
             joint.z = base_z + shaft_r;
         }
-        out.append(&make_frustum(contact, joint, tip_r, joint_r, sides));
-        out.append(&make_sphere(joint, joint_r, sides, 5));
 
-        // Option 1: join a nearby pillar at a 45° branch.
-        let mut joined = false;
-        let mut best: Option<(usize, f32)> = None;
-        for (i, pil) in pillars.iter().enumerate() {
-            let d = pil.xy.distance(joint.truncate());
-            if d <= p.branch_merge && pil.branches < 6 && best.map(|b| d < b.1).unwrap_or(true) {
-                let z_join = joint.z - d;
-                if z_join > pil.bottom + shaft_r && z_join < pil.top {
-                    best = Some((i, d));
+        // Find where this head can go before adding anything for it.
+        // Option 1: join a nearby pillar with a branch at the critical angle.
+        let mut plan: Option<(Vec3, Option<usize>)> = None;
+        let mut candidates: Vec<(usize, f32)> = pillars
+            .iter()
+            .enumerate()
+            .filter(|(_, pil)| pil.branches < MAX_BRANCHES)
+            .map(|(i, pil)| (i, pil.xy.distance(joint.truncate())))
+            .filter(|(_, d)| *d <= p.branch_merge)
+            .collect();
+        candidates.sort_by(|a, b| a.1.total_cmp(&b.1));
+        for (i, d) in candidates {
+            let pil = &pillars[i];
+            let join = Vec3::new(pil.xy.x, pil.xy.y, joint.z - d / max_lean.tan());
+            if join.z > pil.bottom + shaft_r * 2.0 && join.z < pil.top && clear(joint, join, neck_r) {
+                plan = Some((join, Some(i)));
+                break;
+            }
+        }
+        // Option 2: straight down, or one leaning step to a clear spot first.
+        if plan.is_none() {
+            if drops_clear(joint) {
+                plan = Some((joint, None));
+            } else {
+                'search: for dist in [1.5f32, 3.0, 5.0, 8.0, 11.0, 15.0] {
+                    for k in 0..16 {
+                        let an = k as f32 / 16.0 * std::f32::consts::TAU;
+                        let cand = joint + Vec3::new(an.cos() * dist, an.sin() * dist, -dist / max_lean.tan());
+                        if cand.z < base_z + shaft_r * 2.0 {
+                            continue;
+                        }
+                        if clear(joint, cand, neck_r) && drops_clear(cand) {
+                            plan = Some((cand, None));
+                            break 'search;
+                        }
+                    }
                 }
             }
         }
-        if let Some((i, d)) = best {
-            let pil = &mut pillars[i];
-            let join = Vec3::new(pil.xy.x, pil.xy.y, joint.z - d);
-            if clear(joint, join) {
-                out.append(&make_frustum(joint, join, joint_r, joint_r, sides));
-                out.append(&make_sphere(join, joint_r, sides, 5));
-                pil.branches += 1;
-                s.branches += 1;
-                joined = true;
+
+        // A spot that only fills in a surface can be skipped; its neighbours
+        // hold that area. A part that would fall off can stand on the model.
+        let landing = if plan.is_none() {
+            if !t.critical || !p.supports_on_model {
+                s.unreachable += t.critical as usize;
+                s.skipped += (!t.critical) as usize;
+                continue;
             }
-        }
-        if joined {
+            match bvh.cast(joint, -Vec3::Z, joint.z + 1.0) {
+                Some(hit) if hit.normal.z > 0.3 && clear(joint, hit.point + Vec3::Z * (p.tip_length * 0.5), neck_r) => Some(hit.point),
+                _ => {
+                    s.unreachable += 1;
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
+
+        // The head: thin tip sinking `depth` into the surface, widening to a neck.
+        let contact = point - normal * depth;
+        out.append(&make_frustum(contact, joint, tip_r, neck_r, sides));
+        out.append(&make_sphere(joint, neck_r, sides, 5));
+
+        if let Some(ground) = landing {
+            // Standing on the model, the foot is another small tip, so it
+            // snaps off the same way.
+            let knee = ground + Vec3::Z * (p.tip_length * 0.5);
+            out.append(&make_frustum(joint, knee, neck_r, neck_r, sides));
+            out.append(&make_sphere(knee, neck_r, sides, 5));
+            out.append(&make_frustum(knee, ground - Vec3::Z * depth, neck_r, tip_r, sides));
+            s.landed_on_model += 1;
             continue;
         }
-
-        // Option 2: a pillar straight down, or a short jog to find a clear path.
-        let drop_to = |from: Vec3| -> Option<f32> {
-            let hit = bvh.cast(from, -Vec3::Z, from.z - base_z + 1.0);
-            match hit {
-                None => Some(base_z),
-                Some(_) => None,
-            }
-        };
-        let mut route: Option<Vec3> = None;
-        if drop_to(joint).is_some() {
-            route = Some(joint);
-        } else {
-            'search: for dist in [2.0f32, 4.0, 6.0, 9.0, 13.0] {
-                for k in 0..12 {
-                    let an = k as f32 / 12.0 * std::f32::consts::TAU;
-                    let cand = joint + Vec3::new(an.cos() * dist, an.sin() * dist, -dist);
-                    if cand.z < base_z + shaft_r {
-                        continue;
-                    }
-                    if clear(joint, cand) && drop_to(cand).is_some() {
-                        route = Some(cand);
-                        break 'search;
-                    }
-                }
-            }
+        let Some((top, joined)) = plan else { continue };
+        if let Some(i) = joined {
+            out.append(&make_frustum(joint, top, neck_r, neck_r, sides));
+            out.append(&make_sphere(top, neck_r, sides, 5));
+            pillars[i].branches += 1;
+            s.branches += 1;
+            continue;
         }
-        match route {
-            Some(top) => {
-                if top != joint {
-                    out.append(&make_frustum(joint, top, joint_r, joint_r, sides));
-                    out.append(&make_sphere(top, joint_r, sides, 5));
-                    s.branches += 1;
-                }
-                let foot = Vec3::new(top.x, top.y, base_z);
-                out.append(&make_frustum(top, foot, joint_r, shaft_r, sides));
-                if !p.raft {
-                    // Flared foot so it grips the build plate.
-                    let flare = Vec3::new(top.x, top.y, (0.8f32).min(top.z));
-                    out.append(&make_frustum(foot, flare, p.base_diameter * 0.5, shaft_r, 14));
-                }
-                pillars.push(Pillar {
-                    xy: top.truncate(),
-                    top: top.z,
-                    bottom: base_z,
-                    branches: 0,
-                });
-                s.pillars += 1;
-            }
-            None => {
-                // Nowhere to go but the model itself: stand on it with a small foot.
-                match bvh.cast(joint, -Vec3::Z, joint.z + 1.0) {
-                    // Only stand on a surface that faces up; anything else
-                    // means this spot is buried inside the model.
-                    Some(hit) if hit.normal.z > 0.0 => {
-                        let foot = hit.point - Vec3::Z * 0.1;
-                        out.append(&make_frustum(joint, foot, joint_r, tip_r, sides));
-                        s.landed_on_model += 1;
-                    }
-                    _ => s.unreachable += 1,
-                }
-            }
+        if top != joint {
+            out.append(&make_frustum(joint, top, neck_r, neck_r, sides));
+            out.append(&make_sphere(top, neck_r, sides, 5));
+            s.branches += 1;
         }
+        let foot = Vec3::new(top.x, top.y, base_z);
+        out.append(&make_frustum(top, foot, neck_r, shaft_r, sides));
+        if !p.raft {
+            // Flared foot so it grips the build plate.
+            let flare = Vec3::new(top.x, top.y, (0.8f32).min(top.z));
+            out.append(&make_frustum(foot, flare, p.base_diameter * 0.5, shaft_r, 14));
+        }
+        pillars.push(Pillar {
+            xy: top.truncate(),
+            top: top.z,
+            bottom: base_z,
+            branches: 0,
+        });
+        s.pillars += 1;
     }
 
     // Cross-bracing keeps tall pillars from swaying in the peel.
     if p.brace {
-        let brace_r = joint_r * 0.7;
+        let brace_r = neck_r * 0.7;
         let mut used = vec![0u8; pillars.len()];
         for i in 0..pillars.len() {
             if pillars[i].top - pillars[i].bottom < 10.0 {
@@ -339,7 +418,7 @@ pub fn build_structure(points: &[(Vec3, Vec3)], model: &Mesh, p: &ResinProcess) 
                 let (a, b) = if left { (i, j) } else { (j, i) };
                 let from = Vec3::new(pillars[a].xy.x, pillars[a].xy.y, z);
                 let to = Vec3::new(pillars[b].xy.x, pillars[b].xy.y, z + d);
-                if clear(from, to) {
+                if clear(from, to, brace_r) {
                     out.append(&make_frustum(from, to, brace_r, brace_r, 8));
                 }
                 z += d;
@@ -406,9 +485,9 @@ mod tests {
         let m = make_box(Vec3::splat(20.0)).transformed(&Mat4::from_translation(Vec3::new(40.0, 40.0, 6.0)));
         let points = find_points(&m, &proc());
         assert!(points.len() >= 9, "{}", points.len());
-        for (p, n) in &points {
-            assert!((p.z - 6.0).abs() < 0.01);
-            assert!(n.z < 0.0, "contact must face downward");
+        for t in &points {
+            assert!((t.pos.z - 6.0).abs() < 0.01);
+            assert!(t.normal.z < 0.0, "contact must face downward");
         }
         let s = build_structure(&points, &m, &proc());
         assert!(s.pillars > 0);
@@ -423,7 +502,7 @@ mod tests {
     fn sphere_gets_its_lowest_point() {
         let m = make_sphere(Vec3::new(30.0, 30.0, 15.0), 10.0, 32, 16);
         let points = find_points(&m, &proc());
-        let lowest = points.iter().map(|p| p.0.z).fold(f32::MAX, f32::min);
+        let lowest = points.iter().map(|p| p.pos.z).fold(f32::MAX, f32::min);
         assert!((lowest - 5.0).abs() < 0.2, "{lowest}");
     }
 
@@ -440,7 +519,7 @@ mod tests {
         let shelf = make_box(Vec3::new(10.0, 10.0, 2.0)).transformed(&Mat4::from_translation(Vec3::new(10.0, 10.0, 12.0)));
         m.append(&shelf);
         let m = m.transformed(&Mat4::from_translation(Vec3::new(30.0, 30.0, 0.0)));
-        let points = vec![(Vec3::new(45.0, 45.0, 12.0), -Vec3::Z)];
+        let points: Vec<Target> = vec![(Vec3::new(45.0, 45.0, 12.0), -Vec3::Z).into()];
         let s = build_structure(&points, &m, &proc());
         assert_eq!(s.pillars + s.landed_on_model, 1);
     }
@@ -448,11 +527,80 @@ mod tests {
     #[test]
     fn nearby_points_share_pillars() {
         let m = make_box(Vec3::new(4.0, 4.0, 4.0)).transformed(&Mat4::from_translation(Vec3::new(200.0, 200.0, 50.0)));
-        let points: Vec<(Vec3, Vec3)> = (0..5)
-            .map(|i| (Vec3::new(20.0 + i as f32 * 2.0, 20.0, 30.0 + i as f32), -Vec3::Z))
+        let points: Vec<Target> = (0..5)
+            .map(|i| (Vec3::new(20.0 + i as f32 * 2.0, 20.0, 30.0 + i as f32), -Vec3::Z).into())
             .collect();
         let s = build_structure(&points, &m, &proc());
         assert!(s.pillars < 5, "{} pillars", s.pillars);
         assert!(s.branches >= 1);
+    }
+
+    /// Distance from a point to the nearest of some boxes (min, max corners).
+    fn distance_to_boxes(p: Vec3, boxes: &[(Vec3, Vec3)]) -> f32 {
+        boxes
+            .iter()
+            .map(|(a, b)| {
+                let q = (*a - p).max(p - *b).max(Vec3::ZERO);
+                q.length()
+            })
+            .fold(f32::MAX, f32::min)
+    }
+
+    #[test]
+    fn supports_touch_the_model_only_at_their_tips() {
+        // A ledge sticking out from a tall wall: the obvious straight-down path
+        // runs right beside the wall, where a careless pillar would graze it.
+        let wall = (Vec3::new(30.0, 30.0, 0.0), Vec3::new(34.0, 60.0, 30.0));
+        let ledge = (Vec3::new(34.0, 30.0, 22.0), Vec3::new(48.0, 60.0, 25.0));
+        let mut m = make_box(wall.1 - wall.0).transformed(&Mat4::from_translation(wall.0));
+        m.append(&make_box(ledge.1 - ledge.0).transformed(&Mat4::from_translation(ledge.0)));
+        let p = proc();
+        let points = find_points(&m, &p);
+        assert!(!points.is_empty());
+        let s = build_structure(&points, &m, &p);
+        assert!(s.pillars > 0);
+        assert_eq!(s.landed_on_model, 0, "nothing needs to stand on the model here");
+        // Away from the tips, every part of every support keeps its distance.
+        let tips: Vec<Vec3> = points.iter().map(|t| t.pos).collect();
+        let mut too_close = 0;
+        for v in &s.mesh.v {
+            if tips.iter().any(|t| t.distance(*v) < p.tip_length + 0.6) {
+                continue;
+            }
+            if distance_to_boxes(*v, &[wall, ledge]) < CLEARANCE * 0.5 {
+                too_close += 1;
+            }
+        }
+        assert_eq!(too_close, 0, "supports graze the model in {too_close} places");
+    }
+
+    #[test]
+    fn tips_are_thin_and_shallow() {
+        let p = proc();
+        assert!(p.tip_diameter <= 0.4, "{}", p.tip_diameter);
+        assert!(p.contact_depth <= 0.2, "{}", p.contact_depth);
+        let m = make_box(Vec3::splat(10.0)).transformed(&Mat4::from_translation(Vec3::new(40.0, 40.0, 6.0)));
+        let s = build_structure(&find_points(&m, &p), &m, &p);
+        // Nothing reaches deeper into the model than the contact depth.
+        let deepest = s.mesh.v.iter().filter(|v| v.x > 40.0 && v.x < 50.0 && v.y > 40.0 && v.y < 50.0).map(|v| v.z).fold(0.0f32, f32::max);
+        assert!(deepest <= 6.0 + p.contact_depth + 1e-3, "{deepest}");
+    }
+
+    #[test]
+    fn surface_spots_without_a_path_are_left_out_not_planted_on_the_model() {
+        // A small hood over a block: under it there's no route to the plate.
+        let base = (Vec3::new(20.0, 20.0, 0.0), Vec3::new(50.0, 50.0, 10.0));
+        let hood = (Vec3::new(30.0, 30.0, 18.0), Vec3::new(40.0, 40.0, 19.0));
+        let mut m = make_box(base.1 - base.0).transformed(&Mat4::from_translation(base.0));
+        m.append(&make_box(hood.1 - hood.0).transformed(&Mat4::from_translation(hood.0)));
+        let p = proc();
+        let surface_only: Vec<Target> = vec![Target { pos: Vec3::new(35.0, 35.0, 18.0), normal: -Vec3::Z, critical: false }];
+        let s = build_structure(&surface_only, &m, &p);
+        assert_eq!(s.landed_on_model, 0);
+        assert_eq!(s.skipped, 1);
+        // A part that would fall off still gets held, standing on the model.
+        let must: Vec<Target> = vec![(Vec3::new(35.0, 35.0, 18.0), -Vec3::Z).into()];
+        let s = build_structure(&must, &m, &p);
+        assert_eq!(s.landed_on_model, 1);
     }
 }

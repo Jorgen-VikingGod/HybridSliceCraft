@@ -152,14 +152,15 @@ impl PlateObject {
     }
 
     /// Support contact points moved to printing position.
-    pub fn world_points(&self) -> Vec<(Vec3, Vec3)> {
+    pub fn world_points(&self) -> Vec<crate::resin::supports::Target> {
         let m = self.matrix();
+        let nm = m.inverse().transpose();
         self.support_points
             .iter()
-            .map(|p| {
-                let pos = m.transform_point3(Vec3::from(p.pos));
-                let n = m.transform_vector3(Vec3::from(p.normal)).normalize_or_zero();
-                (pos, n)
+            .map(|p| crate::resin::supports::Target {
+                pos: m.transform_point3(Vec3::from(p.pos)),
+                normal: nm.transform_vector3(Vec3::from(p.normal)).normalize_or_zero(),
+                critical: p.critical || p.manual,
             })
             .collect()
     }

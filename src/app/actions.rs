@@ -402,6 +402,7 @@ impl App {
                     branches: s.branches,
                     landed: s.landed_on_model,
                     unreachable: s.unreachable,
+                    skipped: s.skipped,
                 },
             );
         }
@@ -419,10 +420,11 @@ impl App {
         let normal_m = o.matrix().transpose();
         o.support_points = points
             .iter()
-            .map(|(p, n)| supports::SupportPoint {
-                pos: inv.transform_point3(*p).to_array(),
-                normal: normal_m.transform_vector3(*n).normalize_or_zero().to_array(),
+            .map(|t| supports::SupportPoint {
+                pos: inv.transform_point3(t.pos).to_array(),
+                normal: normal_m.transform_vector3(t.normal).normalize_or_zero().to_array(),
                 manual: false,
+                critical: t.critical,
             })
             .collect();
         o.support_points.len()
@@ -962,9 +964,13 @@ impl App {
     }
 }
 
+const SESSION_VERSION: u32 = 2;
+
 #[derive(serde::Serialize, serde::Deserialize, Default)]
 #[serde(default)]
 struct Session {
+    /// Bumped when saved settings shouldn't carry over.
+    version: u32,
     resin: bool,
     advanced: bool,
     fdm_printer: Option<FdmPrinter>,
@@ -981,6 +987,7 @@ impl App {
     /// Remember the chosen printer, material and settings for next time.
     pub fn save_session(&self) {
         let s = Session {
+            version: SESSION_VERSION,
             resin: self.resin(),
             advanced: self.advanced,
             fdm_printer: Some(self.fdm_printer.clone()),
@@ -1026,11 +1033,14 @@ impl App {
         if let Some(v) = s.resin_printer {
             self.resin_printer = v;
         }
-        if let Some(v) = s.resin_process {
-            self.resin_process = v;
-        }
-        if let Some(v) = s.resin_process_base {
-            self.resin_process_base = v;
+        // Saved before the lighter supports: keep the new support defaults.
+        if s.version >= SESSION_VERSION {
+            if let Some(v) = s.resin_process {
+                self.resin_process = v;
+            }
+            if let Some(v) = s.resin_process_base {
+                self.resin_process_base = v;
+            }
         }
         if let Some(v) = s.resin_mat {
             self.resin_mat = v;

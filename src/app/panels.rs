@@ -412,6 +412,9 @@ impl App {
                         if c.landed > 0 {
                             ui.label(RichText::new(format!("{} stand on the model itself", c.landed)).small().color(YELLOW));
                         }
+                        if c.skipped > 0 {
+                            ui.label(RichText::new(format!("{} surface spots left out: no clean path to them, and supports around them hold the area", c.skipped)).small().color(DIM));
+                        }
                         if c.unreachable > 0 {
                             ui.label(RichText::new(format!("{} spots have no clear path for a support", c.unreachable)).small().color(RED));
                         }
