@@ -74,6 +74,22 @@ fn parse_args() -> Result<StartOptions, String> {
     Ok(o)
 }
 
+/// The app icon for the window and task bar, built into the program.
+fn window_icon() -> egui::IconData {
+    let bytes: &[u8] = include_bytes!("../assets/icon-256.png");
+    let decoded = (|| {
+        let mut reader = png::Decoder::new(std::io::Cursor::new(bytes)).read_info().ok()?;
+        let mut buf = vec![0u8; reader.output_buffer_size()?];
+        let info = reader.next_frame(&mut buf).ok()?;
+        (info.color_type == png::ColorType::Rgba).then(|| egui::IconData {
+            rgba: buf[..info.buffer_size()].to_vec(),
+            width: info.width,
+            height: info.height,
+        })
+    })();
+    decoded.unwrap_or_default()
+}
+
 fn main() {
     let opts = match parse_args() {
         Ok(o) => o,
@@ -108,7 +124,8 @@ fn main() {
             .with_title("HybridSliceCraft")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([960.0, 600.0])
-            .with_drag_and_drop(true),
+            .with_drag_and_drop(true)
+            .with_icon(window_icon()),
         ..Default::default()
     };
 

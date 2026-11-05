@@ -9,6 +9,26 @@ description = "Hybrid slicer for filament (FDM) and resin (MSLA) 3D printers"
 name = "hybridslicecraft"
 path = "src/main.rs"
 
+# Installers for Windows (.msi), macOS (.dmg) and Linux (.deb, .AppImage),
+# made with cargo-packager. The release workflow on GitHub runs this.
+[package.metadata.packager]
+product-name = "HybridSliceCraft"
+identifier = "io.github.jorgen-vikinggod.hybridslicecraft"
+authors = ["Jürgen Könnemann"]
+publisher = "Jürgen Könnemann"
+copyright = "Copyright © Jürgen Könnemann"
+description = "Hybrid slicer for filament (FDM) and resin (MSLA) 3D printers"
+homepage = "https://github.com/Jorgen-VikingGod/HybridSliceCraft"
+category = "GraphicsAndDesign"
+out-dir = "dist"
+binaries-dir = "target/release"
+before-packaging-command = "cargo build --release --locked"
+binaries = [{ path = "hybridslicecraft", main = true }]
+icons = ["assets/icon.ico", "assets/icon-1024.png", "assets/icon-512.png", "assets/icon-256.png", "assets/icon-128.png", "assets/icon-32.png"]
+
+[package.metadata.packager.deb]
+depends = ["libxkbcommon0", "libwayland-client0", "libvulkan1 | libgl1"]
+
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland", "accesskit"] }
 egui-wgpu = "0.37"

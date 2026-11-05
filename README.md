@@ -39,6 +39,20 @@ Author: Jürgen Könnemann
 - Several plates, undo and redo, project files, saved presets
 - The 3D view draws on the graphics card through Vulkan, Metal, DirectX 12 or OpenGL. Resin layers are drawn on whichever is faster, the graphics card or the processor, timed on each print.
 
+## Install
+
+Each published GitHub release gets installers built automatically:
+
+| System | File |
+| --- | --- |
+| Windows | `.msi` installer |
+| macOS, Apple silicon and Intel | `.dmg` disk image (one for each chip) |
+| Linux | `.deb` package and a portable `.AppImage` |
+
+The installers aren't code-signed yet. Windows SmartScreen and macOS Gatekeeper will warn on first launch; on macOS, right-click the app and choose Open.
+
+To make installers yourself, install `cargo-packager` (`cargo install cargo-packager --locked`) and run `cargo packager --release` on the system you're building for. They appear in `dist/`.
+
 ## Run it
 
     cargo run --release

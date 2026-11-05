@@ -1,0 +1,130 @@
+# Builds installers for every platform when a release is published on GitHub,
+# and attaches them to that release:
+#   Windows .msi, macOS .dmg (Apple silicon and Intel), Linux .deb and .AppImage
+#
+# It can also be started by hand from the Actions tab ("Run workflow"); then
+# the installers are kept as downloadable build artifacts instead.
+
+name: Release installers
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  PACKAGER_VERSION: 0.11.8
+
+jobs:
+  package:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows (msi)
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            formats: -f wix
+          - name: macOS Apple silicon (dmg)
+            os: macos-latest
+            target: aarch64-apple-darwin
+            formats: -f dmg
+          - name: macOS Intel (dmg)
+            os: macos-latest
+            target: x86_64-apple-darwin
+            formats: -f dmg
+          - name: Linux (deb, AppImage)
+            # The oldest supported Ubuntu, so the program runs on older systems too.
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            formats: -f deb -f appimage
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Take the version from the release tag
+        if: github.event_name == 'release'
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          if [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # Only the first version line: the package's own, near the top.
+            # perl behaves the same on Linux, macOS and Windows build machines.
+            perl -0pi -e "s/^version = \"[^\"]*\"/version = \"$tag\"/m" Cargo.toml
+            echo "Packaging version $tag"
+          else
+            echo "Tag '$GITHUB_REF_NAME' isn't a plain version like v1.2.3; keeping the version in Cargo.toml"
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Linux build tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libx11-dev \
+            libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked --version ${{ env.PACKAGER_VERSION }}
+
+      - name: Keep the lock file in step with the version
+        run: cargo update --workspace
+
+      - name: Run the tests
+        # Tests run on the machine itself, so skip them when building for another chip.
+        if: matrix.target != 'x86_64-apple-darwin'
+        run: cargo test --release --locked
+
+      - name: Build installers
+        shell: bash
+        env:
+          # The AppImage tools run without needing FUSE on the build machine.
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: cargo packager --release ${{ matrix.formats }} --binaries-dir target/${{ matrix.target }}/release
+
+      - name: Name the files by platform
+        shell: bash
+        run: |
+          cd dist
+          for f in *.msi *.dmg *.deb *.AppImage; do
+            [ -e "$f" ] || continue
+            case "$f" in
+              *.dmg) mv "$f" "${f%.dmg}_${{ matrix.target }}.dmg" ;;
+            esac
+          done
+          ls -la
+
+      - name: Keep the installers with this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.target }}
+          path: |
+            dist/*.msi
+            dist/*.dmg
+            dist/*.deb
+            dist/*.AppImage
+          if-no-files-found: error
+
+      - name: Attach the installers to the release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.msi
+            dist/*.dmg
+            dist/*.deb
+            dist/*.AppImage
