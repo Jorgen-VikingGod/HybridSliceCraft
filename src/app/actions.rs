@@ -498,13 +498,13 @@ impl App {
         for o in &self.plate().objects {
             h = hash_text(
                 &format!(
-                    "{} {:?} {:?} {:?} {} {} {} {:?} {:?} {} {} {}",
+                    "{} {:?} {:?} {:?} {} {:?} {} {:?} {:?} {} {} {}",
                     o.mesh_id,
                     o.pos,
                     o.rot,
                     o.scale,
                     o.visible,
-                    o.extruder,
+                    (o.extruder, o.infill_extruder),
                     o.flow,
                     o.infill,
                     o.walls,
@@ -570,6 +570,7 @@ impl App {
                     name: o.name.clone(),
                     mesh: o.world_mesh(),
                     extruder: o.extruder,
+                    infill_extruder: o.infill_extruder,
                     flow: o.flow,
                     infill: o.infill,
                     walls: o.walls,

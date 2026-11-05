@@ -76,6 +76,22 @@ impl Tower {
     }
 }
 
+/// Every tool an object needs on one layer: its own, plus its infill tool.
+fn tools_at(job: &FdmJob, plan: &Plan, oi: usize, li: usize) -> Vec<usize> {
+    let last = job.filaments.len().saturating_sub(1);
+    let ol = &plan.objects[oi][li];
+    let mut out = Vec::new();
+    if !ol.islands.is_empty() || !ol.support.is_empty() {
+        out.push(job.objects[oi].extruder.min(last));
+    }
+    if ol.islands.iter().any(|i| !i.other_tool_fill.is_empty()) {
+        if let Some(t) = job.objects[oi].infill_extruder {
+            out.push(t.min(last));
+        }
+    }
+    out
+}
+
 fn place_tower(job: &FdmJob, plan: &Plan, tools: &[usize], warnings: &mut Vec<String>) -> Tower {
     let printer = &job.printer;
     let p = &job.process;
@@ -84,13 +100,7 @@ fn place_tower(job: &FdmJob, plan: &Plan, tools: &[usize], warnings: &mut Vec<St
     let mut last_change_layer = -1i64;
     if multi {
         for i in 0..plan.layers.len() {
-            let mut here: Vec<usize> = job
-                .objects
-                .iter()
-                .enumerate()
-                .filter(|(oi, _)| !plan.objects[*oi][i].islands.is_empty() || !plan.objects[*oi][i].support.is_empty())
-                .map(|(_, o)| o.extruder)
-                .collect();
+            let mut here: Vec<usize> = (0..job.objects.len()).flat_map(|oi| tools_at(job, plan, oi, i)).collect();
             here.sort_unstable();
             here.dedup();
             if here.len() > 1 {
@@ -252,7 +262,9 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
     };
 
     let tools_used: Vec<usize> = {
-        let mut t: Vec<usize> = (0..job.objects.len()).map(tool_of).collect();
+        let mut t: Vec<usize> = (0..job.objects.len())
+            .flat_map(|oi| [tool_of(oi), job.objects[oi].infill_extruder.unwrap_or(tool_of(oi)).min(last_tool)])
+            .collect();
         t.sort_unstable();
         t.dedup();
         t
@@ -388,7 +400,7 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
             }
 
             // Print with the tool already loaded first.
-            let mut tools_this: Vec<usize> = objs.iter().filter(|oi| has_work(oi)).map(|oi| tool_of(*oi)).collect();
+            let mut tools_this: Vec<usize> = objs.iter().flat_map(|oi| tools_at(job, plan, *oi, li)).collect();
             tools_this.sort_unstable();
             tools_this.dedup();
             if let Some(pos) = tools_this.iter().position(|t| *t == w.tool) {
@@ -469,6 +481,37 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
                         w.emit_spiral(island, z, h, flow, first_spiral);
                     } else {
                         w.emit_island(island, z, h, flow);
+                    }
+                }
+                // Infill that another tool prints, e.g. a bigger nozzle.
+                let mut fills: Vec<(usize, usize)> = Vec::new();
+                for oi in objs {
+                    let infill_tool = job.objects[*oi].infill_extruder.map(|t| t.min(last_tool));
+                    if infill_tool != Some(*tool) {
+                        continue;
+                    }
+                    for (k, isl) in plan.objects[*oi][li].islands.iter().enumerate() {
+                        if !isl.other_tool_fill.is_empty() {
+                            fills.push((*oi, k));
+                        }
+                    }
+                }
+                while !fills.is_empty() {
+                    let here = DVec2::new(w.pos.x, w.pos.y);
+                    let mut bi = 0;
+                    let mut bd = f64::MAX;
+                    for (i, (oi, k)) in fills.iter().enumerate() {
+                        let d = plan.objects[*oi][li].islands[*k].center.distance_squared(here);
+                        if d < bd {
+                            bd = d;
+                            bi = i;
+                        }
+                    }
+                    let (oi, k) = fills.swap_remove(bi);
+                    let island = &plan.objects[oi][li].islands[k];
+                    let flow = job.objects[oi].flow as f64;
+                    for path in &island.other_tool_fill {
+                        w.emit_path(path, z, h, flow, Some(&island.comb));
                     }
                 }
             }

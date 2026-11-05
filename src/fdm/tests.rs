@@ -13,6 +13,7 @@ fn job(mesh: Mesh, process: FdmProcess) -> FdmJob {
             name: "test".into(),
             mesh,
             extruder: 0,
+            infill_extruder: None,
             flow: 1.0,
             infill: None,
             walls: None,
@@ -238,6 +239,7 @@ fn two_filaments_change_tools() {
         name: "second".into(),
         mesh: make_box(Vec3::splat(10.0)).transformed(&Mat4::from_translation(Vec3::new(70.0, 40.0, 0.0))),
         extruder: 1,
+        infill_extruder: None,
         flow: 1.0,
         infill: None,
         walls: None,
@@ -301,6 +303,7 @@ fn calibration_tests_really_change_settings_as_they_rise() {
                     name: p.name.clone(),
                     mesh: m,
                     extruder: 0,
+                    infill_extruder: None,
                     flow: p.flow,
                     infill: p.infill,
                     walls: p.walls,
@@ -357,4 +360,94 @@ fn awkward_models_slice_or_explain() {
     let many = many.transformed(&Mat4::from_translation(Vec3::new(20.0, 50.0, 0.0)));
     let r = slice(&job(many, FdmProcess::default()), &Progress::default()).unwrap();
     assert!(r.layers.len() >= 19);
+}
+
+fn two_nozzle_job() -> FdmJob {
+    let cat = Catalogue::builtin();
+    let mut p = FdmProcess::default();
+    p.infill_density = 100.0;
+    p.infill_pattern = InfillPattern::Rectilinear;
+    p.skirt_loops = 0;
+    p.elephant_foot = 0.0;
+    p.prime_tower = false;
+    let mut j = job(Mesh::default(), p);
+    j.printer = cat.fdm_printers.iter().find(|p| p.mixed_nozzles()).unwrap().clone();
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    j.filaments = vec![cat.filaments[0].clone(), cat.filaments[1].clone()];
+    j
+}
+
+#[test]
+fn each_model_prints_with_its_own_nozzle_size() {
+    let mut j = two_nozzle_job();
+    for (tool, x) in [(0usize, 60.0f32), (1, 120.0)] {
+        j.objects.push(JobObject {
+            name: format!("cube {tool}"),
+            mesh: make_box(Vec3::splat(20.0)).transformed(&Mat4::from_translation(Vec3::new(x, 80.0, 0.0))),
+            extruder: tool,
+            infill_extruder: None,
+            flow: 1.0,
+            infill: None,
+            walls: None,
+        });
+    }
+    let r = slice(&j, &Progress::default()).unwrap();
+    let width = |tool: u32| {
+        let w: Vec<f32> = r.segs.iter().filter(|s| s.tool == tool && s.feature == Feature::OuterWall as u32 && s.layer > 3).map(|s| s.width).collect();
+        w.iter().sum::<f32>() / w.len().max(1) as f32
+    };
+    let (small, big) = (width(0), width(1));
+    assert!((big / small - 2.0).abs() < 0.05, "outer walls {small} vs {big}");
+    // Both cubes still get exactly their volume of plastic.
+    let (e_mm, _, _, _) = replay(&r.gcode);
+    let area = std::f64::consts::PI * 1.75f64.powi(2) / 4.0;
+    let volume = e_mm * area / j.filaments[0].flow as f64;
+    assert!((volume - 16000.0).abs() / 16000.0 < 0.08, "plastic used {volume:.0} mm³");
+    // The big nozzle needs far fewer lines for the same cube.
+    let lines = |tool: u32| r.segs.iter().filter(|s| s.tool == tool && s.feature != Feature::Travel as u32).count();
+    assert!(lines(1) * 3 < lines(0) * 2, "{} vs {}", lines(0), lines(1));
+}
+
+#[test]
+fn infill_can_use_the_big_nozzle_while_walls_keep_the_fine_one() {
+    let mut j = two_nozzle_job();
+    j.process.infill_density = 20.0;
+    j.objects.push(JobObject {
+        name: "cube".into(),
+        mesh: centered(make_box(Vec3::new(30.0, 30.0, 10.0))),
+        extruder: 0,
+        infill_extruder: Some(1),
+        flow: 1.0,
+        infill: None,
+        walls: None,
+    });
+    let r = slice(&j, &Progress::default()).unwrap();
+    let sparse: Vec<_> = r.segs.iter().filter(|s| s.feature == Feature::SparseInfill as u32).collect();
+    assert!(!sparse.is_empty());
+    assert!(sparse.iter().all(|s| s.tool == 1), "sparse infill must come from tool 2");
+    assert!(sparse.iter().all(|s| (s.width - 0.9).abs() < 0.01), "big-nozzle infill lines are twice as wide");
+    let walls: Vec<_> = r.segs.iter().filter(|s| s.feature == Feature::OuterWall as u32).collect();
+    assert!(walls.iter().all(|s| s.tool == 0));
+    assert!(r.tool_changes >= 10, "{}", r.tool_changes);
+    assert!(r.gcode.contains("\nT1\n") && r.gcode.contains("\nT0\n"));
+    assert!(r.filament_g[1] > 0.0);
+}
+
+#[test]
+fn thick_layers_on_a_small_nozzle_are_flagged() {
+    let mut j = two_nozzle_job();
+    j.printer.tool_nozzles = vec![0.25, 0.8];
+    j.process.layer_height = 0.28;
+    j.objects.push(JobObject {
+        name: "cube".into(),
+        mesh: centered(make_box(Vec3::splat(10.0))),
+        extruder: 0,
+        infill_extruder: None,
+        flow: 1.0,
+        infill: None,
+        walls: None,
+    });
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.warnings.iter().any(|w| w.contains("0.25 mm nozzle")), "{:?}", r.warnings);
 }

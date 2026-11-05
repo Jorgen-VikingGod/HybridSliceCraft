@@ -23,6 +23,7 @@ struct SavedObject {
     rot: [f32; 4],
     scale: [f32; 3],
     extruder: usize,
+    infill_extruder: Option<usize>,
     flow: f32,
     infill: Option<f32>,
     walls: Option<u32>,
@@ -90,6 +91,7 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
                 rot: o.rot.to_array(),
                 scale: o.scale.to_array(),
                 extruder: o.extruder,
+                infill_extruder: o.infill_extruder,
                 flow: o.flow,
                 infill: o.infill,
                 walls: o.walls,
@@ -144,6 +146,7 @@ pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
             o.rot = Quat::from_array(s.rot).normalize();
             o.scale = Vec3::from(s.scale);
             o.extruder = s.extruder;
+            o.infill_extruder = s.infill_extruder;
             o.flow = s.flow;
             o.infill = s.infill;
             o.walls = s.walls;

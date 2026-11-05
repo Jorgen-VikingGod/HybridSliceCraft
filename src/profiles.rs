@@ -34,6 +34,8 @@ pub struct FdmPrinter {
     pub round_bed: bool,
     pub nozzle: f32,
     pub extruders: u32,
+    /// Nozzle size of each tool when they differ; empty means all use `nozzle`.
+    pub tool_nozzles: Vec<f32>,
     pub firmware: Firmware,
     pub max_speed: f32,
     pub max_accel: f32,
@@ -64,6 +66,7 @@ impl Default for FdmPrinter {
             round_bed: false,
             nozzle: 0.4,
             extruders: 1,
+            tool_nozzles: Vec::new(),
             firmware: Firmware::Marlin,
             max_speed: 300.0,
             max_accel: 3000.0,
@@ -81,6 +84,29 @@ impl Default for FdmPrinter {
             host: String::new(),
             host_key: String::new(),
         }
+    }
+}
+
+impl FdmPrinter {
+    /// The nozzle fitted to a tool.
+    pub fn nozzle_for(&self, tool: usize) -> f32 {
+        self.tool_nozzles
+            .get(tool)
+            .copied()
+            .filter(|n| *n > 0.0)
+            .unwrap_or(self.nozzle)
+    }
+
+    /// How much wider than the print settings' lines this tool's lines are.
+    /// Print settings are written for the printer's main nozzle.
+    pub fn width_scale(&self, tool: usize) -> f64 {
+        (self.nozzle_for(tool) / self.nozzle.max(0.05)) as f64
+    }
+
+    /// True when the tools don't all share one nozzle size.
+    pub fn mixed_nozzles(&self) -> bool {
+        let n = self.extruders.max(1) as usize;
+        (1..n).any(|t| (self.nozzle_for(t) - self.nozzle_for(0)).abs() > 1e-4)
     }
 }
 
@@ -597,6 +623,9 @@ impl Catalogue {
         delta.round_bed = true;
         let mut dual = fp("Dual extruder 300", 300.0, 300.0, 340.0, Firmware::Marlin, 200.0, 2500.0, 1.0);
         dual.extruders = 2;
+        let mut big_small = fp("Dual nozzle 0.4 + 0.8, 300", 300.0, 300.0, 340.0, Firmware::Klipper, 300.0, 6000.0, 0.8);
+        big_small.extruders = 2;
+        big_small.tool_nozzles = vec![0.4, 0.8];
         let mut mm4 = fp("Four-colour changer 256", 256.0, 256.0, 256.0, Firmware::Marlin, 500.0, 8000.0, 0.8);
         mm4.extruders = 4;
         let mut klip = fp("CoreXY Klipper 350", 350.0, 350.0, 340.0, Firmware::Klipper, 500.0, 10000.0, 0.5);
@@ -610,6 +639,7 @@ impl Catalogue {
             fp("Bowden classic 235", 235.0, 235.0, 250.0, Firmware::Marlin, 150.0, 1000.0, 5.0),
             delta,
             dual,
+            big_small,
             mm4,
         ];
 

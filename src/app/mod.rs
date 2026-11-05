@@ -238,6 +238,7 @@ pub struct StartOptions {
     pub export: Option<PathBuf>,
     pub hollow: bool,
     pub show_cut: bool,
+    pub printer: Option<String>,
 }
 
 impl App {
@@ -369,9 +370,21 @@ impl App {
             || opts.slice
             || opts.export.is_some()
             || opts.hollow
-            || opts.auto_supports;
+            || opts.auto_supports
+            || opts.printer.is_some();
         if !automated {
             app.load_session();
+        }
+
+        if let Some(name) = &opts.printer {
+            let want = name.to_lowercase();
+            if let Some(p) = app.cat.fdm_printers.iter().find(|p| p.name.to_lowercase().contains(&want)) {
+                app.fdm_printer = p.clone();
+            } else if let Some(p) = app.cat.resin_printers.iter().find(|p| p.name.to_lowercase().contains(&want)) {
+                app.resin_printer = p.clone();
+            } else {
+                eprintln!("No printer named like {name}; using the default.");
+            }
         }
 
         // Load what was asked for, or give new users something to try.

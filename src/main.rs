@@ -33,6 +33,7 @@ Options:
   --zoom <factor>           Start zoomed in on the models
   --export <file>           After slicing, save to this file and quit
                             (.gcode, or .sl1, .zip, .ctb in resin mode)
+  --printer <name>          Start with this printer chosen (as named in the list)
   --empty                   Start with an empty plate
   --help                    Show this help
 ";
@@ -51,6 +52,7 @@ fn parse_args() -> Result<StartOptions, String> {
             "--supports" => o.auto_supports = true,
             "--empty" => o.empty = true,
             "--hollow" => o.hollow = true,
+            "--printer" => o.printer = Some(it.next().ok_or("--printer needs a name")?),
             "--cut-view" => o.show_cut = true,
             "--zoom" => {
                 let v = it.next().ok_or("--zoom needs a number")?;
@@ -93,6 +95,11 @@ fn main() {
 
     let mut wgpu_options = egui_wgpu::WgpuConfiguration::default();
     wgpu_options.wgpu_setup = egui_wgpu::WgpuSetup::CreateNew(setup);
+    if opts.screenshot.is_some() {
+        // A picture-taking run mustn't wait on the display: with the screen
+        // locked or the window hidden, waiting for it would never finish.
+        wgpu_options.surface.present_mode = wgpu::PresentMode::AutoNoVsync;
+    }
 
     let native = eframe::NativeOptions {
         renderer: eframe::Renderer::Wgpu,

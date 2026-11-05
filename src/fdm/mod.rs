@@ -128,6 +128,8 @@ pub struct JobObject {
     pub name: String,
     pub mesh: Mesh,
     pub extruder: usize,
+    /// Print the sparse infill with another tool, e.g. a bigger nozzle.
+    pub infill_extruder: Option<usize>,
     pub flow: f32,
     pub infill: Option<f32>,
     pub walls: Option<u32>,

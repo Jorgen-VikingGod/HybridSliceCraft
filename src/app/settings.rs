@@ -254,6 +254,10 @@ impl App {
         for slot in 0..slots {
             ui.horizontal(|ui| {
                 swatch(ui, self.filaments[slot].color, 18.0);
+                if self.fdm_printer.mixed_nozzles() {
+                    ui.label(RichText::new(format!("{:.1}", self.fdm_printer.nozzle_for(slot))).small().color(DIM))
+                        .on_hover_text("Nozzle size of this tool, in mm");
+                }
                 let current = self.filaments[slot].name.clone();
                 let mut pick = None;
                 egui::ComboBox::from_id_salt(("filament", slot))
@@ -684,6 +688,17 @@ fn fdm_printer_editor(ui: &mut egui::Ui, p: &mut FdmPrinter) {
         line(ui, "Filament tools", |ui| {
             ui.add(egui::DragValue::new(&mut p.extruders).range(1..=16));
         });
+        if p.extruders > 1 {
+            // Every tool gets its own nozzle size; new ones start at the main size.
+            let tools = p.extruders as usize;
+            let main = p.nozzle;
+            p.tool_nozzles.resize(tools, main);
+            for t in 0..tools {
+                line(ui, &format!("Nozzle, tool {}", t + 1), |ui| {
+                    ui.add(num(&mut p.tool_nozzles[t], 0.1, 2.0, "mm"));
+                });
+            }
+        }
         line(ui, "Firmware", |ui| {
             egui::ComboBox::from_id_salt("firmware").selected_text(p.firmware.label()).show_ui(ui, |ui| {
                 for f in Firmware::ALL {

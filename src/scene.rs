@@ -39,6 +39,7 @@ pub struct PlateObject {
     pub visible: bool,
     // Filament overrides.
     pub extruder: usize,
+    pub infill_extruder: Option<usize>,
     pub flow: f32,
     pub infill: Option<f32>,
     pub walls: Option<u32>,
@@ -67,6 +68,7 @@ impl PlateObject {
             report,
             visible: true,
             extruder: 0,
+            infill_extruder: None,
             flow: 1.0,
             infill: None,
             walls: None,

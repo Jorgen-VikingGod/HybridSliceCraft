@@ -311,15 +311,39 @@ impl App {
                 ui.label("Filament");
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     egui::ComboBox::from_id_salt("obj_filament")
-                        .selected_text(format!("{}: {}", o.extruder + 1, self.filaments[o.extruder.min(slots - 1)].name))
+                        .selected_text(format!("{}: {} ({:.1} mm)", o.extruder + 1, self.filaments[o.extruder.min(slots - 1)].name, self.fdm_printer.nozzle_for(o.extruder)))
                         .width(150.0)
                         .show_ui(ui, |ui| {
                             for i in 0..slots {
-                                if ui.selectable_value(&mut o.extruder, i, format!("{}: {}", i + 1, self.filaments[i].name)).changed() {
+                                if ui.selectable_value(&mut o.extruder, i, format!("{}: {} ({:.1} mm)", i + 1, self.filaments[i].name, self.fdm_printer.nozzle_for(i))).changed() {
                                     changed = true;
                                 }
                             }
                         });
+                });
+            });
+        }
+        if slots > 1 {
+            ui.horizontal(|ui| {
+                ui.label("Infill with").on_hover_text("Print the inside fill with another tool, such as a bigger nozzle, while the walls keep the fine one.");
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let name = |t: usize| {
+                        format!("{}: {} ({:.1} mm)", t + 1, self.filaments[t].name, self.fdm_printer.nozzle_for(t))
+                    };
+                    let shown = match o.infill_extruder {
+                        None => "Same as walls".to_string(),
+                        Some(t) => name(t.min(slots - 1)),
+                    };
+                    egui::ComboBox::from_id_salt("obj_infill_tool").selected_text(shown).width(150.0).show_ui(ui, |ui| {
+                        if ui.selectable_value(&mut o.infill_extruder, None, "Same as walls").changed() {
+                            changed = true;
+                        }
+                        for t in 0..slots {
+                            if ui.selectable_value(&mut o.infill_extruder, Some(t), name(t)).changed() {
+                                changed = true;
+                            }
+                        }
+                    });
                 });
             });
         }
