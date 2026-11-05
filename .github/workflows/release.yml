@@ -94,7 +94,7 @@ jobs:
         env:
           # The AppImage tools run without needing FUSE on the build machine.
           APPIMAGE_EXTRACT_AND_RUN: 1
-        run: cargo packager --release ${{ matrix.formats }} --binaries-dir target/${{ matrix.target }}/release
+        run: cargo packager --release ${{ matrix.formats }} --target ${{ matrix.target }}
 
       - name: Name the files by platform
         shell: bash
