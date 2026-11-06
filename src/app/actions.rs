@@ -365,13 +365,14 @@ impl App {
     fn support_key(&self, o: &PlateObject) -> String {
         let p = &self.resin_process;
         format!(
-            "{:?}{:?}{:?}{:?}|{}|{:?}",
+            "{:?}{:?}{:?}{:?}|{}|{:?}{:?}",
             o.mesh_id,
             o.pos,
             o.rot,
             o.scale,
             o.support_points.iter().map(|s| s.pos[0] + s.pos[1] * 3.0 + s.pos[2] * 7.0).sum::<f32>(),
             (o.support_points.len(), p.tip_diameter, p.tip_length, p.pillar_diameter, p.base_diameter, p.branch_merge, p.brace, p.raft, p.raft_height, p.raft_margin),
+            (p.raft_chamfer, p.raft_vents, p.raft_vent_width, p.raft_vent_pitch),
         )
     }
 

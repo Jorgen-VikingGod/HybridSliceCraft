@@ -363,6 +363,15 @@ impl App {
             return self.select_hint(ui, "add supports");
         };
         let cache = self.supports.get(&o.id).cloned();
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Strength").small().color(DIM));
+            let now = crate::profiles::SupportPreset::matching(&self.resin_process);
+            for k in crate::profiles::SupportPreset::ALL {
+                if ui.selectable_label(now == Some(k), k.label()).on_hover_text(k.hint()).clicked() {
+                    k.apply(&mut self.resin_process);
+                }
+            }
+        });
         ui.horizontal_wrapped(|ui| {
             if ui.button("Add automatically").on_hover_text("Lift the model and place supports wherever it needs holding").clicked() {
                 self.push_undo();
