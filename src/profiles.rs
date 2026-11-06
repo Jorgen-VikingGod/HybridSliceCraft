@@ -447,6 +447,10 @@ impl Default for FdmProcess {
 #[serde(default)]
 pub struct ResinPrinter {
     pub name: String,
+    /// Who makes it (shown for grouping). Empty for generic machines.
+    pub maker: String,
+    /// File extension the printer reads best (`goo`, `ctb`, `sl1`, ...), empty if unknown.
+    pub format: String,
     pub res_x: u32,
     pub res_y: u32,
     pub size_x: f32,
@@ -461,6 +465,8 @@ impl Default for ResinPrinter {
     fn default() -> Self {
         Self {
             name: "Custom resin printer".into(),
+            maker: String::new(),
+            format: String::new(),
             res_x: 3840,
             res_y: 2400,
             size_x: 192.0,
@@ -812,7 +818,10 @@ impl Catalogue {
             rp("Mono 12K, 9 inch", 11520, 5120, 218.0, 123.0, 250.0),
             rp("Mono 16K, 10 inch", 15120, 6230, 228.0, 128.0, 230.0),
             rp("Large 8K, 15.6 inch", 7680, 4320, 345.0, 194.0, 400.0),
-        ];
+        ]
+        .into_iter()
+        .chain(brand_resin_printers())
+        .collect::<Vec<_>>();
         let rm = |name: &str, exp: f32, bottom: f32, d: f32, c: [u8; 3]| ResinMaterial {
             name: name.into(),
             exposure: exp,
@@ -933,4 +942,99 @@ pub fn config_dir() -> PathBuf {
         .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".config")))
         .unwrap_or_else(|_| PathBuf::from("."));
     base.join("hybridslicecraft")
+}
+
+
+/// Elegoo and Anycubic machines: screen, build volume, the file each one reads and
+/// which way the screen is mirrored. Numbers come from the Open Resin Alliance's
+/// printer profiles for DragonFruit (MIT). `format` is a file extension: `goo`, `ctb`,
+/// an Anycubic extension such as `pwmx`, or `azf` for Anycubic's newer zip-based type
+/// that we can't write yet.
+fn brand_resin_printers() -> Vec<ResinPrinter> {
+    // (maker, name, res_x, res_y, size_x, size_y, height, format, mirror_x, mirror_y)
+    const TABLE: &[(&str, &str, u32, u32, f32, f32, f32, &str, bool, bool)] = &[
+        ("Anycubic", "Anycubic Photon M3 Max", 6480, 3600, 298.08, 165.60, 300.0, "pm3m", false, true),
+        ("Anycubic", "Anycubic Photon M3 Premium", 5760, 3240, 218.88, 123.12, 250.0, "pm3r", false, true),
+        ("Anycubic", "Anycubic Photon M3", 4096, 2560, 163.84, 102.40, 180.0, "pm3", false, true),
+        ("Anycubic", "Anycubic Photon Mono M7 Max", 6480, 3600, 297.50, 164.00, 300.0, "azf", true, false),
+        ("Anycubic", "Anycubic Photon Mono M7 Pro", 13312, 5120, 223.64, 126.48, 230.0, "azf", true, false),
+        ("Anycubic", "Anycubic Photon Mono M7", 13312, 5120, 223.64, 126.48, 230.0, "azf", false, false),
+        ("Anycubic", "Anycubic Photon Mono M5s Pro", 13312, 5120, 223.64, 126.98, 200.0, "m5sp", false, true),
+        ("Anycubic", "Anycubic Photon Mono M5s", 11520, 5120, 218.88, 122.88, 200.0, "pm5s", false, true),
+        ("Anycubic", "Anycubic Photon Mono M5", 11520, 5120, 218.88, 122.88, 200.0, "pm5", false, true),
+        ("Anycubic", "Anycubic Photon Mono 4 Ultra", 9024, 5120, 153.41, 87.04, 165.0, "azf", true, false),
+        ("Anycubic", "Anycubic Photon Mono 4", 9024, 5120, 153.41, 87.04, 165.0, "pm4n", true, false),
+        ("Anycubic", "Anycubic Photon Mono 2", 4096, 2560, 143.36, 89.60, 165.0, "pm3n", true, false),
+        ("Anycubic", "Anycubic Photon Mono 4K", 3840, 2400, 134.40, 84.00, 165.0, "pwma", true, false),
+        ("Anycubic", "Anycubic Photon Mono", 2560, 1620, 130.56, 82.62, 165.0, "pwmo", true, false),
+        ("Anycubic", "Anycubic Photon Mono SE", 2560, 1620, 130.56, 82.62, 160.0, "pwms", true, false),
+        ("Anycubic", "Anycubic Photon Mono SQ", 2560, 2400, 128.00, 120.00, 200.0, "pmsq", false, false),
+        ("Anycubic", "Anycubic Photon Mono X 6Ks", 5760, 3600, 195.84, 122.40, 200.0, "px6s", false, true),
+        ("Anycubic", "Anycubic Photon Mono X 6K / M3 Plus", 5760, 3600, 198.15, 123.84, 245.0, "pwmb", false, false),
+        ("Anycubic", "Anycubic Photon Mono X2", 4096, 2560, 196.61, 122.88, 200.0, "pmx2", false, true),
+        ("Anycubic", "Anycubic Photon Mono X", 3840, 2400, 192.00, 120.00, 245.0, "pwmx", true, false),
+        ("Anycubic", "Anycubic Photon P1 Max", 11520, 8640, 285.70, 214.27, 300.0, "azf", true, false),
+        ("Anycubic", "Anycubic Photon P1", 13312, 5120, 223.64, 126.98, 230.0, "azf", true, false),
+        ("Anycubic", "Anycubic Photon D2", 2560, 1440, 130.56, 73.44, 165.0, "dl2p", true, false),
+        ("Anycubic", "Anycubic Photon Ultra", 1280, 720, 102.40, 57.60, 165.0, "dlp", false, false),
+        ("Anycubic", "Anycubic Photon X", 2560, 1600, 192.00, 120.00, 245.0, "pwx", false, false),
+        ("Anycubic", "Anycubic Photon S", 2560, 1440, 120.96, 68.04, 165.0, "pws", false, false),
+        ("Anycubic", "Anycubic Photon Zero", 854, 480, 98.64, 55.44, 150.0, "pw0", false, false),
+        ("Elegoo", "Elegoo Jupiter 2", 15120, 6230, 302.40, 161.98, 300.0, "goo", true, false),
+        ("Elegoo", "Elegoo Jupiter SE", 5448, 3064, 277.85, 156.26, 300.0, "ctb", false, true),
+        ("Elegoo", "Elegoo Jupiter", 5448, 3064, 277.85, 156.26, 300.0, "ctb", false, false),
+        ("Elegoo", "Elegoo Mars 5 Ultra", 8520, 4320, 153.36, 77.76, 165.0, "ctb", false, true),
+        ("Elegoo", "Elegoo Mars 5", 4098, 2560, 143.43, 89.60, 165.0, "goo", false, true),
+        ("Elegoo", "Elegoo Mars 4 Ultra", 8520, 4320, 153.36, 77.76, 165.0, "ctb", false, true),
+        ("Elegoo", "Elegoo Mars 4 Max", 5760, 3600, 195.84, 122.40, 150.0, "goo", true, false),
+        ("Elegoo", "Elegoo Mars 4 DLP", 2560, 1440, 132.80, 74.70, 150.0, "goo", true, false),
+        ("Elegoo", "Elegoo Mars 4", 8520, 4320, 153.36, 77.76, 175.0, "goo", false, true),
+        ("Elegoo", "Elegoo Mars 3 Pro", 4098, 2560, 143.43, 89.60, 175.0, "ctb", false, true),
+        ("Elegoo", "Elegoo Mars 3", 4098, 2560, 143.43, 89.60, 175.0, "ctb", false, true),
+        ("Elegoo", "Elegoo Mars 2 Pro", 2560, 1620, 130.56, 82.62, 160.0, "ctb", false, false),
+        ("Elegoo", "Elegoo Mars 2", 1620, 2560, 82.62, 130.56, 150.0, "ctb", true, false),
+        ("Elegoo", "Elegoo Saturn 4 Ultra 16K", 15120, 6230, 211.68, 118.37, 220.0, "ctb", false, true),
+        ("Elegoo", "Elegoo Saturn 4 Ultra", 11520, 5120, 218.88, 122.88, 220.0, "ctb", false, true),
+        ("Elegoo", "Elegoo Saturn 4", 11520, 5120, 218.88, 122.88, 220.0, "goo", false, true),
+        ("Elegoo", "Elegoo Saturn 3 Ultra", 11520, 5120, 218.88, 122.88, 260.0, "ctb", true, false),
+        ("Elegoo", "Elegoo Saturn 3", 11520, 5120, 218.88, 122.88, 249.7, "ctb", false, true),
+        ("Elegoo", "Elegoo Saturn 2 14K", 13320, 5120, 223.78, 126.98, 250.0, "ctb", true, false),
+        ("Elegoo", "Elegoo Saturn 2", 7680, 4320, 218.88, 123.12, 250.0, "ctb", false, true),
+    ];
+    TABLE
+        .iter()
+        .map(|&(maker, name, rx, ry, sx, sy, h, fmt, mx, my)| ResinPrinter {
+            name: name.into(),
+            maker: maker.into(),
+            format: fmt.into(),
+            res_x: rx,
+            res_y: ry,
+            size_x: sx,
+            size_y: sy,
+            height: h,
+            mirror_x: mx,
+            mirror_y: my,
+            ..Default::default()
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod brand_tests {
+    use super::*;
+
+    #[test]
+    fn brand_printers_are_sane_and_unique() {
+        let list = brand_resin_printers();
+        assert!(list.iter().any(|p| p.maker == "Elegoo") && list.iter().any(|p| p.maker == "Anycubic"));
+        let mut names: Vec<_> = list.iter().map(|p| p.name.clone()).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), list.len(), "duplicate printer names");
+        for p in &list {
+            assert!(p.format == "azf" || crate::resin::export::ResinFormat::from_extension(&p.format).is_some(), "{}", p.name);
+            let (px, py) = (p.size_x / p.res_x as f32, p.size_y / p.res_y as f32);
+            assert!((0.005..0.15).contains(&px) && (0.005..0.15).contains(&py), "{} pixel {px}x{py}", p.name);
+        }
+    }
 }

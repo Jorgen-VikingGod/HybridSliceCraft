@@ -343,6 +343,9 @@ impl App {
                 });
             if let Some(i) = pick {
                 self.resin_printer = self.cat.resin_printers[i].clone();
+                if let Some(f) = crate::resin::export::ResinFormat::from_extension(&self.resin_printer.format) {
+                    self.resin_format = f;
+                }
                 self.place_new_objects();
                 self.frame_all();
             }

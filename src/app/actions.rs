@@ -722,8 +722,18 @@ impl App {
                 "ctb" => export::ResinFormat::Ctb,
                 "goo" => export::ResinFormat::Goo,
                 "zip" => export::ResinFormat::PngZip,
-                _ => export::ResinFormat::Sl1,
+                other => match export::ResinFormat::from_extension(other) {
+                    Some(f) => f,
+                    None => export::ResinFormat::Sl1,
+                },
             };
+            // A bare Anycubic extension on the command line picks that model's file type.
+            let mut job = job;
+            if format == export::ResinFormat::Anycubic {
+                let mut j = (*job).clone();
+                j.printer.format = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_string();
+                job = std::sync::Arc::new(j);
+            }
             let tint = self.resin_mat.color;
             let thumb = project::render_thumbnail(&[job.solid.clone()], 400, 300, tint);
             if let Err(e) = export::export(&path, format, &job, &res, Some(&thumb), &Progress::default()) {
@@ -787,8 +797,8 @@ impl App {
         };
         let format = self.resin_format;
         let Some(path) = rfd::FileDialog::new()
-            .add_filter(format.label(), &[format.extension()])
-            .set_file_name(format!("{}.{}", self.default_name(), format.extension()))
+            .add_filter(format.label(), &[format.extension_for(&self.resin_printer.format)])
+            .set_file_name(format!("{}.{}", self.default_name(), format.extension_for(&self.resin_printer.format)))
             .set_title("Save the print")
             .save_file()
         else {

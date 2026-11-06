@@ -615,7 +615,10 @@ impl App {
         if ui.add_enabled(self.job.is_none(), egui::Button::new(crate::i18n::tr("Save print"))).clicked() {
             self.export_print(&ctx);
         }
-        if matches!(self.resin_format, ResinFormat::Ctb | ResinFormat::Goo) {
+        if self.resin_printer.format == "azf" {
+            ui.label(RichText::new(crate::i18n::tr("This Anycubic model needs a newer file type that can't be written yet. Save as SL1 and convert it with UVtools.")).small().color(ui_yellow()));
+        }
+        if matches!(self.resin_format, ResinFormat::Ctb | ResinFormat::Goo | ResinFormat::Anycubic) {
             ui.label(RichText::new(crate::i18n::tr("This format hasn't been tried on a real printer yet. Check the file on your printer before a long print.")).small().color(ui_yellow()));
         }
     }
