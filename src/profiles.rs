@@ -551,12 +551,77 @@ pub struct ResinProcess {
     pub raft: bool,
     pub raft_height: f32,
     pub raft_margin: f32,
+    /// Slope on the raft's outer edge: how much wider the foot is than the top.
+    pub raft_chamfer: f32,
+    /// Punch vent holes through the raft so resin can flow and suction drops.
+    pub raft_vents: bool,
+    pub raft_vent_width: f32,
+    pub raft_vent_pitch: f32,
     // Hollowing
     pub hollow_wall: f32,
     pub hollow_voxel: f32,
     pub hollow_infill: bool,
     pub hollow_infill_spacing: f32,
     pub drain_diameter: f32,
+}
+
+/// Ready-made support strengths. They set how many supports are placed and how
+/// thick they are, and leave everything else in the process alone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SupportPreset {
+    Light,
+    Medium,
+    Heavy,
+}
+
+impl SupportPreset {
+    pub const ALL: [SupportPreset; 3] = [SupportPreset::Light, SupportPreset::Medium, SupportPreset::Heavy];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SupportPreset::Light => "Light",
+            SupportPreset::Medium => "Medium",
+            SupportPreset::Heavy => "Heavy",
+        }
+    }
+
+    pub fn hint(self) -> &'static str {
+        match self {
+            SupportPreset::Light => "Fewer, thinner supports. Small marks, for sturdy models.",
+            SupportPreset::Medium => "A balance for most models.",
+            SupportPreset::Heavy => "Many thick supports for big, heavy or delicate overhangs.",
+        }
+    }
+
+    /// (support angle, spacing, tip, contact depth, pillar, base, join distance)
+    fn values(self) -> (f32, f32, f32, f32, f32, f32, f32) {
+        match self {
+            SupportPreset::Light => (32.0, 7.0, 0.30, 0.10, 1.0, 4.0, 10.0),
+            SupportPreset::Medium => (40.0, 5.0, 0.35, 0.12, 1.2, 5.0, 8.0),
+            SupportPreset::Heavy => (50.0, 3.5, 0.50, 0.15, 1.6, 6.5, 6.0),
+        }
+    }
+
+    pub fn apply(self, p: &mut ResinProcess) {
+        let (angle, spacing, tip, depth, pillar, base, join) = self.values();
+        p.support_angle = angle;
+        p.support_spacing = spacing;
+        p.tip_diameter = tip;
+        p.contact_depth = depth;
+        p.pillar_diameter = pillar;
+        p.base_diameter = base;
+        p.branch_merge = join;
+    }
+
+    /// The preset the process currently matches, if any.
+    pub fn matching(p: &ResinProcess) -> Option<SupportPreset> {
+        Self::ALL.into_iter().find(|k| {
+            let mut q = p.clone();
+            k.apply(&mut q);
+            (q.support_angle, q.support_spacing, q.tip_diameter, q.contact_depth, q.pillar_diameter, q.base_diameter, q.branch_merge)
+                == (p.support_angle, p.support_spacing, p.tip_diameter, p.contact_depth, p.pillar_diameter, p.base_diameter, p.branch_merge)
+        })
+    }
 }
 
 impl Default for ResinProcess {
@@ -589,6 +654,10 @@ impl Default for ResinProcess {
             raft: true,
             raft_height: 1.0,
             raft_margin: 2.5,
+            raft_chamfer: 0.0,
+            raft_vents: false,
+            raft_vent_width: 1.5,
+            raft_vent_pitch: 6.0,
             hollow_wall: 2.0,
             hollow_voxel: 0.6,
             hollow_infill: false,

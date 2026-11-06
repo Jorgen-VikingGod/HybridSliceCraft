@@ -612,6 +612,17 @@ fn resin_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut ResinProcess, 
             r.num(ui, "Light-off delay", "Rest before each exposure so resin settles.", &mut p.light_off, b.light_off, 0.0..=30.0, "s", 1, false);
         }
         2 => {
+            group(ui, r, "STRENGTH");
+            if r.filter.is_empty() {
+                ui.horizontal(|ui| {
+                    let now = crate::profiles::SupportPreset::matching(p);
+                    for k in crate::profiles::SupportPreset::ALL {
+                        if ui.selectable_label(now == Some(k), k.label()).on_hover_text(k.hint()).clicked() {
+                            k.apply(p);
+                        }
+                    }
+                });
+            }
             group(ui, r, "PLACING");
             r.num(ui, "Lift off the plate", "Room under the model for supports.", &mut p.lift_from_plate, b.lift_from_plate, 0.0..=40.0, "mm", 1, false);
             r.num(ui, "Support needed from", "Surfaces shallower than this get supports.", &mut p.support_angle, b.support_angle, 5.0..=85.0, "°", 0, false);
@@ -629,6 +640,10 @@ fn resin_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut ResinProcess, 
             r.flag(ui, "Raft", "A flat base tying all pillars together on the plate.", &mut p.raft, b.raft, false);
             r.num(ui, "Raft thickness", "", &mut p.raft_height, b.raft_height, 0.2..=5.0, "mm", 1, true);
             r.num(ui, "Raft margin", "", &mut p.raft_margin, b.raft_margin, 0.0..=15.0, "mm", 1, true);
+            r.num(ui, "Raft edge slope", "Makes the raft's foot wider than its top, so the edge doesn't peel off the plate.", &mut p.raft_chamfer, b.raft_chamfer, 0.0..=3.0, "mm", 1, true);
+            r.flag(ui, "Raft vent holes", "Holes through the raft let resin flow and lower the pull while peeling.", &mut p.raft_vents, b.raft_vents, true);
+            r.num(ui, "Vent hole size", "", &mut p.raft_vent_width, b.raft_vent_width, 0.5..=5.0, "mm", 1, true);
+            r.num(ui, "Vent hole spacing", "", &mut p.raft_vent_pitch, b.raft_vent_pitch, 2.0..=20.0, "mm", 1, true);
         }
         _ => {
             group(ui, r, "HOLLOWING");

@@ -2,7 +2,7 @@
 //! heads, pillars, branches, braces and raft that hold it.
 
 use crate::geom;
-use crate::mesh::{make_frustum, make_prism, make_sphere, Bvh, Mesh};
+use crate::mesh::{make_frustum, make_sphere, Bvh, Mesh};
 use crate::profiles::ResinProcess;
 use glam::{DVec2, Vec2, Vec3};
 use rayon::prelude::*;
@@ -429,17 +429,148 @@ pub fn build_structure(points: &[Target], model: &Mesh, p: &ResinProcess) -> Str
 
     // A raft ties all the feet together on the plate.
     if p.raft && !pillars.is_empty() {
-        let circles: geom::Region = pillars
+        let feet: Vec<(DVec2, f64)> = pillars
             .iter()
-            .map(|pil| geom::circle(DVec2::new(pil.xy.x as f64, pil.xy.y as f64), (shaft_r + p.raft_margin) as f64, 16))
+            .map(|pil| (DVec2::new(pil.xy.x as f64, pil.xy.y as f64), (shaft_r + p.raft_margin) as f64))
             .collect();
-        let hull = convex_hull(&circles);
-        if hull.len() >= 3 {
-            out.append(&make_prism(&hull, 0.0, p.raft_height));
-        }
+        out.append(&build_raft(&feet, (p.base_diameter * 0.5) as f64, p));
     }
     s.mesh = out;
     s
+}
+
+/// The raft under all pillar feet: a convex outline around them, optionally
+/// with a sloped outer edge and vent holes between the pillars.
+pub fn build_raft(feet: &[(DVec2, f64)], base_r: f64, p: &ResinProcess) -> Mesh {
+    let circles: geom::Region = feet.iter().map(|(c, r)| geom::circle(*c, *r, 16)).collect();
+    let hull = convex_hull(&circles);
+    if hull.len() < 3 {
+        return Mesh::default();
+    }
+    let hull_region: geom::Region = vec![geom::path_from(&hull)];
+    let h = p.raft_height.max(0.1);
+
+    // Vent holes sit on a grid. They stay clear of every pillar base and of
+    // the raft's rim, so the raft keeps its strength where it matters.
+    let mut vents: geom::Region = Vec::new();
+    if p.raft_vents && p.raft_vent_width > 0.2 {
+        let w = p.raft_vent_width as f64;
+        let pitch = (p.raft_vent_pitch as f64).max(w * 2.0);
+        let rim = geom::offset(&hull_region, -(p.raft_margin as f64).max(1.0));
+        if let Some((mn, mx)) = geom::bbox(&rim) {
+            let keep_out = base_r + 0.8 + w * 0.5;
+            let mut y = mn.y + pitch * 0.5;
+            while y < mx.y {
+                let mut x = mn.x + pitch * 0.5;
+                while x < mx.x {
+                    let c = DVec2::new(x, y);
+                    if feet.iter().all(|(f, _)| f.distance(c) > keep_out) {
+                        vents.push(geom::rect(c - DVec2::splat(w * 0.5), c + DVec2::splat(w * 0.5)));
+                    }
+                    x += pitch;
+                }
+                y += pitch;
+            }
+        }
+        // Keep only vents that sit fully inside the rim.
+        vents = vents
+            .into_iter()
+            .filter(|v| {
+                let r = vec![v.clone()];
+                (geom::region_area(&geom::inter(&r, &rim)) - geom::region_area(&r)).abs() < 1e-6
+            })
+            .collect();
+    }
+
+    // The slope is a few nested slabs, wide and short at the bottom and
+    // narrow and tall on top. They overlap, which the slicer reads as one solid.
+    let chamfer = (p.raft_chamfer as f64).clamp(0.0, 3.0);
+    let steps = if chamfer > 0.05 { ((chamfer / 0.25).ceil() as usize).clamp(2, 6) } else { 1 };
+    let mut mesh = Mesh::default();
+    for k in 0..steps {
+        let grow = if steps > 1 { chamfer * (1.0 - k as f64 / (steps - 1) as f64) } else { 0.0 };
+        let top = h * (k + 1) as f32 / steps as f32;
+        let outline = geom::offset(&hull_region, grow);
+        let region = if vents.is_empty() { outline } else { geom::diff(&outline, &vents) };
+        mesh.append(&extrude_region(&region, 0.0, top));
+    }
+    mesh
+}
+
+/// Stand a flat region (with any holes) up into a solid between two heights.
+pub fn extrude_region(region: &geom::Region, z0: f32, z1: f32) -> Mesh {
+    let mut m = Mesh::default();
+    for isl in geom::islands(region) {
+        let signed = |path: &[DVec2]| -> f64 {
+            let n = path.len();
+            (0..n).map(|i| path[i].perp_dot(path[(i + 1) % n])).sum::<f64>() * 0.5
+        };
+        let mut outer = geom::path_to_mm(&isl.outer);
+        if signed(&outer) < 0.0 {
+            outer.reverse();
+        }
+        let holes: Vec<Vec<DVec2>> = isl
+            .holes
+            .iter()
+            .map(|h| {
+                let mut v = geom::path_to_mm(h);
+                if signed(&v) > 0.0 {
+                    v.reverse();
+                }
+                v
+            })
+            .collect();
+        // Walls, then lids from the triangulated top.
+        for ring in std::iter::once(&outer).chain(holes.iter()) {
+            let base = m.v.len() as u32;
+            let n = ring.len() as u32;
+            for p in ring {
+                m.v.push(Vec3::new(p.x as f32, p.y as f32, z0));
+            }
+            for p in ring {
+                m.v.push(Vec3::new(p.x as f32, p.y as f32, z1));
+            }
+            for i in 0..n {
+                let j = (i + 1) % n;
+                m.t.push([base + i, base + j, base + n + j]);
+                m.t.push([base + i, base + n + j, base + n + i]);
+            }
+        }
+        // Lids. The ear clipper loses track with many holes, so an island with
+        // holes is cut into horizontal bands at every hole edge. Inside a band
+        // no hole is left (each one spans the whole band), so every piece is
+        // a plain polygon. Only the walls matter to the slicer, so the seams
+        // between bands are harmless.
+        let mut pieces: Vec<geom::Island> = Vec::new();
+        if holes.is_empty() {
+            pieces.push(geom::Island { outer: geom::path_from(&outer), holes: Vec::new() });
+        } else {
+            let mut ys: Vec<f64> = outer.iter().chain(holes.iter().flatten()).map(|p| p.y).collect();
+            ys.sort_by(|a, b| a.total_cmp(b));
+            ys.dedup_by(|a, b| (*a - *b).abs() < 1e-4);
+            let (mn, mx) = geom::bbox(&isl.region()).unwrap_or((DVec2::ZERO, DVec2::ZERO));
+            for w in ys.windows(2) {
+                let band = vec![geom::rect(DVec2::new(mn.x - 1.0, w[0]), DVec2::new(mx.x + 1.0, w[1]))];
+                pieces.extend(geom::islands(&geom::inter(&isl.region(), &band)));
+            }
+        }
+        for flat in pieces {
+            let (pts, tris) = crate::mesh::triangulate(&flat);
+            let base = m.v.len() as u32;
+            let np = pts.len() as u32;
+            for p in &pts {
+                m.v.push(Vec3::new(p.x as f32, p.y as f32, z0));
+            }
+            for p in &pts {
+                m.v.push(Vec3::new(p.x as f32, p.y as f32, z1));
+            }
+            for t in tris {
+                m.t.push([base + np + t[0], base + np + t[1], base + np + t[2]]);
+                m.t.push([base + t[0], base + t[2], base + t[1]]);
+            }
+        }
+    }
+    m
 }
 
 fn convex_hull(region: &geom::Region) -> Vec<DVec2> {
@@ -496,6 +627,70 @@ mod tests {
         assert!(mx.z <= 6.5, "supports stay under the box: {mx:?}");
         let (mn, _) = s.mesh.bounds();
         assert!(mn.z <= 0.01, "supports reach the plate: {mn:?}");
+    }
+
+    fn feet() -> Vec<(DVec2, f64)> {
+        let mut v = Vec::new();
+        for x in 0..4 {
+            for y in 0..4 {
+                v.push((DVec2::new(10.0 + x as f64 * 12.0, 10.0 + y as f64 * 12.0), 3.5));
+            }
+        }
+        v
+    }
+
+    #[test]
+    fn plain_raft_is_a_solid_slab() {
+        let r = build_raft(&feet(), 2.5, &proc());
+        let (mn, mx) = r.bounds();
+        assert!(mn.z.abs() < 1e-4 && (mx.z - 1.0).abs() < 1e-4);
+        // 36 mm square plus the pillar margin on each side, roughly.
+        assert!(r.volume() > 1000.0, "{}", r.volume());
+    }
+
+    #[test]
+    fn vent_holes_remove_raft_but_keep_the_rim_and_pillar_feet() {
+        let solid = build_raft(&feet(), 2.5, &proc());
+        let p = ResinProcess { raft_vents: true, ..proc() };
+        let vented = build_raft(&feet(), 2.5, &p);
+        assert!(vented.volume() < solid.volume() * 0.97, "{} vs {}", vented.volume(), solid.volume());
+        assert!(vented.volume() > solid.volume() * 0.5);
+        // Same outline: holes never reach the edge.
+        let (a0, a1) = solid.bounds();
+        let (b0, b1) = vented.bounds();
+        assert!(a0.distance(b0) < 1e-3 && a1.distance(b1) < 1e-3);
+        // 27 square vents of 1.5 mm on this layout: 60.75 mm2 off a 1837.5 mm2 slab, 1 mm thick.
+        assert!((vented.volume() - (solid.volume() - 60.75)).abs() < 1.0, "{} vs {}", vented.volume(), solid.volume());
+    }
+
+    #[test]
+    fn sloped_edge_makes_the_foot_wider_than_the_top() {
+        let p = ResinProcess { raft_chamfer: 1.0, ..proc() };
+        let r = build_raft(&feet(), 2.5, &p);
+        let (mn, mx) = r.bounds();
+        let (fmn, fmx) = build_raft(&feet(), 2.5, &proc()).bounds();
+        assert!(mn.x < fmn.x - 0.9 && mx.x > fmx.x + 0.9, "foot grows by the slope");
+        // Wider at the bottom than at the top: more resin than the plain slab.
+        assert!(r.volume() > build_raft(&feet(), 2.5, &proc()).volume());
+    }
+
+    #[test]
+    fn support_presets_get_heavier() {
+        use crate::profiles::SupportPreset;
+        let (mut l, mut m, mut h) = (proc(), proc(), proc());
+        SupportPreset::Light.apply(&mut l);
+        SupportPreset::Medium.apply(&mut m);
+        SupportPreset::Heavy.apply(&mut h);
+        assert!(l.support_spacing > m.support_spacing && m.support_spacing > h.support_spacing);
+        assert!(l.pillar_diameter < m.pillar_diameter && m.pillar_diameter < h.pillar_diameter);
+        assert_eq!(SupportPreset::matching(&l), Some(SupportPreset::Light));
+        assert_eq!(SupportPreset::matching(&proc()), Some(SupportPreset::Medium));
+        h.tip_diameter = 0.4;
+        assert_eq!(SupportPreset::matching(&h), None);
+        // More supports for the heavier setting on the same model.
+        let model = make_box(Vec3::splat(20.0)).transformed(&Mat4::from_translation(Vec3::new(40.0, 40.0, 6.0)));
+        SupportPreset::Heavy.apply(&mut h);
+        assert!(find_points(&model, &h).len() > find_points(&model, &l).len());
     }
 
     #[test]
