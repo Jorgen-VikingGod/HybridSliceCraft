@@ -27,6 +27,15 @@ impl RasterSpec {
         (px, py)
     }
 
+    /// The plate position (mm) of a point on the screen. Inverse of `to_px`.
+    pub fn from_px(&self, px: f32, py: f32) -> (f32, f32) {
+        let px = if self.mirror_x { self.width as f32 - px } else { px };
+        let py = if self.mirror_y { self.height as f32 - py } else { py };
+        let x = px * self.size_x / self.width as f32;
+        let y = self.size_y - py * self.size_y / self.height as f32;
+        (x, y)
+    }
+
     pub fn pixel_area_mm2(&self) -> f64 {
         (self.size_x as f64 / self.width as f64) * (self.size_y as f64 / self.height as f64)
     }
@@ -473,6 +482,18 @@ pub fn find_islands(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn screen_positions_map_back_to_the_plate() {
+        for (mx, my) in [(false, false), (true, false), (false, true), (true, true)] {
+            let spec = RasterSpec { width: 400, height: 300, size_x: 80.0, size_y: 60.0, samples: 1, mirror_x: mx, mirror_y: my };
+            for (x, y) in [(5.0, 7.0), (40.0, 30.0), (77.5, 1.25)] {
+                let (px, py) = spec.to_px(x, y);
+                let (bx, by) = spec.from_px(px, py);
+                assert!((bx - x).abs() < 1e-3 && (by - y).abs() < 1e-3, "{mx} {my}: {x},{y} -> {bx},{by}");
+            }
+        }
+    }
 
     fn spec(aa: u32) -> RasterSpec {
         RasterSpec {

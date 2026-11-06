@@ -328,8 +328,13 @@ impl App {
                     Pos2::new(shown.left() + isl.bbox[2] as f32 / w * shown.width(), shown.top() + isl.bbox[3] as f32 / h * shown.height()),
                 )
                 .expand(3.0);
-                painter.rect_filled(r, 2.0, RED.gamma_multiply(0.25));
-                painter.rect_stroke(r, 2.0, Stroke::new(1.5, RED), StrokeKind::Outside);
+                let color = match crate::resin::IslandSeverity::of(isl.area_px as f32 * spec.pixel_area_mm2() as f32) {
+                    crate::resin::IslandSeverity::Critical => RED,
+                    crate::resin::IslandSeverity::Minor => YELLOW,
+                    crate::resin::IslandSeverity::Speck => DIM,
+                };
+                painter.rect_filled(r, 2.0, color.gamma_multiply(0.25));
+                painter.rect_stroke(r, 2.0, Stroke::new(1.5, color), StrokeKind::Outside);
             }
             painter.text(
                 rect.left_top() + Vec2::new(8.0, 6.0),
