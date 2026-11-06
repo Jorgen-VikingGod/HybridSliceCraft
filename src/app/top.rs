@@ -178,6 +178,14 @@ impl App {
                 self.duplicate_selected();
                 ui.close();
             }
+            ui.menu_button("Mirror", |ui| {
+                for (k, name) in ["Left-right (X)", "Front-back (Y)", "Top-bottom (Z)"].into_iter().enumerate() {
+                    if ui.add_enabled(!self.selection.is_empty(), egui::Button::new(name)).clicked() {
+                        self.mirror_selected(k);
+                        ui.close();
+                    }
+                }
+            });
             if ui.button("Delete  (Del)").clicked() {
                 self.delete_selected();
                 ui.close();

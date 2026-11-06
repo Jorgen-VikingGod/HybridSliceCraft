@@ -282,6 +282,14 @@ impl App {
                     self.duplicate_selected();
                     ui.close();
                 }
+                ui.menu_button("Mirror", |ui| {
+                    for (k, name) in ["Left-right (X)", "Front-back (Y)", "Top-bottom (Z)"].into_iter().enumerate() {
+                        if ui.button(name).clicked() {
+                            self.mirror_selected(k);
+                            ui.close();
+                        }
+                    }
+                });
                 if ui.button("Delete").clicked() {
                     self.delete_selected();
                     ui.close();

@@ -124,6 +124,24 @@ impl App {
                 self.duplicate_selected();
             }
         });
+        let ctx = ui.ctx().clone();
+        egui::CollapsingHeader::new(RichText::new("Make several copies").small().color(DIM)).id_salt("array_copies").show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.add(egui::DragValue::new(&mut self.array.0).range(1..=20).suffix(" across"));
+                ui.label("×");
+                ui.add(egui::DragValue::new(&mut self.array.1).range(1..=20).suffix(" deep"));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Space between");
+                ui.add(egui::DragValue::new(&mut self.array.2).range(0.0..=100.0).speed(0.2).max_decimals(1).suffix(" mm"));
+            });
+            let (nx, ny, gap) = self.array;
+            let more = (nx * ny).saturating_sub(1);
+            let label = if more == 0 { "Make copies".to_string() } else { format!("Make {more} copies") };
+            if ui.add_enabled(more > 0 && !self.selection.is_empty(), egui::Button::new(label)).clicked() {
+                self.array_selected(&ctx, nx, ny, gap);
+            }
+        });
     }
 
     pub fn placement(&mut self, ui: &mut egui::Ui) {
@@ -196,6 +214,19 @@ impl App {
             }
             ui.end_row();
         });
+        let mut mirror = None;
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Mirror").small().color(DIM));
+            for (k, name) in ["X", "Y", "Z"].into_iter().enumerate() {
+                if ui.small_button(name).on_hover_text("Flip the model along this direction").clicked() {
+                    mirror = Some(k);
+                }
+            }
+        });
+        if let Some(k) = mirror {
+            self.mirror_selected(k);
+            return;
+        }
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.lock_scale, "Keep proportions");
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
