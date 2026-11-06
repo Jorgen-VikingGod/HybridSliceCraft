@@ -655,6 +655,7 @@ impl App {
             };
             let format = match path.extension().and_then(|e| e.to_str()).unwrap_or("") {
                 "ctb" => export::ResinFormat::Ctb,
+                "goo" => export::ResinFormat::Goo,
                 "zip" => export::ResinFormat::PngZip,
                 _ => export::ResinFormat::Sl1,
             };

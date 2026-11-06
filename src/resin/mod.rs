@@ -2,6 +2,7 @@
 //! into per-layer pictures, on the graphics card when one is available.
 
 pub mod export;
+pub mod goo;
 pub mod gpu;
 pub mod hollow;
 pub mod raster;
