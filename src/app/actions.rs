@@ -231,6 +231,70 @@ impl App {
         self.place_only(&ids);
     }
 
+    /// Flip every selected model along a printed axis (0 = X, 1 = Y, 2 = Z).
+    pub fn mirror_selected(&mut self, axis: usize) {
+        if self.selection.is_empty() {
+            return;
+        }
+        self.push_undo();
+        let sel = self.selection.clone();
+        let resin = self.resin();
+        let lift = self.resin_process.lift_from_plate;
+        for o in self.plate_mut().objects.iter_mut().filter(|o| sel.contains(&o.id)) {
+            o.mirror(axis);
+            let floor = if resin && !o.support_points.is_empty() { lift } else { 0.0 };
+            o.drop_to_plate(floor);
+        }
+    }
+
+    /// Copies of the selection in a grid, `nx` by `ny`, with `gap` between
+    /// the copies. The selection counts as one block, so its parts keep their
+    /// places relative to each other.
+    pub fn array_selected(&mut self, ctx: &egui::Context, nx: u32, ny: u32, gap: f32) {
+        if self.selection.is_empty() || nx * ny <= 1 {
+            return;
+        }
+        let sel = self.selection.clone();
+        let originals: Vec<PlateObject> = self.plate().objects.iter().filter(|o| sel.contains(&o.id)).cloned().collect();
+        let (mut mn, mut mx) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+        for o in &originals {
+            let (a, b) = o.world_bounds();
+            mn = mn.min(a);
+            mx = mx.max(b);
+        }
+        let step = Vec3::new(mx.x - mn.x + gap, mx.y - mn.y + gap, 0.0);
+        self.push_undo();
+        let (bx, by) = self.bed();
+        let mut made = Vec::new();
+        let mut outside = 0;
+        for iy in 0..ny {
+            for ix in 0..nx {
+                if ix == 0 && iy == 0 {
+                    continue;
+                }
+                let shift = Vec3::new(step.x * ix as f32, step.y * iy as f32, 0.0);
+                for o in &originals {
+                    let mut c = o.clone();
+                    c.id = next_id();
+                    c.pos += shift;
+                    let (a, b) = c.world_bounds();
+                    if a.x < 0.0 || a.y < 0.0 || b.x > bx || b.y > by {
+                        outside += 1;
+                    }
+                    made.push(c);
+                }
+            }
+        }
+        let count = made.len() / originals.len().max(1);
+        self.selection = originals.iter().map(|o| o.id).chain(made.iter().map(|o| o.id)).collect();
+        self.plate_mut().objects.extend(made);
+        if outside > 0 {
+            self.toast(ctx, ToastKind::Warn, format!("{count} copies made, but some reach past the edge of the plate. They show in red."));
+        } else {
+            self.toast(ctx, ToastKind::Good, format!("Made {count} copies."));
+        }
+    }
+
     pub fn select_all(&mut self) {
         self.selection = self.plate().objects.iter().map(|o| o.id).collect();
     }

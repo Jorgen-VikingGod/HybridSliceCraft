@@ -162,6 +162,8 @@ pub struct App {
     pub tool: Tool,
     pub drag: Option<Drag>,
     pub cut_z: f32,
+    /// Copies for the array tool: across, deep, and the space between.
+    pub array: (u32, u32, f32),
     pub measure: Vec<Vec3>,
     pub show_overhang: bool,
     pub lock_scale: bool,
@@ -307,6 +309,7 @@ impl App {
             tool: Tool::Move,
             drag: None,
             cut_z: 10.0,
+            array: (2, 2, 5.0),
             measure: Vec::new(),
             show_overhang: false,
             lock_scale: true,

@@ -118,6 +118,36 @@ impl PlateObject {
         self.pos.z += height - a.z;
     }
 
+    /// Flip the model left-right (axis 0), front-back (1) or top-bottom (2) as
+    /// seen on the plate, around its own position. The mesh itself is mirrored,
+    /// so placement, scale and turn stay as they are, and supports, drain holes
+    /// and the hollow cavity are carried along.
+    pub fn mirror(&mut self, axis: usize) {
+        let m = self.matrix();
+        let mut flip = Vec3::ONE;
+        flip[axis.min(2)] = -1.0;
+        let about = Mat4::from_translation(self.pos) * Mat4::from_scale(flip) * Mat4::from_translation(-self.pos);
+        let g = m.inverse() * about * m;
+        let normals = g.inverse().transpose();
+        self.mesh = Arc::new(self.mesh.transformed(&g));
+        self.mesh_id = next_id();
+        for sp in &mut self.support_points {
+            sp.pos = g.transform_point3(Vec3::from(sp.pos)).to_array();
+            sp.normal = normals.transform_vector3(Vec3::from(sp.normal)).normalize_or_zero().to_array();
+        }
+        for h in &mut self.holes {
+            h.pos = g.transform_point3(Vec3::from(h.pos)).to_array();
+            h.normal = normals.transform_vector3(Vec3::from(h.normal)).normalize_or_zero().to_array();
+        }
+        if let Some(c) = &self.cavity {
+            // The cavity lives in the scaled, un-turned frame of the mesh.
+            let s = Mat4::from_scale(self.scale);
+            let gc = s * g * s.inverse();
+            self.cavity = Some(Arc::new(c.transformed(&gc)));
+            self.cavity_id = next_id();
+        }
+    }
+
     /// Cavity in printing position, if this object is hollowed. Scaling the
     /// object afterwards would change the walls, so that invalidates it.
     pub fn world_cavity(&self) -> Option<Mesh> {
@@ -437,6 +467,65 @@ mod tests {
 
     fn obj(x: f32, y: f32, z: f32) -> PlateObject {
         PlateObject::new("o", make_box(Vec3::new(x, y, z)))
+    }
+
+    /// A wedge that is clearly not symmetric.
+    fn lopsided() -> PlateObject {
+        let mut m = make_box(Vec3::new(10.0, 6.0, 4.0));
+        for v in &mut m.v {
+            if v.x > 0.0 && v.z > 0.0 {
+                v.x += 5.0;
+            }
+        }
+        PlateObject::new("w", m)
+    }
+
+    #[test]
+    fn mirror_flips_the_shape_and_keeps_it_solid() {
+        for axis in 0..3 {
+            let mut o = lopsided();
+            o.pos = Vec3::new(40.0, 30.0, 20.0);
+            o.rot = Quat::from_rotation_z(0.6) * Quat::from_rotation_x(0.3);
+            o.scale = Vec3::new(1.0, 1.5, 0.8);
+            let before = o.world_mesh();
+            let vol = before.volume();
+            o.support_points.push(SupportPoint { pos: [1.0, 2.0, -2.0], normal: [0.0, 0.0, -1.0], manual: true, critical: false });
+            let (p0, n0) = (o.matrix().transform_point3(Vec3::new(1.0, 2.0, -2.0)), o.matrix().inverse().transpose().transform_vector3(Vec3::NEG_Z).normalize());
+            o.mirror(axis);
+            let after = o.world_mesh();
+            assert!((after.volume() - vol).abs() < 1e-2, "still outward-facing: {} vs {}", after.volume(), vol);
+            // Every old vertex reappears mirrored about the plane through the object's position.
+            let mut want: Vec<Vec3> = before.v.iter().map(|v| { let mut d = *v - o.pos; d[axis] = -d[axis]; o.pos + d }).collect();
+            let mut got = after.v.clone();
+            let key = |a: &Vec3, b: &Vec3| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)).then(a.z.total_cmp(&b.z));
+            want.sort_by(key);
+            got.sort_by(key);
+            for (a, b) in want.iter().zip(&got) {
+                assert!(a.distance(*b) < 1e-3, "axis {axis}: {a:?} vs {b:?}");
+            }
+            // The support point moved the same way, and its direction mirrored too.
+            let p1 = o.matrix().transform_point3(Vec3::from(o.support_points[0].pos));
+            let mut dp = p0 - o.pos;
+            dp[axis] = -dp[axis];
+            assert!(p1.distance(o.pos + dp) < 1e-3);
+            let n1 = o.matrix().inverse().transpose().transform_vector3(Vec3::from(o.support_points[0].normal)).normalize();
+            let mut dn = n0;
+            dn[axis] = -dn[axis];
+            assert!(n1.distance(dn) < 1e-3, "{n1:?} vs {dn:?}");
+        }
+    }
+
+    #[test]
+    fn mirroring_twice_gives_the_original_back() {
+        let mut o = lopsided();
+        o.rot = Quat::from_rotation_y(0.4);
+        let first = o.world_mesh();
+        o.mirror(1);
+        o.mirror(1);
+        let again = o.world_mesh();
+        for (a, b) in first.v.iter().zip(&again.v) {
+            assert!(a.distance(*b) < 1e-3);
+        }
     }
 
     #[test]
