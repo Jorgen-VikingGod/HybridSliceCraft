@@ -137,6 +137,19 @@ where
     Ok((card, processor))
 }
 
+/// How a partly filled pixel turns into a grey level on the screen.
+pub fn z_response(gamma: f32, floor_percent: u32) -> [u8; 256] {
+    let mut t = [0u8; 256];
+    let floor = (floor_percent.min(100) as f32 * 2.55).round();
+    let g = gamma.clamp(0.2, 4.0);
+    for (c, out) in t.iter_mut().enumerate().skip(1) {
+        let v = (c as f32 / 255.0).powf(g) * 255.0;
+        *out = v.max(floor).round().clamp(0.0, 255.0) as u8;
+    }
+    t[255] = 255;
+    t
+}
+
 pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) -> Result<ResinResult, String> {
     let started = std::time::Instant::now();
     let p = &job.process;
@@ -187,8 +200,38 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
         (pos, neg)
     };
 
+    // Z smoothing draws each layer several times at different heights, which
+    // the graphics card path doesn't do, so it uses the processor.
+    let k = p.z_samples.clamp(1, 8) as usize;
+    let sub = (k > 1).then(|| {
+        let zs_sub: Vec<f64> = (0..n * k).map(|s| ((s / k) as f64 + ((s % k) as f64 + 0.5) / k as f64) * h).collect();
+        let b = PlaneBuckets::new(&job.solid, &zs_sub);
+        let nb = PlaneBuckets::new(&job.negative, &zs_sub);
+        (zs_sub, b, nb)
+    });
+    let sub_segments = |i: usize, j: usize| -> (Vec<[f32; 4]>, Vec<[f32; 4]>) {
+        let (zs_sub, b, nb) = sub.as_ref().expect("only used for Z smoothing");
+        let s = i * k + j;
+        let mut pos = if foot > 0.0 && i < bottom {
+            compensated_segments(&job.solid, &b.by_plane[s], zs_sub[s], foot)
+        } else {
+            let mut v = Vec::with_capacity(b.by_plane[s].len());
+            plane_segments(&job.solid, &b.by_plane[s], zs_sub[s], &mut v);
+            v
+        };
+        pos.shrink_to_fit();
+        let mut neg = Vec::new();
+        plane_segments(&job.negative, &nb.by_plane[s], zs_sub[s], &mut neg);
+        (pos, neg)
+    };
+    let table = z_response(p.z_gamma, p.z_floor);
+
     let mut note = String::new();
     let use_gpu = match p.layer_engine {
+        _ if k > 1 => {
+            note = format!("Z smoothing with {k} samples per layer is drawn on the processor.");
+            None
+        }
         LayerEngine::Processor => None,
         LayerEngine::GraphicsCard => gpu.filter(|g| g.suits(&spec)),
         LayerEngine::Fastest => match gpu.filter(|g| g.suits(&spec)) {
@@ -231,8 +274,18 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
                     cancel_seen.store(true, std::sync::atomic::Ordering::Relaxed);
                     return LayerImage::default();
                 }
-                let (pos, neg) = segments_of(i);
-                let img = raster_cpu(&pos, &neg, &spec);
+                let img = if sub.is_some() {
+                    let pics: Vec<LayerImage> = (0..k)
+                        .map(|j| {
+                            let (pos, neg) = sub_segments(i, j);
+                            raster_cpu(&pos, &neg, &spec)
+                        })
+                        .collect();
+                    raster::blend_layers(&pics, spec.width, &table)
+                } else {
+                    let (pos, neg) = segments_of(i);
+                    raster_cpu(&pos, &neg, &spec)
+                };
                 let d = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 if d % 16 == 0 {
                     progress.set(0.04 + 0.86 * d as f32 / n as f32, "Drawing layers");
@@ -544,6 +597,70 @@ mod tests {
             }
         }
         assert!(problems.is_empty(), "floating parts:\n{}", problems.join("\n"));
+    }
+
+    #[test]
+    fn blending_layers_averages_and_keeps_runs() {
+        use raster::{blend_layers, LayerImage};
+        let id: [u8; 256] = std::array::from_fn(|i| i as u8);
+        let (w, h) = (50u32, 40u32);
+        let mut a = vec![0u8; (w * h) as usize];
+        let mut b = vec![0u8; (w * h) as usize];
+        for (k, v) in a.iter_mut().enumerate() {
+            *v = if k % 97 < 40 { 255 } else { 0 };
+        }
+        for (k, v) in b.iter_mut().enumerate() {
+            *v = if k % 31 < 10 { 200 } else { 0 };
+        }
+        let img = blend_layers(&[LayerImage::from_rows(w, &a), LayerImage::from_rows(w, &b)], w, &id);
+        let mut out = vec![0u8; (w * h) as usize];
+        img.decode(&mut out);
+        for k in 0..out.len() {
+            let want = (a[k] as u32 + b[k] as u32 + 1) / 2;
+            assert_eq!(out[k] as u32, want, "pixel {k}");
+        }
+        // One picture through the identity table comes back unchanged.
+        let one = blend_layers(&[LayerImage::from_rows(w, &a)], w, &id);
+        let mut back = vec![0u8; a.len()];
+        one.decode(&mut back);
+        assert_eq!(back, a);
+    }
+
+    #[test]
+    fn response_table_bends_greys_and_keeps_the_ends() {
+        let plain = z_response(1.0, 0);
+        assert!((0..256).all(|i| plain[i] as usize == i));
+        let bright = z_response(0.5, 0);
+        assert_eq!((bright[0], bright[255]), (0, 255));
+        assert!(bright[64] > 100 && bright[64] < 140, "{}", bright[64]);
+        let floored = z_response(1.0, 20);
+        assert_eq!(floored[0], 0);
+        assert_eq!(floored[3], 51);
+        assert_eq!(floored[200], 200);
+    }
+
+    #[test]
+    fn z_smoothing_blends_the_partly_filled_top_layer() {
+        // 20 x 20 x 10.03 mm: the last 0.1 mm layer is only 30% filled.
+        let m = make_box(Vec3::new(20.0, 20.0, 10.03)).transformed(&Mat4::from_translation(Vec3::new(30.0, 30.0, 0.0)));
+        let mut j = job(m, Mesh::default());
+        let off = slice(&j, None, &Progress::default()).unwrap();
+        j.process.z_samples = 4;
+        let on = slice(&j, None, &Progress::default()).unwrap();
+        let truth = 20.0 * 20.0 * 10.03 / 1000.0;
+        assert!((on.volume_ml - truth).abs() < (off.volume_ml - truth).abs(), "{} vs {} (true {truth})", on.volume_ml, off.volume_ml);
+        let top = on.layers.len() - 1;
+        let spec = on.spec.unwrap();
+        let mut px = vec![0u8; (spec.width * spec.height) as usize];
+        on.layers[top].decode(&mut px);
+        let mid = px.iter().copied().max().unwrap();
+        assert!(mid > 40 && mid < 100, "top layer grey {mid}");
+        // Straight walls inside the model are not touched.
+        let (mut a, mut b) = (px.clone(), px);
+        off.layers[50].decode(&mut a);
+        on.layers[50].decode(&mut b);
+        assert_eq!(a, b);
+        assert!(on.engine_note.contains("processor"));
     }
 
     #[test]
