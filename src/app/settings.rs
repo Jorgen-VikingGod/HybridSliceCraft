@@ -597,6 +597,9 @@ fn resin_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut ResinProcess, 
             group(ui, r, "LAYERS");
             r.num(ui, "Layer height", "Thinner layers show finer detail but take longer.", &mut p.layer_height, b.layer_height, 0.01..=0.3, "mm", 3, false);
             r.int(ui, "Edge smoothing", "Softens the pixel steps. 1 means off, 2 or 4 suit most prints, 8 is finest.", &mut p.anti_alias, b.anti_alias, 1..=8, false);
+            r.int(ui, "Z smoothing", "Draws each layer at several heights and blends them, so sloped surfaces and the top of the model get smooth steps instead of hard ones. 1 is off. Slower, and drawn on the processor.", &mut p.z_samples, b.z_samples, 1..=8, true);
+            r.num(ui, "Smoothing curve", "How the resin answers to partly lit pixels. Below 1 makes dim greys brighter, so thin edges still cure.", &mut p.z_gamma, b.z_gamma, 0.3..=3.0, "", 2, true);
+            r.int(ui, "Dimmest grey", "A partly lit pixel never goes below this many percent, so it still cures.", &mut p.z_floor, b.z_floor, 0..=60, true);
             r.int(ui, "Bottom layers", "Layers cured longer so the print grips the plate.", &mut p.bottom_layers, b.bottom_layers, 0..=30, false);
             r.int(ui, "Transition layers", "Layers that step from bottom to normal exposure.", &mut p.transition_layers, b.transition_layers, 0..=30, true);
             r.num(ui, "Elephant foot fix", "Pulls bottom layers in to keep their size true.", &mut p.elephant_foot, b.elephant_foot, 0.0..=0.5, "mm", 3, true);

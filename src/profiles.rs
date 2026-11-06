@@ -533,6 +533,13 @@ pub struct ResinProcess {
     pub lift_speed: f32,
     pub retract_speed: f32,
     pub anti_alias: u32,
+    /// Heights sampled inside each layer. 1 is off; more softens the steps on
+    /// sloped surfaces by blending partly filled layers into grey.
+    pub z_samples: u32,
+    /// Response of the resin to partial exposure: below 1 brightens the greys.
+    pub z_gamma: f32,
+    /// Smallest grey (in percent) a partly filled pixel is given, so it still cures.
+    pub z_floor: u32,
     pub elephant_foot: f32,
     // Automatic supports
     pub lift_from_plate: f32,
@@ -639,6 +646,9 @@ impl Default for ResinProcess {
             lift_speed: 80.0,
             retract_speed: 180.0,
             anti_alias: 4,
+            z_samples: 1,
+            z_gamma: 1.0,
+            z_floor: 0,
             elephant_foot: 0.05,
             lift_from_plate: 5.0,
             tip_diameter: 0.35,

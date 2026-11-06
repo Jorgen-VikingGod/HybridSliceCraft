@@ -252,6 +252,34 @@ pub fn encode_into(w: &mut RleWriter, pixels: &[u8]) {
     }
 }
 
+/// Average several pictures of the same layer, taken at different heights, and
+/// pass the result through a response table. The pictures stay compressed:
+/// they are walked run by run, so nothing the size of the screen is built.
+pub fn blend_layers(imgs: &[LayerImage], width: u32, table: &[u8; 256]) -> LayerImage {
+    let k = imgs.len() as u32;
+    let mut out = RleWriter::new(width);
+    if k == 0 {
+        return out.finish();
+    }
+    let mut iters: Vec<RunIter> = imgs.iter().map(|i| i.runs()).collect();
+    let mut cur: Vec<(u8, u64)> = iters.iter_mut().map(|it| it.next().unwrap_or((0, u64::MAX))).collect();
+    loop {
+        let step = cur.iter().map(|c| c.1).min().unwrap_or(0);
+        if step == 0 || step == u64::MAX {
+            break;
+        }
+        let sum: u32 = cur.iter().map(|c| c.0 as u32).sum();
+        out.push_run(table[((sum + k / 2) / k).min(255) as usize], step);
+        for (c, it) in cur.iter_mut().zip(iters.iter_mut()) {
+            c.1 -= step;
+            if c.1 == 0 {
+                *c = it.next().unwrap_or((0, u64::MAX));
+            }
+        }
+    }
+    out.finish()
+}
+
 /// Software rasteriser: winding-number fill with exact horizontal coverage and
 /// `samples` scanlines per pixel. `neg` lists holes that always cut away.
 pub fn raster_cpu(segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> LayerImage {
