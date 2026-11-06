@@ -30,6 +30,11 @@ impl ResinFormat {
             ResinFormat::Goo => "GOO v3.0 (Elegoo, test print first)",
         }
     }
+    /// The format for a file extension like `goo`, if we can write it.
+    pub fn from_extension(ext: &str) -> Option<ResinFormat> {
+        let ext = ext.trim_start_matches('.').to_lowercase();
+        Self::ALL.into_iter().find(|f| f.extension() == ext)
+    }
     pub fn extension(self) -> &'static str {
         match self {
             ResinFormat::Sl1 => "sl1",
