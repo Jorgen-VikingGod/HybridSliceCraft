@@ -18,21 +18,27 @@ pub enum ResinFormat {
     Ctb,
     /// Elegoo `.goo` (version 3.0).
     Goo,
+    /// Anycubic Photon Workshop files (`.pwmx`, `.pwmb`, `.pm5s`, ...).
+    Anycubic,
 }
 
 impl ResinFormat {
-    pub const ALL: [ResinFormat; 4] = [ResinFormat::Sl1, ResinFormat::PngZip, ResinFormat::Ctb, ResinFormat::Goo];
+    pub const ALL: [ResinFormat; 5] = [ResinFormat::Sl1, ResinFormat::PngZip, ResinFormat::Ctb, ResinFormat::Goo, ResinFormat::Anycubic];
     pub fn label(self) -> &'static str {
         match self {
             ResinFormat::Sl1 => "SL1 (zip of layers + settings)",
             ResinFormat::PngZip => "PNG stack (zip)",
             ResinFormat::Ctb => "CTB v3, unencrypted (test print first)",
             ResinFormat::Goo => "GOO v3.0 (Elegoo, test print first)",
+            ResinFormat::Anycubic => "Anycubic Photon Workshop (.pwmx and kin, test print first)",
         }
     }
     /// The format for a file extension like `goo`, if we can write it.
     pub fn from_extension(ext: &str) -> Option<ResinFormat> {
         let ext = ext.trim_start_matches('.').to_lowercase();
+        if super::anycubic::is_known(&ext) {
+            return Some(ResinFormat::Anycubic);
+        }
         Self::ALL.into_iter().find(|f| f.extension() == ext)
     }
     pub fn extension(self) -> &'static str {
@@ -41,6 +47,14 @@ impl ResinFormat {
             ResinFormat::PngZip => "zip",
             ResinFormat::Ctb => "ctb",
             ResinFormat::Goo => "goo",
+            ResinFormat::Anycubic => super::anycubic::DEFAULT_EXT,
+        }
+    }
+    /// The extension to save with, which for Anycubic depends on the machine.
+    pub fn extension_for(self, printer_format: &str) -> &'static str {
+        match self {
+            ResinFormat::Anycubic => super::anycubic::extension_for(printer_format),
+            f => f.extension(),
         }
     }
 }
@@ -198,6 +212,7 @@ pub fn export(
         }
         ResinFormat::Ctb => write_ctb(path, job, res, thumb, progress),
         ResinFormat::Goo => super::goo::write(path, job, res, thumb, progress),
+        ResinFormat::Anycubic => super::anycubic::write(path, job, res, thumb, progress),
     }
 }
 
@@ -531,6 +546,39 @@ mod tests {
         let expected: f64 = res.layers.iter().map(|l| l.lit).sum();
         assert!((lit_seen - expected).abs() / expected < 0.02, "{lit_seen} vs {expected}");
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn anycubic_files_have_consistent_tables_for_every_version() {
+        let (mut job, res) = result();
+        let be = |b: &[u8], o: usize| u32::from_le_bytes(b[o..o + 4].try_into().unwrap()) as usize;
+        for (ext, version) in [("pws", 1usize), ("pwmx", 516), ("pm3n", 517), ("pm5s", 518)] {
+            job.printer.format = ext.into();
+            let dir = std::env::temp_dir().join(format!("lf_aff_{ext}_{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join(format!("t.{ext}"));
+            export(&path, ResinFormat::Anycubic, &job, &res, None, &Progress::default()).unwrap();
+            let b = std::fs::read(&path).unwrap();
+            assert_eq!(&b[0..8], b"ANYCUBIC");
+            assert_eq!(be(&b, 12), version);
+            let header = be(&b, 20);
+            assert_eq!(&b[header..header + 6], b"HEADER");
+            // resolution sits 44 bytes into the header body
+            assert_eq!(be(&b, header + 16 + 44) as u32, job.printer.res_x);
+            let layers_at = be(&b, 36);
+            assert_eq!(&b[layers_at..layers_at + 8], b"LAYERDEF");
+            assert_eq!(be(&b, layers_at + 16), res.layers.len());
+            let images = be(&b, if version >= 516 { 48 } else { 44 });
+            // every layer points inside the file and the last one ends exactly at its end
+            let mut end = images;
+            for i in 0..res.layers.len() {
+                let e = layers_at + 20 + i * 32;
+                assert_eq!(be(&b, e), end, "{ext} layer {i} address");
+                end += be(&b, e + 4);
+            }
+            assert_eq!(end, b.len(), "{ext}");
+            std::fs::remove_dir_all(dir).ok();
+        }
     }
 
     #[test]

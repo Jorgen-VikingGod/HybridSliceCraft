@@ -35,7 +35,7 @@ Options:
   --cut-view                Start with the cut-through view on (resin)
   --zoom <factor>           Start zoomed in on the models
   --export <file>           After slicing, save to this file and quit
-                            (.gcode, or .sl1, .zip, .ctb, .goo in resin mode)
+                            (.gcode, or .sl1, .zip, .ctb, .goo, .pwmx and other Anycubic types in resin mode)
   --printer <name>          Start with this printer chosen (as named in the list)
   --empty                   Start with an empty plate
   --help                    Show this help
