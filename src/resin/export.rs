@@ -16,15 +16,18 @@ pub enum ResinFormat {
     PngZip,
     /// Chitu-style binary file for printers that read `.ctb`.
     Ctb,
+    /// Elegoo `.goo` (version 3.0).
+    Goo,
 }
 
 impl ResinFormat {
-    pub const ALL: [ResinFormat; 3] = [ResinFormat::Sl1, ResinFormat::PngZip, ResinFormat::Ctb];
+    pub const ALL: [ResinFormat; 4] = [ResinFormat::Sl1, ResinFormat::PngZip, ResinFormat::Ctb, ResinFormat::Goo];
     pub fn label(self) -> &'static str {
         match self {
             ResinFormat::Sl1 => "SL1 (zip of layers + settings)",
             ResinFormat::PngZip => "PNG stack (zip)",
             ResinFormat::Ctb => "CTB v3, unencrypted (test print first)",
+            ResinFormat::Goo => "GOO v3.0 (Elegoo, test print first)",
         }
     }
     pub fn extension(self) -> &'static str {
@@ -32,6 +35,7 @@ impl ResinFormat {
             ResinFormat::Sl1 => "sl1",
             ResinFormat::PngZip => "zip",
             ResinFormat::Ctb => "ctb",
+            ResinFormat::Goo => "goo",
         }
     }
 }
@@ -188,6 +192,7 @@ pub fn export(
             write_zip_of_layers(path, res, extras, |i| format!("layers/{i:05}.png"), progress)
         }
         ResinFormat::Ctb => write_ctb(path, job, res, thumb, progress),
+        ResinFormat::Goo => super::goo::write(path, job, res, thumb, progress),
     }
 }
 
@@ -521,6 +526,64 @@ mod tests {
         let expected: f64 = res.layers.iter().map(|l| l.lit).sum();
         assert!((lit_seen - expected).abs() / expected < 0.02, "{lit_seen} vs {expected}");
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn goo_file_has_the_layout_and_every_layer_reads_back() {
+        let (job, res) = result();
+        let dir = std::env::temp_dir().join(format!("lf_goo_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.goo");
+        export(&path, ResinFormat::Goo, &job, &res, None, &Progress::default()).unwrap();
+        let b = std::fs::read(&path).unwrap();
+        assert_eq!(&b[0..4], b"V3.0");
+        assert_eq!(&b[4..12], &[7, 0, 0, 0, 0x44, 0x4C, 0x50, 0]);
+        let be32 = |o: usize| u32::from_be_bytes(b[o..o + 4].try_into().unwrap());
+        assert_eq!(be32(195_310) as usize, res.layers.len());
+        assert_eq!(u16::from_be_bytes([b[195_314], b[195_315]]) as u32, job.printer.res_x);
+        assert_eq!(be32(195_470), 195_477);
+        let (w, h) = (job.printer.res_x as usize, job.printer.res_y as usize);
+        let mut at = 195_477usize;
+        let mut lit = 0.0f64;
+        for i in 0..res.layers.len() {
+            let z = f32::from_be_bytes(b[at + 6..at + 10].try_into().unwrap());
+            assert!((z - res.stats[i].z).abs() < 1e-3);
+            assert_eq!(&b[at + 64..at + 66], &[0x0D, 0x0A]);
+            let len = be32(at + 66) as usize;
+            let data = &b[at + 70..at + 70 + len];
+            assert_eq!(&b[at + 70 + len..at + 72 + len], &[0x0D, 0x0A]);
+            let mut px = vec![0u8; w * h];
+            crate::resin::goo::decode_layer(data, &mut px).unwrap();
+            let mut want = vec![0u8; w * h];
+            res.layers[i].decode(&mut want);
+            assert_eq!(px, want, "layer {i}");
+            lit += px.iter().filter(|v| **v > 127).count() as f64;
+            at += 72 + len;
+        }
+        assert!(lit > 0.0);
+        // Footer: three zero bytes and the magic again, then nothing.
+        assert_eq!(b.len(), at + 11);
+        assert_eq!(&b[at + 3..], &[7, 0, 0, 0, 0x44, 0x4C, 0x50, 0]);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn goo_layer_packing_handles_greys_and_long_runs() {
+        let mut pix = vec![0u8; 200_000];
+        pix[10..40].fill(255);
+        pix[40..60].fill(120); // grey, then a small step
+        pix[60..70].fill(125);
+        pix[100] = 3;
+        pix[50_000..150_000].fill(255);
+        let img = LayerImage::from_rows(1000, &pix);
+        let enc = crate::resin::goo::encode_layer(&img);
+        let mut out = vec![7u8; pix.len()];
+        crate::resin::goo::decode_layer(&enc, &mut out).unwrap();
+        assert_eq!(out, pix);
+        let mut bad = enc.clone();
+        let last = bad.len() - 1;
+        bad[last] ^= 1;
+        assert!(crate::resin::goo::decode_layer(&bad, &mut out).is_err());
     }
 
     #[test]

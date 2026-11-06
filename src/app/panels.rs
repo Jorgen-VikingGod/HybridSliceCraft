@@ -589,7 +589,7 @@ impl App {
         if ui.add_enabled(self.job.is_none(), egui::Button::new("Save print")).clicked() {
             self.export_print(&ctx);
         }
-        if self.resin_format == ResinFormat::Ctb {
+        if matches!(self.resin_format, ResinFormat::Ctb | ResinFormat::Goo) {
             ui.label(RichText::new("This format hasn't been tried on a real printer yet. Check the file on your printer before a long print.").small().color(YELLOW));
         }
     }
