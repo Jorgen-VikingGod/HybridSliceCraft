@@ -8,7 +8,7 @@ use crate::resin::export::ResinFormat;
 use egui::{Align, Color32, Layout, RichText, Sense, Vec2};
 use glam::EulerRot;
 
-fn stat(ui: &mut egui::Ui, label: &str, value: impl Into<String>) {
+pub(super) fn stat(ui: &mut egui::Ui, label: &str, value: impl Into<String>) {
     ui.horizontal(|ui| {
         ui.label(RichText::new(label).color(DIM));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
