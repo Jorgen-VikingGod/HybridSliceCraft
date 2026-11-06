@@ -135,91 +135,79 @@ fn group(_ui: &mut egui::Ui, rows: &mut Rows, title: &str) {
     rows.pending = rows.filter.is_empty().then(|| title.to_string());
 }
 
+/// A small label inside a card.
+fn subheading(ui: &mut egui::Ui, text: &str) {
+    ui.add_space(3.0);
+    ui.label(RichText::new(text).small().color(FAINT));
+}
+
 fn same_json<T: Serialize>(a: &T, b: &T) -> bool {
     serde_json::to_string(a).ok() == serde_json::to_string(b).ok()
 }
 
 impl App {
-    pub fn settings_panel(&mut self, ui: &mut egui::Ui) {
-        egui::Panel::left("settings")
-            .default_size(318.0)
-            .size_range(270.0..=460.0)
-            .frame(egui::Frame::new().fill(PANEL).inner_margin(egui::Margin::same(10)))
-            .show(ui, |ui| {
-                if self.resin() {
-                    self.resin_choices(ui);
-                } else {
-                    self.fdm_choices(ui);
-                }
-                ui.add_space(4.0);
-                ui.separator();
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.settings_filter)
-                            .hint_text("Find a setting…")
-                            .desired_width(ui.available_width() - 104.0),
-                    );
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.checkbox(&mut self.advanced, "Advanced");
-                    });
-                });
-                let tabs: &[&str] = if self.resin() {
-                    &["Layers", "Light", "Supports", "Hollow"]
-                } else {
-                    &["Quality", "Strength", "Speed", "Support", "Other"]
-                };
-                self.settings_tab = self.settings_tab.min(tabs.len() - 1);
-                ui.add_space(2.0);
-                let accent = self.accent();
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    for (i, t) in tabs.iter().enumerate() {
-                        let on = self.settings_tab == i;
-                        let text = RichText::new(*t).color(if on { Color32::WHITE } else { DIM });
-                        let r = ui.add(egui::Button::new(text).fill(if on { accent.gamma_multiply(0.45) } else { Color32::TRANSPARENT }));
-                        if r.clicked() {
-                            self.settings_tab = i;
-                        }
-                    }
-                });
-                ui.add_space(2.0);
-                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                    ui.set_max_width(ui.available_width() - 12.0);
-                    ui.spacing_mut().interact_size.y = 20.0;
-                    let mut rows = Rows {
-                        filter: self.settings_filter.trim().to_lowercase(),
-                        advanced: self.advanced,
-                        shown: 0,
-                        pending: None,
-                    };
-                    let searching = !rows.filter.is_empty();
-                    if self.resin() {
-                        let base = self.resin_process_base.clone();
-                        for tab in 0..4 {
-                            if searching || tab == self.settings_tab {
-                                resin_tab(ui, &mut rows, tab, &mut self.resin_process, &base);
-                            }
-                        }
-                    } else {
-                        let base = self.fdm_process_base.clone();
-                        for tab in 0..5 {
-                            if searching || tab == self.settings_tab {
-                                fdm_tab(ui, &mut rows, tab, &mut self.fdm_process, &base);
-                            }
-                        }
-                    }
-                    if rows.shown == 0 {
-                        ui.add_space(12.0);
-                        ui.label(RichText::new("No settings match that search.").color(DIM));
-                    }
-                    ui.add_space(14.0);
-                });
+    pub fn print_settings(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.settings_filter)
+                    .hint_text("Find a setting…")
+                    .desired_width(ui.available_width() - 104.0),
+            );
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.checkbox(&mut self.advanced, "Advanced");
             });
-        self.editor_windows(ui.ctx());
+        });
+        let tabs: &[&str] = if self.resin() {
+            &["Layers", "Light", "Supports", "Hollow"]
+        } else {
+            &["Quality", "Strength", "Speed", "Support", "Other"]
+        };
+        self.settings_tab = self.settings_tab.min(tabs.len() - 1);
+        ui.add_space(2.0);
+        let accent = self.accent();
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            for (i, t) in tabs.iter().enumerate() {
+                let on = self.settings_tab == i;
+                let text = RichText::new(*t).color(if on { Color32::WHITE } else { DIM });
+                let r = ui.add(egui::Button::new(text).fill(if on { accent.gamma_multiply(0.45) } else { Color32::TRANSPARENT }));
+                if r.clicked() {
+                    self.settings_tab = i;
+                }
+            }
+        });
+        ui.add_space(2.0);
+        ui.spacing_mut().interact_size.y = 20.0;
+        let mut rows = Rows {
+            filter: self.settings_filter.trim().to_lowercase(),
+            advanced: self.advanced,
+            shown: 0,
+            pending: None,
+        };
+        let searching = !rows.filter.is_empty();
+        if self.resin() {
+            let base = self.resin_process_base.clone();
+            for tab in 0..4 {
+                if searching || tab == self.settings_tab {
+                    resin_tab(ui, &mut rows, tab, &mut self.resin_process, &base);
+                }
+            }
+        } else {
+            let base = self.fdm_process_base.clone();
+            for tab in 0..5 {
+                if searching || tab == self.settings_tab {
+                    fdm_tab(ui, &mut rows, tab, &mut self.fdm_process, &base);
+                }
+            }
+        }
+        if rows.shown == 0 {
+            ui.add_space(8.0);
+            ui.label(RichText::new("No settings match that search.").color(DIM));
+        }
     }
 
-    fn fdm_choices(&mut self, ui: &mut egui::Ui) {
-        section(ui, "PRINTER");
+    pub fn fdm_choices(&mut self, ui: &mut egui::Ui) {
+        subheading(ui, "Printer");
         ui.horizontal(|ui| {
             let names: Vec<String> = self.cat.fdm_printers.iter().map(|p| p.name.clone()).collect();
             let current = self.fdm_printer.name.clone();
@@ -244,7 +232,7 @@ impl App {
                 self.show_printer = true;
             }
         });
-        section(ui, "FILAMENT");
+        subheading(ui, "Filament");
         let slots = (self.fdm_printer.extruders as usize).max(1);
         while self.filaments.len() < slots {
             let next = self.cat.filaments.get(self.filaments.len() % self.cat.filaments.len().max(1)).cloned().unwrap_or_default();
@@ -278,7 +266,7 @@ impl App {
                 }
             });
         }
-        section(ui, "PRINT QUALITY");
+        subheading(ui, "Print quality");
         ui.horizontal(|ui| {
             let names: Vec<String> = self.cat.fdm_processes.iter().map(|p| p.name.clone()).collect();
             let current = self.fdm_process.name.clone();
@@ -335,8 +323,8 @@ impl App {
         }
     }
 
-    fn resin_choices(&mut self, ui: &mut egui::Ui) {
-        section(ui, "PRINTER");
+    pub fn resin_choices(&mut self, ui: &mut egui::Ui) {
+        subheading(ui, "Printer");
         ui.horizontal(|ui| {
             let names: Vec<String> = self.cat.resin_printers.iter().map(|p| p.name.clone()).collect();
             let current = self.resin_printer.name.clone();
@@ -360,7 +348,7 @@ impl App {
                 self.show_printer = true;
             }
         });
-        section(ui, "RESIN");
+        subheading(ui, "Resin");
         ui.horizontal(|ui| {
             swatch(ui, self.resin_mat.color, 18.0);
             let names: Vec<String> = self.cat.resins.iter().map(|p| p.name.clone()).collect();
@@ -383,7 +371,7 @@ impl App {
                 self.show_material = true;
             }
         });
-        section(ui, "PRINT QUALITY");
+        subheading(ui, "Print quality");
         ui.horizontal(|ui| {
             let names: Vec<String> = self.cat.resin_processes.iter().map(|p| p.name.clone()).collect();
             let current = self.resin_process.name.clone();
@@ -410,7 +398,7 @@ impl App {
         });
     }
 
-    fn editor_windows(&mut self, ctx: &egui::Context) {
+    pub fn editor_windows(&mut self, ctx: &egui::Context) {
         let mut open = self.show_printer;
         let mut save = false;
         egui::Window::new(if self.resin() { "Resin printer" } else { "Filament printer" })

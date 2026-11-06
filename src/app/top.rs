@@ -207,6 +207,12 @@ impl App {
             }
             ui.separator();
             ui.checkbox(&mut self.show_overhang, "Highlight overhangs");
+            ui.separator();
+            if ui.button("Restore default layout").on_hover_text("Put every panel section back where it started").clicked() {
+                self.layout = super::dock::DockLayout::default();
+                self.save_session();
+                ui.close();
+            }
         });
         ui.menu_button("Add", |ui| {
             if ui.button("Starter bear").clicked() {

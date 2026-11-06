@@ -2,6 +2,7 @@
 //! heavy work to background threads so the interface never freezes.
 
 mod actions;
+mod dock;
 mod panels;
 mod preview;
 mod settings;
@@ -167,6 +168,7 @@ pub struct App {
     pub hover_point: Option<(Vec3, Vec3)>,
     pub drag_plane_z: f32,
     pub framed: bool,
+    pub layout: dock::DockLayout,
     pub fit_layer_view: bool,
     pub was_split: bool,
     pub zoom_on_start: f32,
@@ -311,6 +313,7 @@ impl App {
             hover_point: None,
             drag_plane_z: 0.0,
             framed: false,
+            layout: dock::DockLayout::default(),
             fit_layer_view: true,
             was_split: false,
             zoom_on_start: opts.zoom,
@@ -605,8 +608,7 @@ impl eframe::App for App {
 
         self.top_bar(ui);
         self.status_bar(ui);
-        self.settings_panel(ui);
-        self.side_panel(ui);
+        self.dock_panels(ui);
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(theme::BG))
             .show(ui, |ui| {

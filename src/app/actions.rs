@@ -981,6 +981,7 @@ struct Session {
     resin_process: Option<ResinProcess>,
     resin_process_base: Option<ResinProcess>,
     resin_mat: Option<ResinMaterial>,
+    layout: Option<super::dock::SavedLayout>,
 }
 
 impl App {
@@ -998,6 +999,7 @@ impl App {
             resin_process: Some(self.resin_process.clone()),
             resin_process_base: Some(self.resin_process_base.clone()),
             resin_mat: Some(self.resin_mat.clone()),
+            layout: Some(self.layout.to_saved()),
         };
         let dir = config_dir();
         if std::fs::create_dir_all(&dir).is_ok() {
@@ -1044,6 +1046,9 @@ impl App {
         }
         if let Some(v) = s.resin_mat {
             self.resin_mat = v;
+        }
+        if let Some(l) = &s.layout {
+            self.layout = super::dock::DockLayout::from_saved(l);
         }
     }
 }

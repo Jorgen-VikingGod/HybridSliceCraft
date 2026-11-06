@@ -18,35 +18,7 @@ fn stat(ui: &mut egui::Ui, label: &str, value: impl Into<String>) {
 }
 
 impl App {
-    pub fn side_panel(&mut self, ui: &mut egui::Ui) {
-        egui::Panel::right("side")
-            .default_size(286.0)
-            .size_range(240.0..=420.0)
-            .frame(egui::Frame::new().fill(PANEL).inner_margin(egui::Margin::same(10)))
-            .show(ui, |ui| {
-                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                    ui.set_max_width(ui.available_width() - 12.0);
-                    if self.stage == Stage::Prepare {
-                        self.plates_row(ui);
-                        self.object_list(ui);
-                        self.placement(ui);
-                        if self.resin() {
-                            self.resin_tools(ui);
-                        } else {
-                            self.filament_overrides(ui);
-                        }
-                    } else if self.resin() {
-                        self.resin_results(ui);
-                    } else {
-                        self.fdm_results(ui);
-                    }
-                    ui.add_space(12.0);
-                });
-            });
-    }
-
-    fn plates_row(&mut self, ui: &mut egui::Ui) {
-        section(ui, "PLATES");
+    pub fn plates_row(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             let accent = self.accent();
             let mut switch = None;
@@ -78,8 +50,7 @@ impl App {
         });
     }
 
-    fn object_list(&mut self, ui: &mut egui::Ui) {
-        section(ui, "ON THE PLATE");
+    pub fn object_list(&mut self, ui: &mut egui::Ui) {
         if self.plate().objects.is_empty() {
             ui.label(RichText::new("Drop a model file here, or use Add models.").color(DIM));
         }
@@ -155,11 +126,10 @@ impl App {
         });
     }
 
-    fn placement(&mut self, ui: &mut egui::Ui) {
+    pub fn placement(&mut self, ui: &mut egui::Ui) {
         let Some(mut o) = self.selected().cloned() else {
-            return;
+            return self.select_hint(ui, "place it");
         };
-        section(ui, "PLACEMENT");
         let mut changed = false;
         let mut want_undo = false;
         let mut drop_after = false;
@@ -275,8 +245,12 @@ impl App {
                 *slot = o.clone();
             }
         }
+    }
 
-        section(ui, "MODEL");
+    pub fn model_info(&mut self, ui: &mut egui::Ui) {
+        let Some(o) = self.selected().cloned() else {
+            return self.select_hint(ui, "check it");
+        };
         let r = o.report;
         let (color, text) = if r.is_clean() {
             (GREEN, "Solid and watertight".to_string())
@@ -299,12 +273,11 @@ impl App {
         });
     }
 
-    fn filament_overrides(&mut self, ui: &mut egui::Ui) {
+    pub fn filament_overrides(&mut self, ui: &mut egui::Ui) {
         let slots = self.filaments.len();
         let Some(mut o) = self.selected().cloned() else {
-            return;
+            return self.select_hint(ui, "give it its own settings");
         };
-        section(ui, "THIS MODEL ONLY");
         let mut changed = false;
         if slots > 1 {
             ui.horizontal(|ui| {
@@ -384,93 +357,97 @@ impl App {
         }
     }
 
-    fn resin_tools(&mut self, ui: &mut egui::Ui) {
+    pub fn supports_section(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        section(ui, "SUPPORTS");
-        let selected = self.selected().cloned();
-        match &selected {
-            Some(o) => {
-                let cache = self.supports.get(&o.id).cloned();
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button("Add automatically").on_hover_text("Lift the model and place supports wherever it needs holding").clicked() {
-                        self.push_undo();
-                        let count = self.auto_support(o.id);
-                        self.toast(&ctx, ToastKind::Good, format!("Placed {count} supports."));
-                    }
-                    if ui.add_enabled(!o.support_points.is_empty(), egui::Button::new("Remove all")).clicked() {
-                        self.push_undo();
-                        if let Some(s) = self.selected_mut() {
-                            s.support_points.clear();
-                        }
-                    }
-                });
-                if !o.support_points.is_empty() {
-                    stat(ui, "Touch points", o.support_points.len().to_string());
-                    if let Some(c) = cache {
-                        stat(ui, "Pillars", c.pillars.to_string());
-                        stat(ui, "Branches", c.branches.to_string());
-                        if c.landed > 0 {
-                            ui.label(RichText::new(format!("{} stand on the model itself", c.landed)).small().color(YELLOW));
-                        }
-                        if c.skipped > 0 {
-                            ui.label(RichText::new(format!("{} surface spots left out: no clean path to them, and supports around them hold the area", c.skipped)).small().color(DIM));
-                        }
-                        if c.unreachable > 0 {
-                            ui.label(RichText::new(format!("{} spots have no clear path for a support", c.unreachable)).small().color(RED));
-                        }
-                    }
+        let Some(o) = self.selected().cloned() else {
+            return self.select_hint(ui, "add supports");
+        };
+        let cache = self.supports.get(&o.id).cloned();
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Add automatically").on_hover_text("Lift the model and place supports wherever it needs holding").clicked() {
+                self.push_undo();
+                let count = self.auto_support(o.id);
+                self.toast(&ctx, ToastKind::Good, format!("Placed {count} supports."));
+            }
+            if ui.add_enabled(!o.support_points.is_empty(), egui::Button::new("Remove all")).clicked() {
+                self.push_undo();
+                if let Some(s) = self.selected_mut() {
+                    s.support_points.clear();
                 }
             }
-            None => {
-                ui.label(RichText::new("Select a model to add supports.").color(DIM));
+        });
+        if !o.support_points.is_empty() {
+            stat(ui, "Touch points", o.support_points.len().to_string());
+            if let Some(c) = cache {
+                stat(ui, "Pillars", c.pillars.to_string());
+                stat(ui, "Branches", c.branches.to_string());
+                if c.landed > 0 {
+                    ui.label(RichText::new(format!("{} stand on the model itself", c.landed)).small().color(YELLOW));
+                }
+                if c.skipped > 0 {
+                    ui.label(RichText::new(format!("{} surface spots left out: no clean path to them, and supports around them hold the area", c.skipped)).small().color(DIM));
+                }
+                if c.unreachable > 0 {
+                    ui.label(RichText::new(format!("{} spots have no clear path for a support", c.unreachable)).small().color(RED));
+                }
             }
-        }
-        section(ui, "HOLLOW");
-        if let Some(o) = &selected {
-            let hollow = o.cavity.is_some();
-            let stale = hollow && o.world_cavity().is_none();
-            ui.horizontal_wrapped(|ui| {
-                if ui.add_enabled(self.job.is_none(), egui::Button::new(if hollow { "Hollow again" } else { "Hollow" })).clicked() {
-                    self.start_hollow(&ctx);
-                }
-                if ui.add_enabled(hollow, egui::Button::new("Make solid")).clicked() {
-                    self.push_undo();
-                    if let Some(s) = self.selected_mut() {
-                        s.cavity = None;
-                    }
-                }
-            });
-            if stale {
-                ui.label(RichText::new("The model changed size. Hollow it again to keep the walls right.").small().color(YELLOW));
-            } else if let Some(c) = &o.cavity {
-                let saved = c.volume().abs() / 1000.0;
-                let total = o.report.volume.abs() * (o.scale.x * o.scale.y * o.scale.z).abs() / 1000.0;
-                stat(ui, "Resin saved", format!("{:.1} of {:.1} ml", saved, total));
-            }
-            section(ui, "DRAIN HOLES");
-            ui.horizontal_wrapped(|ui| {
-                if ui.button("Add at lowest point").on_hover_text("Resin drains out through the bottom").clicked() {
-                    self.add_drain_at_lowest(&ctx);
-                }
-                let count = o.holes.len();
-                if ui.add_enabled(count > 0, egui::Button::new("Remove all")).clicked() {
-                    self.push_undo();
-                    if let Some(s) = self.selected_mut() {
-                        s.holes.clear();
-                    }
-                }
-            });
-            if !o.holes.is_empty() {
-                stat(ui, "Holes", o.holes.len().to_string());
-            } else if o.cavity.is_some() {
-                ui.label(RichText::new("A hollow print with no holes traps liquid resin inside.").small().color(YELLOW));
-            }
-        } else {
-            ui.label(RichText::new("Select a model to hollow it.").color(DIM));
         }
     }
 
-    fn fdm_results(&mut self, ui: &mut egui::Ui) {
+    pub fn hollow_section(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let Some(o) = self.selected().cloned() else {
+            return self.select_hint(ui, "hollow it");
+        };
+        let hollow = o.cavity.is_some();
+        let stale = hollow && o.world_cavity().is_none();
+        ui.horizontal_wrapped(|ui| {
+            if ui.add_enabled(self.job.is_none(), egui::Button::new(if hollow { "Hollow again" } else { "Hollow" })).clicked() {
+                self.start_hollow(&ctx);
+            }
+            if ui.add_enabled(hollow, egui::Button::new("Make solid")).clicked() {
+                self.push_undo();
+                if let Some(s) = self.selected_mut() {
+                    s.cavity = None;
+                }
+            }
+        });
+        if stale {
+            ui.label(RichText::new("The model changed size. Hollow it again to keep the walls right.").small().color(YELLOW));
+        } else if let Some(c) = &o.cavity {
+            let saved = c.volume().abs() / 1000.0;
+            let total = o.report.volume.abs() * (o.scale.x * o.scale.y * o.scale.z).abs() / 1000.0;
+            stat(ui, "Resin saved", format!("{:.1} of {:.1} ml", saved, total));
+        }
+    }
+
+    pub fn drain_section(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let Some(o) = self.selected().cloned() else {
+            return self.select_hint(ui, "add drain holes");
+        };
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Add at lowest point").on_hover_text("Resin drains out through the bottom").clicked() {
+                self.add_drain_at_lowest(&ctx);
+            }
+            if ui.button("Place by hand").on_hover_text("Then click the model where a hole should go").clicked() {
+                self.tool = Tool::DrainHole;
+            }
+            if ui.add_enabled(!o.holes.is_empty(), egui::Button::new("Remove all")).clicked() {
+                self.push_undo();
+                if let Some(s) = self.selected_mut() {
+                    s.holes.clear();
+                }
+            }
+        });
+        if !o.holes.is_empty() {
+            stat(ui, "Holes", o.holes.len().to_string());
+        } else if o.cavity.is_some() {
+            ui.label(RichText::new("A hollow print with no holes traps liquid resin inside.").small().color(YELLOW));
+        }
+    }
+
+    pub fn fdm_results(&mut self, ui: &mut egui::Ui) {
         let Some(res) = self.fdm_result.clone() else {
             section(ui, "PRINT");
             ui.label(RichText::new("Slice the plate to see time, filament and cost.").color(DIM));
@@ -545,7 +522,7 @@ impl App {
         });
     }
 
-    fn resin_results(&mut self, ui: &mut egui::Ui) {
+    pub fn resin_results(&mut self, ui: &mut egui::Ui) {
         let Some(res) = self.resin_result.clone() else {
             section(ui, "PRINT");
             ui.label(RichText::new("Slice the plate to see time, resin and cost.").color(DIM));

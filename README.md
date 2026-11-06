@@ -25,17 +25,27 @@ Author: Jürgen Könnemann
 
 ![Resin preview: supported bear, a cut through the model and the layer picture](docs/resin-preview.png)
 
-- Automatic supports with tips, pillars, branches, cross-bracing and a raft, plus hand-placed supports
+- Automatic supports with thin, shallow tips that snap off cleanly, kept clear of the model along their whole length, with branches, cross-bracing and a raft, plus hand-placed supports
 - A check that warns about any part that would start in mid-air
-- Hollowing with chosen wall thickness and an optional inner lattice, plus drain holes
+- Hollowing with chosen wall thickness and an optional inner lattice, plus drain holes placed at the lowest point or by hand
 - A check for resin trapped inside the print
 - Edge smoothing (anti-aliasing), bottom and transition layers, elephant-foot correction
 - Layer picture viewer, lit-area chart, print time, volume and cost
 - Export to SL1, a PNG layer stack (zip) and unencrypted CTB
 
+## Your workspace
+
+![Resin workspace: the hollowed bear cut open, with supports, and the side panels as cards](docs/resin-prepare.png)
+
+- Both side panels are made of cards: Printer and material, Print settings, Plates, On the plate, Placement, Model, Hollow, Drain holes, Orient, Supports.
+- **Drag a card by its title** to reorder it, or drop it in the other panel. Click a title to fold the card away.
+- Right-click a title to move a card up, down or to the other panel.
+- Your layout is remembered. **View → Restore default layout** brings back the original.
+- The default order follows a typical resin workflow: size the model, check and repair it, hollow it, orient it, then add supports.
+
 ## Also
 
-- Opens STL, OBJ, 3MF and PLY; repairs, cuts, splits, mirrors, lays flat and auto-orients models
+- Opens STL, OBJ, 3MF and PLY; repairs, cuts, splits, mirrors, lays flat and auto-orients models (from the Orient card, the toolbar, or the O key)
 - Several plates, undo and redo, project files, saved presets
 - The 3D view draws on the graphics card through Vulkan, Metal, DirectX 12 or OpenGL. Resin layers are drawn on whichever is faster, the graphics card or the processor, timed on each print.
 
