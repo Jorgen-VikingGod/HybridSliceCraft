@@ -1,0 +1,350 @@
+A hollow print with no holes traps liquid resin inside.	Ein hohler Druck ohne Löcher schließt flüssiges Harz im Inneren ein.	Une impression creuse sans trous emprisonne de la résine liquide à l'intérieur.	Una impresión hueca sin agujeros atrapa resina líquida en su interior.
+A hybrid slicer for filament (FDM) and resin printers.	Ein Hybrid-Slicer für Filament- (FDM) und Harzdrucker.	Un trancheur hybride pour imprimantes à filament (FDM) et à résine.	Un laminador híbrido para impresoras de filamento (FDM) y de resina.
+ACCELERATION	BESCHLEUNIGUNG	ACCÉLÉRATION	ACELERACIÓN
+API key	API-Schlüssel	Clé API	Clave API
+About HybridSliceCraft	Über HybridSliceCraft	À propos de HybridSliceCraft	Acerca de HybridSliceCraft
+Actual size	Originalgröße	Taille réelle	Tamaño real
+Adaptive layers	Adaptive Schichten	Couches adaptatives	Capas adaptativas
+Adaptive quality	Adaptive Qualität	Qualité adaptative	Calidad adaptativa
+Add	Hinzufügen	Ajouter	Añadir
+Add a plate	Platte hinzufügen	Ajouter un plateau	Añadir una placa
+Add at lowest point	Am tiefsten Punkt hinzufügen	Ajouter au point le plus bas	Añadir en el punto más bajo
+Add automatically	Automatisch hinzufügen	Ajouter automatiquement	Añadir automáticamente
+Add models…	Modelle hinzufügen…	Ajouter des modèles…	Añadir modelos…
+Add models…  (Ctrl+O)	Modelle hinzufügen…  (Ctrl+O)	Ajouter des modèles…  (Ctrl+O)	Añadir modelos…  (Ctrl+O)
+Address	Adresse	Adresse	Dirección
+Advanced	Erweitert	Avancé	Avanzado
+Allow on the model	Auf dem Modell erlauben	Autoriser sur le modèle	Permitir sobre el modelo
+Arrange plate	Platte anordnen	Organiser le plateau	Organizar la placa
+Arrange the plate	Platte anordnen	Organiser le plateau	Organizar la placa
+Auto-orient	Automatisch ausrichten	Orientation automatique	Orientar automáticamente
+Avoid crossing walls	Wände nicht kreuzen	Éviter de croiser les parois	Evitar cruzar paredes
+BED ADHESION	BETTHAFTUNG	ADHÉRENCE AU PLATEAU	ADHERENCIA A LA CAMA
+BRIDGES	BRÜCKEN	PONTS	PUENTES
+Back to 100%	Zurück auf 100 %	Retour à 100 %	Volver al 100 %
+Back to the preset's value	Zurück zum Wert des Profils	Revenir à la valeur du profil	Volver al valor del perfil
+Base diameter	Fußdurchmesser	Diamètre de la base	Diámetro de la base
+Bed size, nozzle, retraction, start and end scripts	Druckbettgröße, Düse, Rückzug, Start- und Endskripte	Taille du plateau, buse, rétraction, scripts de début et de fin	Tamaño de la cama, boquilla, retracción, scripts de inicio y fin
+Bottom layers	Untere Schichten	Couches inférieures	Capas inferiores
+Bottom lift height	Hubhöhe unten	Hauteur de levage du bas	Altura de elevación inferior
+Bottom lift speed	Hubgeschwindigkeit unten	Vitesse de levage du bas	Velocidad de elevación inferior
+Bottom pattern	Muster unten	Motif du dessous	Patrón inferior
+Branches	Äste	Branches	Ramas
+Bridge	Brücke	Pont	Puente
+Bridge flow	Brückenfluss	Débit des ponts	Flujo de puentes
+Brim width	Randbreite	Largeur de la bordure	Ancho del borde
+COLOUR BY	FARBE NACH	COULEUR SELON	COLOR SEGÚN
+Calibrate	Kalibrieren	Calibrer	Calibrar
+Cancel	Abbrechen	Annuler	Cancelar
+Cancelled	Abgebrochen	Annulé	Cancelado
+Centre	Mitte	Centre	Centro
+Clear the plate	Platte leeren	Vider le plateau	Vaciar la placa
+Click to fold. Drag to move it, even to the other panel. Right-click for more.	Klicken zum Einklappen. Ziehen zum Verschieben, auch in das andere Feld. Rechtsklick für mehr.	Cliquez pour replier. Glissez pour déplacer, même vers l'autre panneau. Clic droit pour plus.	Clic para plegar. Arrastra para mover, incluso al otro panel. Clic derecho para más.
+Contact depth	Kontakttiefe	Profondeur de contact	Profundidad de contacto
+Cost	Kosten	Coût	Coste
+Couldn't find a low point on this model.	Auf diesem Modell wurde kein tiefer Punkt gefunden.	Aucun point bas trouvé sur ce modèle.	No se encontró un punto bajo en este modelo.
+Cross-bracing	Querverstrebung	Entretoisement	Arriostramiento
+Cube, 20 mm	Würfel, 20 mm	Cube, 20 mm	Cubo, 20 mm
+Cut	Schneiden	Couper	Cortar
+Cut view	Schnittansicht	Vue en coupe	Vista de corte
+Cylinder, 20 mm wide	Zylinder, 20 mm breit	Cylindre, 20 mm de large	Cilindro, 20 mm de ancho
+Default acceleration	Standardbeschleunigung	Accélération par défaut	Aceleración predeterminada
+Delete	Löschen	Supprimer	Eliminar
+Delete  (Del)	Löschen  (Entf)	Supprimer  (Suppr)	Eliminar  (Supr)
+Detail	Detail	Détail	Detalle
+Detect thin walls	Dünne Wände erkennen	Détecter les parois fines	Detectar paredes finas
+Drag a section here by its title.	Ziehe einen Bereich über seinen Titel hierher.	Faites glisser une section ici par son titre.	Arrastra aquí una sección por su título.
+Drain hole size	Größe des Ablaufloches	Taille du trou de drainage	Tamaño del agujero de drenaje
+Draw layers on	Schichten berechnen mit	Dessiner les couches avec	Dibujar las capas con
+Drop a model file here, or use Add models.	Ziehe eine Modelldatei hierher oder wähle „Modelle hinzufügen“.	Déposez un fichier de modèle ici ou utilisez « Ajouter des modèles ».	Suelta aquí un archivo de modelo o usa «Añadir modelos».
+Duplicate	Duplizieren	Dupliquer	Duplicar
+Duplicate  (Ctrl+D)	Duplizieren  (Ctrl+D)	Dupliquer  (Ctrl+D)	Duplicar  (Ctrl+D)
+Edge smoothing	Kantenglättung	Lissage des bords	Suavizado de bordes
+Edit	Bearbeiten	Édition	Editar
+Elephant foot fix	Elefantenfuß-Korrektur	Correction du pied d'éléphant	Corrección de pata de elefante
+End script	Endskript	Script de fin	Script final
+Exposure	Belichtung	Exposition	Exposición
+Exposure test piece	Belichtungs-Testteil	Pièce de test d'exposition	Pieza de prueba de exposición
+Exposure, density, cost	Belichtung, Dichte, Kosten	Exposition, densité, coût	Exposición, densidad, coste
+FLOATING PARTS	SCHWEBENDE TEILE	PARTIES FLOTTANTES	PARTES FLOTANTES
+Filament	Filament	Filament	Filamento
+Filament changes	Filamentwechsel	Changements de filament	Cambios de filamento
+File	Datei	Fichier	Archivo
+Fill gaps	Lücken füllen	Remplir les interstices	Rellenar huecos
+First layer	Erste Schicht	Première couche	Primera capa
+First layer height	Höhe der ersten Schicht	Hauteur de la première couche	Altura de la primera capa
+First layer test	Test der ersten Schicht	Test de la première couche	Prueba de la primera capa
+First layer width	Breite der ersten Schicht	Largeur de la première couche	Ancho de la primera capa
+Fix holes and faces pointing the wrong way	Löcher und falsch ausgerichtete Flächen reparieren	Réparer les trous et les faces mal orientées	Reparar agujeros y caras mal orientadas
+Flip left to right	Links-rechts spiegeln	Retourner de gauche à droite	Voltear de izquierda a derecha
+Flow	Fluss	Débit	Flujo
+Flow test	Flusstest	Test de débit	Prueba de flujo
+Fuzzy skin	Raue Oberfläche	Surface rugueuse	Superficie rugosa
+Fuzzy thickness	Rauheit	Épaisseur de rugosité	Grosor de rugosidad
+Gap fill	Lückenfüllung	Remplissage des interstices	Relleno de huecos
+HOLLOWING	AUSHÖHLEN	CREUSAGE	VACIADO
+Height	Höhe	Hauteur	Altura
+Help	Hilfe	Aide	Ayuda
+Highlight overhangs	Überhänge hervorheben	Surligner les surplombs	Resaltar voladizos
+Hole size	Lochgröße	Taille du trou	Tamaño del agujero
+Holes	Löcher	Trous	Agujeros
+Home view  (Home)	Startansicht  (Pos1)	Vue initiale  (Origine)	Vista inicial  (Inicio)
+INFILL	FÜLLUNG	REMPLISSAGE	RELLENO
+Infill angle	Füllwinkel	Angle de remplissage	Ángulo de relleno
+Infill density	Fülldichte	Densité de remplissage	Densidad de relleno
+Infill overlap	Füllungsüberlappung	Chevauchement du remplissage	Solapamiento del relleno
+Infill pattern	Füllmuster	Motif de remplissage	Patrón de relleno
+Infill with	Füllen mit	Remplir avec	Rellenar con
+Inner lattice	Inneres Gitter	Treillis intérieur	Rejilla interior
+Inner wall	Innenwand	Paroi intérieure	Pared interior
+Interface layers	Kontaktschichten	Couches d'interface	Capas de interfaz
+Interface spacing	Kontaktabstand	Espacement d'interface	Espaciado de interfaz
+Ironing	Glätten	Repassage	Planchado
+Ironing flow	Glättungsfluss	Débit de repassage	Flujo de planchado
+Ironing spacing	Glättungsabstand	Espacement de repassage	Espaciado de planchado
+Ironing speed	Glättungsgeschwindigkeit	Vitesse de repassage	Velocidad de planchado
+Join pillars within	Säulen verbinden innerhalb	Joindre les piliers à moins de	Unir pilares a menos de
+Keep in my list	In meiner Liste behalten	Garder dans ma liste	Mantener en mi lista
+Keep proportions	Proportionen beibehalten	Conserver les proportions	Mantener proporciones
+Keep these settings as your own preset	Diese Einstellungen als eigenes Profil speichern	Garder ces réglages comme profil personnel	Guardar estos ajustes como perfil propio
+Keep this printer in my list	Diesen Drucker in meiner Liste behalten	Garder cette imprimante dans ma liste	Mantener esta impresora en mi lista
+Keyboard shortcuts	Tastenkürzel	Raccourcis clavier	Atajos de teclado
+LAYERS	SCHICHTEN	COUCHES	CAPAS
+LINES	LINIEN	LIGNES	LÍNEAS
+LIT AREA BY HEIGHT	BELICHTETE FLÄCHE NACH HÖHE	SURFACE ÉCLAIRÉE SELON LA HAUTEUR	ÁREA ILUMINADA POR ALTURA
+Lattice spacing	Gitterabstand	Espacement du treillis	Espaciado de la rejilla
+Lay a face flat	Fläche flach legen	Poser une face à plat	Apoyar una cara plana
+Layer height	Schichthöhe	Hauteur de couche	Altura de capa
+Layers	Schichten	Couches	Capas
+Lift height	Hubhöhe	Hauteur de levage	Altura de elevación
+Lift off the plate	Von der Platte abheben	Surélever du plateau	Elevar de la placa
+Lift speed	Hubgeschwindigkeit	Vitesse de levage	Velocidad de elevación
+Lift the model and place supports wherever it needs holding	Das Modell anheben und überall Stützen setzen, wo es gehalten werden muss	Soulever le modèle et placer des supports là où il doit être maintenu	Elevar el modelo y colocar soportes donde necesite sujeción
+Light-off delay	Pause nach Belichtung	Délai après extinction	Retardo tras apagar la luz
+Line width	Linienbreite	Largeur de ligne	Ancho de línea
+Lit area	Belichtete Fläche	Surface éclairée	Área iluminada
+Lower the model onto the build plate	Das Modell auf die Bauplatte absenken	Poser le modèle sur le plateau de fabrication	Bajar el modelo sobre la plataforma de impresión
+MOVEMENT BETWEEN LAYERS	BEWEGUNG ZWISCHEN DEN SCHICHTEN	MOUVEMENT ENTRE LES COUCHES	MOVIMIENTO ENTRE CAPAS
+Make solid	Massiv machen	Rendre plein	Hacer macizo
+Mirror	Spiegeln	Miroir	Reflejar
+Model hollowed. Add a drain hole so resin can get out.	Modell ausgehöhlt. Füge ein Ablaufloch hinzu, damit das Harz herauskann.	Modèle creusé. Ajoutez un trou de drainage pour évacuer la résine.	Modelo vaciado. Añade un agujero de drenaje para que salga la resina.
+Move down	Nach unten	Descendre	Mover abajo
+Move up	Nach oben	Monter	Mover arriba
+New project	Neues Projekt	Nouveau projet	Nuevo proyecto
+No settings match that search.	Keine Einstellung passt zur Suche.	Aucun réglage ne correspond à cette recherche.	Ningún ajuste coincide con esa búsqueda.
+Not everything fits on this plate. Try adding another plate.	Nicht alles passt auf diese Platte. Füge eine weitere Platte hinzu.	Tout ne tient pas sur ce plateau. Essayez d'ajouter un autre plateau.	No todo cabe en esta placa. Prueba a añadir otra placa.
+Nozzle size of this tool, in mm	Düsengröße dieses Werkzeugs in mm	Taille de la buse de cet outil, en mm	Tamaño de la boquilla de esta herramienta, en mm
+On the plate	Auf die Platte	Sur le plateau	Sobre la placa
+Only from the plate	Nur von der Platte	Seulement depuis le plateau	Solo desde la placa
+Open project…	Projekt öffnen…	Ouvrir un projet…	Abrir proyecto…
+Outer wall	Außenwand	Paroi extérieure	Pared exterior
+Outer wall acceleration	Beschleunigung der Außenwand	Accélération de la paroi extérieure	Aceleración de la pared exterior
+Outer wall first	Außenwand zuerst	Paroi extérieure d'abord	Pared exterior primero
+Outer wall width	Breite der Außenwand	Largeur de la paroi extérieure	Ancho de la pared exterior
+Overhang	Überhang	Surplomb	Voladizo
+Own infill	Eigene Füllung	Remplissage propre	Relleno propio
+Own wall loops	Eigene Wandlinien	Parois propres	Perímetros propios
+PLACING	PLATZIERUNG	PLACEMENT	COLOCACIÓN
+PRINT	DRUCK	IMPRESSION	IMPRESIÓN
+PRINT ORDER	DRUCKREIHENFOLGE	ORDRE D'IMPRESSION	ORDEN DE IMPRESIÓN
+PRINT SPEEDS	DRUCKGESCHWINDIGKEITEN	VITESSES D'IMPRESSION	VELOCIDADES DE IMPRESIÓN
+Parts	Teile	Pièces	Piezas
+Pillar diameter	Säulendurchmesser	Diamètre des piliers	Diámetro de los pilares
+Pillars	Säulen	Piliers	Pilares
+Place by hand	Von Hand platzieren	Placer à la main	Colocar a mano
+Position	Position	Position	Posición
+Preset saved.	Profil gespeichert.	Profil enregistré.	Perfil guardado.
+Pressure advance tower	Pressure-Advance-Turm	Tour d'avance de pression	Torre de avance de presión
+Prime tower	Reinigungsturm	Tour d'amorçage	Torre de purga
+Print order	Druckreihenfolge	Ordre d'impression	Orden de impresión
+Print the inside fill with another tool, such as a bigger nozzle, while the walls keep the fine one.	Die Innenfüllung mit einem anderen Werkzeug drucken, etwa einer größeren Düse, während die Wände die feine behalten.	Imprimer le remplissage avec un autre outil, par exemple une buse plus grosse, tandis que les parois gardent la fine.	Imprimir el relleno con otra herramienta, como una boquilla más grande, mientras las paredes conservan la fina.
+Printer saved.	Drucker gespeichert.	Imprimante enregistrée.	Impresora guardada.
+Purge per change	Spülmenge pro Wechsel	Purge par changement	Purga por cambio
+Put every panel section back where it started	Alle Bereiche an ihre Ausgangsposition zurücksetzen	Remettre chaque section du panneau à sa place d'origine	Devolver cada sección del panel a su lugar original
+Quit	Beenden	Quitter	Salir
+RAFT	FLOSS	RADEAU	BALSA
+Raft	Floß	Radeau	Balsa
+Raft layers	Floßschichten	Couches du radeau	Capas de la balsa
+Raft margin	Floßrand	Marge du radeau	Margen de la balsa
+Raft thickness	Floßdicke	Épaisseur du radeau	Grosor de la balsa
+Redo  (Ctrl+Y)	Wiederholen  (Ctrl+Y)	Rétablir  (Ctrl+Y)	Rehacer  (Ctrl+Y)
+Remove	Entfernen	Retirer	Quitar
+Remove all	Alle entfernen	Tout retirer	Quitar todo
+Remove this plate	Diese Platte entfernen	Retirer ce plateau	Quitar esta placa
+Repair	Reparieren	Réparer	Reparar
+Resin	Harz	Résine	Resina
+Resin drains out through the bottom	Das Harz läuft unten ab	La résine s'écoule par le bas	La resina drena por el fondo
+Resin saved	Harz gespart	Résine économisée	Resina ahorrada
+Restore default layout	Standardlayout wiederherstellen	Rétablir la disposition par défaut	Restaurar el diseño predeterminado
+Retraction test	Rückzugstest	Test de rétraction	Prueba de retracción
+Return speed	Rückfahrgeschwindigkeit	Vitesse de retour	Velocidad de retorno
+SAVE IT	SPEICHERN	ENREGISTRER	GUARDAR
+SEAM	NAHT	COUTURE	COSTURA
+SEND IT	SENDEN	ENVOYER	ENVIAR
+SEVERAL FILAMENTS	MEHRERE FILAMENTE	PLUSIEURS FILAMENTS	VARIOS FILAMENTOS
+SHAPE	FORM	FORME	FORMA
+SIZE ACCURACY	MASSGENAUIGKEIT	PRÉCISION DIMENSIONNELLE	PRECISIÓN DIMENSIONAL
+SPECIAL	SPEZIAL	SPÉCIAL	ESPECIAL
+SUPPORTS	STÜTZEN	SUPPORTS	SOPORTES
+SURFACE	OBERFLÄCHE	SURFACE	SUPERFICIE
+Save	Speichern	Enregistrer	Guardar
+Save G-code	G-Code speichern	Enregistrer le G-code	Guardar G-code
+Save plate as STL…	Platte als STL speichern…	Enregistrer le plateau en STL…	Guardar la placa como STL…
+Save print	Druck speichern	Enregistrer l'impression	Guardar impresión
+Save print…  (Ctrl+E)	Druck speichern…  (Ctrl+E)	Enregistrer l'impression…  (Ctrl+E)	Guardar impresión…  (Ctrl+E)
+Save project  (Ctrl+S)	Projekt speichern  (Ctrl+S)	Enregistrer le projet  (Ctrl+S)	Guardar proyecto  (Ctrl+S)
+Save project as…	Projekt speichern unter…	Enregistrer le projet sous…	Guardar proyecto como…
+Saved.	Gespeichert.	Enregistré.	Guardado.
+Screen size and resolution	Bildschirmgröße und Auflösung	Taille et résolution de l'écran	Tamaño y resolución de la pantalla
+Scripts can use {bed_temp}, {nozzle_temp}, {bed_x}, {bed_y}, {height}, {layer_height}, {filament_type}, and {tool} in tool changes.	Skripte können {bed_temp}, {nozzle_temp}, {bed_x}, {bed_y}, {height}, {layer_height}, {filament_type} und {tool} bei Werkzeugwechseln verwenden.	Les scripts peuvent utiliser {bed_temp}, {nozzle_temp}, {bed_x}, {bed_y}, {height}, {layer_height}, {filament_type} et {tool} lors des changements d'outil.	Los scripts pueden usar {bed_temp}, {nozzle_temp}, {bed_x}, {bed_y}, {height}, {layer_height}, {filament_type} y {tool} en los cambios de herramienta.
+Seam gap	Nahtlücke	Espace de couture	Hueco de costura
+Seam position	Nahtposition	Position de la couture	Posición de la costura
+Select a model to cut first.	Wähle zuerst ein Modell zum Schneiden aus.	Sélectionnez d'abord un modèle à couper.	Selecciona primero un modelo para cortar.
+Select a model to hollow first.	Wähle zuerst ein Modell zum Aushöhlen aus.	Sélectionnez d'abord un modèle à creuser.	Selecciona primero un modelo para vaciar.
+Select all  (Ctrl+A)	Alles auswählen  (Ctrl+A)	Tout sélectionner  (Ctrl+A)	Seleccionar todo  (Ctrl+A)
+Send the sliced print	Den geslicten Druck senden	Envoyer l'impression tranchée	Enviar la impresión laminada
+Send to network printer…	An Netzwerkdrucker senden…	Envoyer à une imprimante réseau…	Enviar a impresora de red…
+Send to printer…	An Drucker senden…	Envoyer à l'imprimante…	Enviar a la impresora…
+Settings changed since the last slice	Einstellungen seit dem letzten Slicen geändert	Réglages modifiés depuis le dernier tranchage	Ajustes cambiados desde el último laminado
+Shortcut: A	Kürzel: A	Raccourci : A	Atajo: A
+Shortcut: O	Kürzel: O	Raccourci : O	Atajo: O
+Shortest retract distance	Kürzeste Rückzugsstrecke	Distance de rétraction minimale	Distancia mínima de retracción
+Side gap	Seitenabstand	Espace latéral	Hueco lateral
+Size	Größe	Taille	Tamaño
+Size correction	Größenkorrektur	Correction de taille	Corrección de tamaño
+Skirt distance	Schürzenabstand	Distance de la jupe	Distancia de la falda
+Skirt loops	Schürzenlinien	Boucles de la jupe	Vueltas de la falda
+Slice plate	Platte slicen	Trancher le plateau	Laminar la placa
+Slice the plate first.	Slice zuerst die Platte.	Tranchez d'abord le plateau.	Lamina primero la placa.
+Slice the plate to see time, filament and cost.	Slice die Platte, um Zeit, Filament und Kosten zu sehen.	Tranchez le plateau pour voir le temps, le filament et le coût.	Lamina la placa para ver el tiempo, el filamento y el coste.
+Slice the plate to see time, resin and cost.	Slice die Platte, um Zeit, Harz und Kosten zu sehen.	Tranchez le plateau pour voir le temps, la résine et le coût.	Lamina la placa para ver el tiempo, la resina y el coste.
+Sliced in	Geslict in	Tranché en	Laminado en
+Solid infill	Massive Füllung	Remplissage plein	Relleno sólido
+Spacing	Abstand	Espacement	Espaciado
+Sparse infill	Lockere Füllung	Remplissage clairsemé	Relleno disperso
+Sphere, 20 mm	Kugel, 20 mm	Sphère, 20 mm	Esfera, 20 mm
+Spiral vase	Spiralvase	Vase en spirale	Jarrón en espiral
+Split into parts	In Teile zerlegen	Séparer en pièces	Dividir en piezas
+Start script	Startskript	Script de début	Script inicial
+Starter bear	Startbär	Ours de démarrage	Oso de inicio
+Support from angle	Stützen ab Winkel	Supports à partir de l'angle	Soportes desde el ángulo
+Support needed from	Stützen nötig ab	Supports nécessaires à partir de	Soportes necesarios desde
+Support spacing	Stützenabstand	Espacement des supports	Espaciado de soportes
+Support speed	Stützengeschwindigkeit	Vitesse des supports	Velocidad de soportes
+Support type	Stützenart	Type de support	Tipo de soporte
+THIS LAYER	DIESE SCHICHT	CETTE COUCHE	ESTA CAPA
+TOP AND BOTTOM	OBEN UND UNTEN	DESSUS ET DESSOUS	SUPERIOR E INFERIOR
+TRAVEL	LEERFAHRT	DÉPLACEMENT	DESPLAZAMIENTO
+Temperature tower	Temperaturturm	Tour de température	Torre de temperatura
+Temperatures, cooling, flow, cost	Temperaturen, Kühlung, Fluss, Kosten	Températures, refroidissement, débit, coût	Temperaturas, refrigeración, flujo, coste
+The cut height doesn't pass through this model.	Die Schnitthöhe liegt nicht im Modell.	La hauteur de coupe ne traverse pas ce modèle.	La altura de corte no atraviesa este modelo.
+The model changed size. Hollow it again to keep the walls right.	Das Modell hat seine Größe geändert. Höhle es erneut aus, damit die Wände stimmen.	Le modèle a changé de taille. Creusez-le à nouveau pour garder des parois correctes.	El modelo cambió de tamaño. Vacíalo de nuevo para que las paredes sean correctas.
+Then click a surface of the model. Shortcut: F	Klicke dann auf eine Fläche des Modells. Kürzel: F	Cliquez ensuite sur une surface du modèle. Raccourci : F	Después haz clic en una superficie del modelo. Atajo: F
+Then click the model where a hole should go	Klicke dann auf das Modell, wo ein Loch hin soll	Cliquez ensuite sur le modèle là où un trou doit aller	Después haz clic en el modelo donde debe ir un agujero
+There's nothing on the plate to save.	Auf der Platte gibt es nichts zu speichern.	Il n'y a rien à enregistrer sur le plateau.	No hay nada en la placa que guardar.
+This format hasn't been tried on a real printer yet. Check the file on your printer before a long print.	Dieses Format wurde noch nicht auf einem echten Drucker getestet. Prüfe die Datei auf deinem Drucker vor einem langen Druck.	Ce format n'a pas encore été essayé sur une vraie imprimante. Vérifiez le fichier sur votre imprimante avant une longue impression.	Este formato aún no se ha probado en una impresora real. Revisa el archivo en tu impresora antes de una impresión larga.
+This model is already one piece.	Dieses Modell besteht schon aus einem Stück.	Ce modèle est déjà d'un seul tenant.	Este modelo ya es de una sola pieza.
+Time	Zeit	Temps	Tiempo
+Tip diameter	Spitzendurchmesser	Diamètre de la pointe	Diámetro de la punta
+Tip length	Spitzenlänge	Longueur de la pointe	Longitud de la punta
+Tool change script	Werkzeugwechsel-Skript	Script de changement d'outil	Script de cambio de herramienta
+Top gap	Abstand oben	Espace supérieur	Hueco superior
+Top layers	Obere Schichten	Couches supérieures	Capas superiores
+Top pattern	Muster oben	Motif du dessus	Patrón superior
+Top surface	Oberseite	Surface supérieure	Superficie superior
+Touch points	Berührungspunkte	Points de contact	Puntos de contacto
+Tower X	Turm X	Tour X	Torre X
+Tower Y	Turm Y	Tour Y	Torre Y
+Tower width	Turmbreite	Largeur de la tour	Ancho de la torre
+Transition layers	Übergangsschichten	Couches de transition	Capas de transición
+Travel	Leerfahrt	Déplacement	Desplazamiento
+Travel acceleration	Beschleunigung der Leerfahrt	Accélération de déplacement	Aceleración de desplazamiento
+Tree branch angle	Astwinkel der Baumstützen	Angle des branches d'arbre	Ángulo de ramas del árbol
+Tree tip radius	Spitzenradius der Baumstützen	Rayon de la pointe d'arbre	Radio de la punta del árbol
+Triangles	Dreiecke	Triangles	Triángulos
+Turn	Drehen	Rotation	Girar
+Undo  (Ctrl+Z)	Rückgängig  (Ctrl+Z)	Annuler  (Ctrl+Z)	Deshacer  (Ctrl+Z)
+View	Ansicht	Affichage	Ver
+Volume	Volumen	Volume	Volumen
+WALLS	WÄNDE	PAROIS	PAREDES
+WORTH CHECKING	PRÜFENSWERT	À VÉRIFIER	A REVISAR
+Wall loops	Wandlinien	Parois	Perímetros
+Wall thickness	Wandstärke	Épaisseur des parois	Grosor de pared
+Works with printers running OctoPrint or Klipper with Moonraker, over a plain http address.	Funktioniert mit Druckern, auf denen OctoPrint oder Klipper mit Moonraker läuft, über eine einfache http-Adresse.	Fonctionne avec les imprimantes sous OctoPrint ou Klipper avec Moonraker, via une simple adresse http.	Funciona con impresoras que ejecutan OctoPrint o Klipper con Moonraker, mediante una dirección http simple.
+Dark theme	Dunkles Design	Thème sombre	Tema oscuro
+Light theme	Helles Design	Thème clair	Tema claro
+Light	Licht	Lumière	Luz
+Theme	Design	Thème	Tema
+Language	Sprache	Langue	Idioma
+PRINTER AND MATERIAL	DRUCKER UND MATERIAL	IMPRIMANTE ET MATÉRIAU	IMPRESORA Y MATERIAL
+PRINT SETTINGS	DRUCKEINSTELLUNGEN	RÉGLAGES D'IMPRESSION	AJUSTES DE IMPRESIÓN
+PLATES	PLATTEN	PLATEAUX	PLACAS
+ON THE PLATE	AUF DER PLATTE	SUR LE PLATEAU	SOBRE LA PLACA
+PLACEMENT	PLATZIERUNG	PLACEMENT	COLOCACIÓN
+MODEL	MODELL	MODÈLE	MODELO
+THIS MODEL ONLY	NUR DIESES MODELL	CE MODÈLE SEULEMENT	SOLO ESTE MODELO
+HOLLOW	AUSHÖHLEN	CREUX	HUECO
+DRAIN HOLES	ABLAUFLÖCHER	TROUS DE DRAINAGE	AGUJEROS DE DRENAJE
+ORIENT	AUSRICHTEN	ORIENTATION	ORIENTACIÓN
+Fold	Einklappen	Replier	Plegar
+Unfold	Ausklappen	Déplier	Desplegar
+Prepare	Vorbereiten	Préparer	Preparar
+Preview	Vorschau	Aperçu	Vista previa
+Working…	Arbeite…	Travail en cours…	Trabajando…
+Slice again	Erneut slicen	Trancher à nouveau	Laminar de nuevo
+Find a setting…	Einstellung suchen…	Chercher un réglage…	Buscar un ajuste…
+Printer	Drucker	Imprimante	Impresora
+Print quality	Druckqualität	Qualité d'impression	Calidad de impresión
+Material	Material	Matériau	Material
+Front	Vorne	Face	Frontal
+Right	Rechts	Droite	Derecha
+Top	Oben	Dessus	Superior
+Quality	Qualität	Qualité	Calidad
+Strength	Festigkeit	Solidité	Resistencia
+Speed	Tempo	Vitesse	Velocidad
+Support	Stütze	Support	Soporte
+Other	Weiteres	Autre	Otros
+Supports	Stützen	Supports	Soportes
+Edit…	Bearbeiten…	Modifier…	Editar…
+Hollow	Aushöhlen	Creuser	Vaciar
+Hollow again	Erneut aushöhlen	Creuser à nouveau	Vaciar de nuevo
+Flip the model along this direction	Das Modell in dieser Richtung spiegeln	Retourner le modèle dans cette direction	Voltear el modelo en esta dirección
+Front-back (Y)	Vorne-hinten (Y)	Avant-arrière (Y)	Delante-detrás (Y)
+Left-right (X)	Links-rechts (X)	Gauche-droite (X)	Izquierda-derecha (X)
+Top-bottom (Z)	Oben-unten (Z)	Haut-bas (Z)	Arriba-abajo (Z)
+Make several copies	Mehrere Kopien erstellen	Faire plusieurs copies	Hacer varias copias
+Next ▶	Weiter ▶	Suivant ▶	Siguiente ▶
+◀ Previous	◀ Zurück	◀ Précédent	◀ Anterior
+Show this layer	Diese Schicht anzeigen	Afficher cette couche	Mostrar esta capa
+Space between	Abstand dazwischen	Espace entre	Espacio entre
+Shortcut:	Kürzel:	Raccourci :	Atajo:
+Then click a surface of the model.	Klicke dann auf eine Fläche des Modells.	Cliquez ensuite sur une surface du modèle.	Después haz clic en una superficie del modelo.
+Save project	Projekt speichern	Enregistrer le projet	Guardar proyecto
+Save print…	Druck speichern…	Enregistrer l'impression…	Guardar impresión…
+Undo	Rückgängig	Annuler	Deshacer
+Redo	Wiederholen	Rétablir	Rehacer
+Select all	Alles auswählen	Tout sélectionner	Seleccionar todo
+Home view	Startansicht	Vue initiale	Vista inicial
+Add models	Modelle hinzufügen	Ajouter des modèles	Añadir modelos
+Save project as	Projekt speichern unter	Enregistrer le projet sous	Guardar proyecto como
+Slice	Slicen	Trancher	Laminar
+Move tool	Verschieben-Werkzeug	Outil de déplacement	Herramienta de mover
+Turn tool	Drehen-Werkzeug	Outil de rotation	Herramienta de girar
+Resize tool	Größen-Werkzeug	Outil de redimensionnement	Herramienta de tamaño
+Prepare / preview	Vorbereiten / Vorschau	Préparer / aperçu	Preparar / vista previa
+Reset the view	Ansicht zurücksetzen	Réinitialiser la vue	Restablecer la vista
+Auto-orient the selection	Auswahl automatisch ausrichten	Orienter automatiquement la sélection	Orientar automáticamente la selección
+Click, then press the new key	Klicken, dann die neue Taste drücken	Cliquez, puis appuyez sur la nouvelle touche	Haz clic y pulsa la nueva tecla
+Clear	Löschen	Effacer	Borrar
+Reset	Zurücksetzen	Réinitialiser	Restablecer
+Reset all to the defaults	Alle auf Standard zurücksetzen	Tout remettre par défaut	Restablecer todo a los valores predeterminados
+Leave this without a key	Ohne Taste lassen	Laisser sans touche	Dejar sin tecla
+Back to the usual key	Zurück zur üblichen Taste	Revenir à la touche habituelle	Volver a la tecla habitual
+A big flat roof traps resin and pulls hard when peeling. Try Auto-orient, or tilt the model.	Ein großes flaches Dach hält Harz fest und zieht beim Ablösen stark. Versuche die automatische Ausrichtung oder kippe das Modell.	Un grand toit plat retient la résine et tire fort au décollage. Essayez l'orientation automatique ou inclinez le modèle.	Un techo plano grande atrapa resina y tira fuerte al despegar. Prueba la orientación automática o inclina el modelo.
+HOW IT SITS NOW	SO LIEGT ES JETZT	POSITION ACTUELLE	CÓMO ESTÁ AHORA
+Tall and narrow: it may sway while peeling. Laying it down helps.	Hoch und schmal: Es kann beim Ablösen wackeln. Hinlegen hilft.	Haut et étroit : il peut osciller au décollage. Le coucher aide.	Alto y estrecho: puede balancearse al despegar. Tumbarlo ayuda.
+Print height	Druckhöhe	Hauteur d'impression	Altura de impresión
+Lies on the plate	Liegt auf der Platte	Posé sur le plateau	Apoyado en la placa
+Flat roof (suction)	Flaches Dach (Saugwirkung)	Toit plat (succion)	Techo plano (succión)
+Needs support	Braucht Stützen	Nécessite des supports	Necesita soporte
+Area with nothing under it	Fläche ohne Unterlage	Surface sans appui dessous	Área sin nada debajo

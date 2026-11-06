@@ -169,6 +169,8 @@ pub struct App {
     pub keys: crate::keys::Keymap,
     pub capturing: Option<crate::keys::Command>,
     pub key_notice: String,
+    /// Theme and language.
+    pub prefs: crate::prefs::Prefs,
     pub measure: Vec<Vec3>,
     pub show_overhang: bool,
     pub lock_scale: bool,
@@ -253,7 +255,8 @@ pub struct StartOptions {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, opts: StartOptions) -> Self {
-        theme::apply_style(&cc.egui_ctx);
+        let prefs = crate::prefs::Prefs::load();
+        prefs.apply(&cc.egui_ctx);
         let cat = Catalogue::load();
         let fdm_printer = cat.fdm_printers.first().cloned().unwrap_or_default();
         let fdm_process = cat
@@ -318,6 +321,7 @@ impl App {
             keys: crate::keys::Keymap::load(),
             capturing: None,
             key_notice: String::new(),
+            prefs,
             measure: Vec::new(),
             show_overhang: false,
             lock_scale: true,
@@ -461,6 +465,7 @@ impl App {
     pub fn toast(&mut self, ctx: &egui::Context, kind: ToastKind, text: impl Into<String>) {
         let now = ctx.input(|i| i.time);
         let text = text.into();
+        let text = crate::i18n::tr(&text).to_string();
         let seconds = match kind {
             ToastKind::Bad => 10.0,
             ToastKind::Warn => 7.0,
@@ -531,7 +536,7 @@ impl App {
             Ok(outcome) => self.finish_job(ctx, outcome),
             Err(e) if was_cancelled || e == "Cancelled" => {
                 let _ = e;
-                self.toast(ctx, ToastKind::Info, "Cancelled");
+                self.toast(ctx, ToastKind::Info, crate::i18n::tr("Cancelled"));
             }
             Err(e) => self.toast(ctx, ToastKind::Bad, e),
         }
@@ -574,7 +579,7 @@ impl App {
                     o.cavity_id = next_id();
                     o.cavity_scale = scale;
                 }
-                self.toast(ctx, ToastKind::Good, "Model hollowed. Add a drain hole so resin can get out.");
+                self.toast(ctx, ToastKind::Good, crate::i18n::tr("Model hollowed. Add a drain hole so resin can get out."));
             }
             JobOutcome::Saved(message) => self.toast(ctx, ToastKind::Good, message),
             JobOutcome::Imported(items, errors) => self.finish_import(ctx, items, errors),
@@ -621,7 +626,7 @@ impl eframe::App for App {
         self.status_bar(ui);
         self.dock_panels(ui);
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(theme::BG))
+            .frame(egui::Frame::new().fill(theme::ui_bg()))
             .show(ui, |ui| {
                 self.central(ui, frame);
             });

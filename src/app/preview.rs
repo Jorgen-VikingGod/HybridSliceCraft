@@ -140,9 +140,9 @@ impl App {
             );
         }
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(format!("{lo:.2} {unit}")).small().color(DIM));
+            ui.label(egui::RichText::new(format!("{lo:.2} {unit}")).small().color(ui_dim()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new(format!("{hi:.2} {unit}")).small().color(DIM));
+                ui.label(egui::RichText::new(format!("{hi:.2} {unit}")).small().color(ui_dim()));
             });
         });
     }
@@ -157,7 +157,7 @@ impl App {
             Pos2::new(rect.center().x + 3.0, rect.bottom() - 8.0),
         );
         let painter = ui.painter_at(rect.expand(40.0));
-        painter.rect_filled(track, 3.0, PANEL_2);
+        painter.rect_filled(track, 3.0, ui_panel_2());
         let to_y = |i: usize| {
             let f = i as f32 / (count.max(2) - 1) as f32;
             track.bottom() - f * track.height()
@@ -210,7 +210,7 @@ impl App {
             painter.rect_stroke(r, 3.0, Stroke::new(1.0, Color32::from_black_alpha(120)), StrokeKind::Outside);
         };
         if low_val.is_some() {
-            knob(to_y(low_val.unwrap_or(0)), DIM);
+            knob(to_y(low_val.unwrap_or(0)), ui_dim());
         }
         knob(to_y(*high), Color32::WHITE);
         painter.text(
@@ -218,7 +218,7 @@ impl App {
             egui::Align2::CENTER_TOP,
             label,
             egui::FontId::proportional(11.0),
-            TEXT,
+            ui_text(),
         );
     }
 
@@ -289,7 +289,7 @@ impl App {
         }
         let shown = Rect::from_center_size(fit.center() + self.layer_pan, fit.size() * self.layer_zoom);
         let visible = shown.intersect(avail.expand(margin));
-        painter.rect_stroke(shown, 0.0, Stroke::new(1.0, LINE), StrokeKind::Outside);
+        painter.rect_stroke(shown, 0.0, Stroke::new(1.0, ui_line()), StrokeKind::Outside);
         if visible.width() < 1.0 || visible.height() < 1.0 {
             return;
         }
@@ -329,9 +329,9 @@ impl App {
                 )
                 .expand(3.0);
                 let color = match crate::resin::IslandSeverity::of(isl.area_px as f32 * spec.pixel_area_mm2() as f32) {
-                    crate::resin::IslandSeverity::Critical => RED,
-                    crate::resin::IslandSeverity::Minor => YELLOW,
-                    crate::resin::IslandSeverity::Speck => DIM,
+                    crate::resin::IslandSeverity::Critical => ui_red(),
+                    crate::resin::IslandSeverity::Minor => ui_yellow(),
+                    crate::resin::IslandSeverity::Speck => CANVAS_DIM,
                 };
                 painter.rect_filled(r, 2.0, color.gamma_multiply(0.25));
                 painter.rect_stroke(r, 2.0, Stroke::new(1.5, color), StrokeKind::Outside);
@@ -348,7 +348,7 @@ impl App {
                     self.layer_zoom * 100.0
                 ),
                 egui::FontId::proportional(11.5),
-                DIM,
+                CANVAS_DIM,
             );
         }
     }

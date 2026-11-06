@@ -109,7 +109,7 @@ impl App {
             }
         }
         if !drew {
-            ui.painter_at(rect).text(rect.center(), egui::Align2::CENTER_CENTER, "The 3D view needs a working graphics driver.", egui::FontId::proportional(15.0), DIM);
+            ui.painter_at(rect).text(rect.center(), egui::Align2::CENTER_CENTER, "The 3D view needs a working graphics driver.", egui::FontId::proportional(15.0), CANVAS_DIM);
         }
 
         if self.stage == Stage::Prepare {
@@ -131,8 +131,8 @@ impl App {
 
     fn empty_message(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let painter = ui.painter_at(rect);
-        painter.text(rect.center() - Vec2::new(0.0, 14.0), egui::Align2::CENTER_CENTER, "Drop a model here to get started", egui::FontId::proportional(18.0), TEXT);
-        painter.text(rect.center() + Vec2::new(0.0, 12.0), egui::Align2::CENTER_CENTER, "STL, OBJ, 3MF and PLY files work", egui::FontId::proportional(13.0), DIM);
+        painter.text(rect.center() - Vec2::new(0.0, 14.0), egui::Align2::CENTER_CENTER, "Drop a model here to get started", egui::FontId::proportional(18.0), CANVAS_TEXT);
+        painter.text(rect.center() + Vec2::new(0.0, 12.0), egui::Align2::CENTER_CENTER, "STL, OBJ, 3MF and PLY files work", egui::FontId::proportional(13.0), CANVAS_DIM);
     }
 
     fn handle_camera(&mut self, ui: &mut egui::Ui, resp: &egui::Response, rect: Rect) {
@@ -278,41 +278,41 @@ impl App {
         resp.context_menu(|ui| {
             let has = !self.selection.is_empty();
             if has {
-                if ui.button("Duplicate").clicked() {
+                if ui.button(crate::i18n::tr("Duplicate")).clicked() {
                     self.duplicate_selected();
                     ui.close();
                 }
-                ui.menu_button("Mirror", |ui| {
-                    for (k, name) in ["Left-right (X)", "Front-back (Y)", "Top-bottom (Z)"].into_iter().enumerate() {
-                        if ui.button(name).clicked() {
+                ui.menu_button(crate::i18n::tr("Mirror"), |ui| {
+                    for (k, name) in [crate::i18n::tr("Left-right (X)"), crate::i18n::tr("Front-back (Y)"), crate::i18n::tr("Top-bottom (Z)")].into_iter().enumerate() {
+                        if ui.button(crate::i18n::tr(name)).clicked() {
                             self.mirror_selected(k);
                             ui.close();
                         }
                     }
                 });
-                if ui.button("Delete").clicked() {
+                if ui.button(crate::i18n::tr("Delete")).clicked() {
                     self.delete_selected();
                     ui.close();
                 }
-                if ui.button("Auto-orient").clicked() {
+                if ui.button(crate::i18n::tr("Auto-orient")).clicked() {
                     self.orient_selected();
                     ui.close();
                 }
-                if ui.button("Repair").clicked() {
+                if ui.button(crate::i18n::tr("Repair")).clicked() {
                     self.repair_selected(&ctx);
                     ui.close();
                 }
-                if ui.button("Split into parts").clicked() {
+                if ui.button(crate::i18n::tr("Split into parts")).clicked() {
                     self.split_selected(&ctx);
                     ui.close();
                 }
                 ui.separator();
             }
-            if ui.button("Add models…").clicked() {
+            if ui.button(crate::i18n::tr("Add models…")).clicked() {
                 self.import_dialog();
                 ui.close();
             }
-            if ui.button("Arrange the plate").clicked() {
+            if ui.button(crate::i18n::tr("Arrange the plate")).clicked() {
                 self.arrange_now(&ctx);
                 ui.close();
             }
@@ -620,7 +620,7 @@ impl App {
                     painter.rect_filled(Rect::from_center_size(es, Vec2::splat(11.0)), 2.0, c);
                 }
                 let hot = hover.map(|h| (h - cs).length() < 10.0).unwrap_or(false);
-                painter.rect_filled(Rect::from_center_size(cs, Vec2::splat(11.0)), 2.0, if hot { Color32::WHITE } else { DIM });
+                painter.rect_filled(Rect::from_center_size(cs, Vec2::splat(11.0)), 2.0, if hot { Color32::WHITE } else { CANVAS_DIM });
                 if let Some(o) = self.selected() {
                     if self.drag.is_some() {
                         let s = o.size();
@@ -655,7 +655,7 @@ impl App {
                 for h in &o.holes {
                     if let Some(p) = self.to_screen(rect, m.transform_point3(Vec3::from(h.pos))) {
                         let px = (h.diameter * 0.5) / (self.camera.dist * 2.0 * 16f32.to_radians().tan()) * rect.height();
-                        painter.circle(p, px.max(3.0), Color32::from_rgba_unmultiplied(232, 84, 76, 70), Stroke::new(1.5, RED));
+                        painter.circle(p, px.max(3.0), Color32::from_rgba_unmultiplied(232, 84, 76, 70), Stroke::new(1.5, ui_red()));
                     }
                 }
             }
@@ -717,7 +717,7 @@ impl App {
         }
         child.add_space(2.0);
         let (sep, _) = child.allocate_exact_size(Vec2::new(26.0, 1.0), Sense::hover());
-        child.painter().rect_filled(sep, 0.0, LINE);
+        child.painter().rect_filled(sep, 0.0, ui_line());
         child.add_space(2.0);
         if icon_button(&mut child, Icon::Plus, false, accent, &self.keys.caption("Add models", Command::AddModels)).clicked() {
             self.import_dialog();
@@ -745,9 +745,9 @@ impl App {
                         .inner_margin(10.0)
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                ui.label("Height");
+                                ui.label(crate::i18n::tr("Height"));
                                 ui.add(egui::Slider::new(&mut self.cut_z, 0.0..=top.max(0.1)).suffix(" mm").max_decimals(2));
-                                if ui.add_enabled(!self.selection.is_empty(), egui::Button::new("Cut")).clicked() {
+                                if ui.add_enabled(!self.selection.is_empty(), egui::Button::new(crate::i18n::tr("Cut"))).clicked() {
                                     do_cut = true;
                                 }
                             });
@@ -764,12 +764,13 @@ impl App {
                         .corner_radius(8.0)
                         .inner_margin(10.0)
                         .show(ui, |ui| {
+                            ui.visuals_mut().override_text_color = Some(CANVAS_TEXT);
                             ui.horizontal(|ui| {
                                 if self.tool == Tool::DrainHole {
-                                    ui.label("Hole size");
+                                    ui.label(crate::i18n::tr("Hole size"));
                                     ui.add(egui::DragValue::new(&mut self.resin_process.drain_diameter).range(0.5..=15.0).speed(0.05).suffix(" mm"));
                                 } else {
-                                    ui.checkbox(&mut self.show_overhang, "Highlight overhangs");
+                                    ui.checkbox(&mut self.show_overhang, crate::i18n::tr("Highlight overhangs"));
                                 }
                             });
                         });
@@ -784,9 +785,10 @@ impl App {
             let _ = bx;
             let top = world_bounds_of(&self.plate().objects).map(|(_, b)| b.z).unwrap_or(10.0).max(0.1);
             ui.scope_builder(egui::UiBuilder::new().max_rect(at), |ui| {
+                ui.visuals_mut().override_text_color = Some(CANVAS_TEXT);
                 ui.horizontal(|ui| {
                     let mut on = self.section_z.is_some();
-                    if ui.checkbox(&mut on, "Cut view").changed() {
+                    if ui.checkbox(&mut on, crate::i18n::tr("Cut view")).changed() {
                         self.section_z = if on { Some(top * 0.5) } else { None };
                     }
                     if let Some(z) = &mut self.section_z {
@@ -807,7 +809,7 @@ impl App {
                     self.frame_all();
                 }
                 for (name, yaw, pitch) in [("Top", 0.0f32, 1.5697963f32), ("Right", 1.5707964, 0.0), ("Front", 0.0, 0.0)] {
-                    let b = egui::Button::new(egui::RichText::new(name).small().color(DIM)).fill(Color32::from_rgba_unmultiplied(26, 29, 36, 220));
+                    let b = egui::Button::new(egui::RichText::new(crate::i18n::tr(name)).small().color(CANVAS_DIM)).fill(Color32::from_rgba_unmultiplied(26, 29, 36, 220));
                     if ui.add(b).clicked() {
                         self.camera.yaw = yaw;
                         self.camera.pitch = pitch;
@@ -822,9 +824,9 @@ impl App {
         let has = if self.resin() { self.resin_result.is_some() } else { self.fdm_result.is_some() };
         if !has {
             let painter = ui.painter_at(rect);
-            painter.text(rect.center() - Vec2::new(0.0, 28.0), egui::Align2::CENTER_CENTER, "Nothing sliced yet", egui::FontId::proportional(18.0), TEXT);
+            painter.text(rect.center() - Vec2::new(0.0, 28.0), egui::Align2::CENTER_CENTER, "Nothing sliced yet", egui::FontId::proportional(18.0), CANVAS_TEXT);
             let b = Rect::from_center_size(rect.center() + Vec2::new(0.0, 6.0), Vec2::new(130.0, 32.0));
-            let button = egui::Button::new(egui::RichText::new("Slice plate").strong().color(Color32::WHITE)).fill(accent);
+            let button = egui::Button::new(egui::RichText::new(crate::i18n::tr("Slice plate")).strong().color(Color32::WHITE)).fill(accent);
             if ui.put(b, button).clicked() {
                 self.start_slice();
             }
@@ -881,7 +883,7 @@ impl App {
                         ui.spacing_mut().slider_width = w.max(60.0);
                         ui.add(egui::Slider::new(&mut self.move_end, 0.0..=1.0).show_value(false));
                         let moves = res.layers[self.layer_high].seg_count;
-                        ui.label(egui::RichText::new(format!("{} moves", (moves as f32 * self.move_end) as u32)).small().color(DIM));
+                        ui.label(egui::RichText::new(format!("{} moves", (moves as f32 * self.move_end) as u32)).small().color(ui_dim()));
                     });
                 });
         });

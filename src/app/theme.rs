@@ -2,24 +2,117 @@
 
 use egui::{Color32, CornerRadius, FontId, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2};
 
-pub const BG: Color32 = Color32::from_rgb(17, 19, 24);
-pub const PANEL: Color32 = Color32::from_rgb(24, 27, 33);
-pub const PANEL_2: Color32 = Color32::from_rgb(32, 36, 44);
-pub const LINE: Color32 = Color32::from_rgb(46, 51, 61);
-pub const TEXT: Color32 = Color32::from_rgb(222, 226, 233);
-pub const DIM: Color32 = Color32::from_rgb(146, 153, 166);
-pub const FAINT: Color32 = Color32::from_rgb(98, 105, 118);
-pub const AMBER: Color32 = Color32::from_rgb(240, 138, 60);
-pub const TEAL: Color32 = Color32::from_rgb(44, 190, 178);
-pub const RED: Color32 = Color32::from_rgb(232, 84, 76);
-pub const GREEN: Color32 = Color32::from_rgb(94, 196, 120);
-pub const YELLOW: Color32 = Color32::from_rgb(232, 186, 74);
+use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU8, Ordering};
+
+/// Which colours the panels, menus and text use. The 3D view and the layer
+/// picture are drawn on a dark ground in both, as in most modelling tools.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum Theme {
+    #[default]
+    Dark,
+    Light,
+}
+
+impl Theme {
+    pub const ALL: [Theme; 2] = [Theme::Dark, Theme::Light];
+    pub fn label(self) -> &'static str {
+        match self {
+            Theme::Dark => "Dark theme",
+            Theme::Light => "Light theme",
+        }
+    }
+}
+
+static CURRENT: AtomicU8 = AtomicU8::new(0);
+
+pub fn set_theme(t: Theme) {
+    CURRENT.store(t as u8, Ordering::Relaxed);
+}
+
+pub fn theme() -> Theme {
+    if CURRENT.load(Ordering::Relaxed) == 1 {
+        Theme::Light
+    } else {
+        Theme::Dark
+    }
+}
+
+/// Pick by theme: first value for dark, second for light.
+fn pick(dark: (u8, u8, u8), light: (u8, u8, u8)) -> Color32 {
+    let (r, g, b) = if theme() == Theme::Dark { dark } else { light };
+    Color32::from_rgb(r, g, b)
+}
+
+pub fn ui_bg() -> Color32 {
+    pick((17, 19, 24), (232, 234, 239))
+}
+pub fn ui_panel() -> Color32 {
+    pick((24, 27, 33), (246, 247, 249))
+}
+pub fn ui_panel_2() -> Color32 {
+    pick((32, 36, 44), (230, 233, 239))
+}
+pub fn ui_line() -> Color32 {
+    pick((46, 51, 61), (205, 210, 220))
+}
+pub fn ui_text() -> Color32 {
+    pick((222, 226, 233), (28, 32, 40))
+}
+pub fn ui_dim() -> Color32 {
+    pick((146, 153, 166), (88, 96, 110))
+}
+pub fn ui_faint() -> Color32 {
+    pick((98, 105, 118), (122, 130, 145))
+}
+pub fn ui_red() -> Color32 {
+    pick((232, 84, 76), (196, 48, 42))
+}
+pub fn ui_green() -> Color32 {
+    pick((94, 196, 120), (30, 130, 64))
+}
+pub fn ui_yellow() -> Color32 {
+    pick((232, 186, 74), (148, 98, 0))
+}
+/// Strongest contrast with the panel: white on dark, black on light.
+pub fn ui_strong() -> Color32 {
+    pick((255, 255, 255), (0, 0, 0))
+}
+/// Fill of a button or tab under the pointer.
+pub fn ui_hover() -> Color32 {
+    pick((46, 51, 62), (214, 219, 229))
+}
+/// The bars along the top and bottom of the window.
+pub fn ui_bar() -> Color32 {
+    pick((20, 22, 27), (238, 240, 244))
+}
+/// A card in the side panels, and its edge.
+pub fn ui_card() -> Color32 {
+    pick((28, 31, 38), (255, 255, 255))
+}
+pub fn ui_card_line() -> Color32 {
+    pick((38, 42, 51), (212, 217, 227))
+}
+/// Pop-up notices.
+pub fn ui_toast() -> Color32 {
+    pick((34, 38, 46), (255, 255, 255))
+}
+fn amber() -> Color32 {
+    pick((240, 138, 60), (204, 96, 14))
+}
+fn teal() -> Color32 {
+    pick((44, 190, 178), (0, 138, 128))
+}
+
+/// Text drawn straight onto the 3D view or the layer picture, which stay dark.
+pub const CANVAS_TEXT: Color32 = Color32::from_rgb(222, 226, 233);
+pub const CANVAS_DIM: Color32 = Color32::from_rgb(146, 153, 166);
 
 pub fn accent(resin: bool) -> Color32 {
     if resin {
-        TEAL
+        teal()
     } else {
-        AMBER
+        amber()
     }
 }
 
@@ -45,40 +138,65 @@ pub fn apply_style(ctx: &egui::Context) {
     s.menu_margin = 6.into();
     s.window_margin = 12.into();
 
-    let mut v = egui::Visuals::dark();
-    v.panel_fill = PANEL;
-    v.window_fill = PANEL;
-    v.extreme_bg_color = Color32::from_rgb(14, 16, 20);
-    v.faint_bg_color = PANEL_2;
-    v.override_text_color = Some(TEXT);
-    v.window_stroke = Stroke::new(1.0, LINE);
+    let dark = theme() == Theme::Dark;
+    let (text, panel, panel_2, line) = (ui_text(), ui_panel(), ui_panel_2(), ui_line());
+    let mut v = if dark { egui::Visuals::dark() } else { egui::Visuals::light() };
+    // Fills for buttons and fields in the neutral, hovered and pressed states.
+    let (idle, hover, press, hover_edge, press_edge, select, extreme) = if dark {
+        (
+            Color32::from_rgb(48, 54, 66),
+            Color32::from_rgb(46, 51, 62),
+            Color32::from_rgb(56, 62, 75),
+            Color32::from_rgb(78, 86, 102),
+            Color32::from_rgb(110, 120, 140),
+            Color32::from_rgb(58, 66, 82),
+            Color32::from_rgb(14, 16, 20),
+        )
+    } else {
+        (
+            Color32::from_rgb(222, 226, 234),
+            Color32::from_rgb(212, 217, 228),
+            Color32::from_rgb(198, 205, 219),
+            Color32::from_rgb(150, 160, 180),
+            Color32::from_rgb(110, 122, 148),
+            Color32::from_rgb(176, 198, 232),
+            Color32::from_rgb(255, 255, 255),
+        )
+    };
+    let strong = if dark { Color32::WHITE } else { Color32::BLACK };
+    v.panel_fill = panel;
+    v.window_fill = panel;
+    v.extreme_bg_color = extreme;
+    v.faint_bg_color = panel_2;
+    v.override_text_color = Some(text);
+    v.window_stroke = Stroke::new(1.0, line);
     v.window_corner_radius = CornerRadius::same(8);
     v.menu_corner_radius = CornerRadius::same(6);
-    v.selection.bg_fill = Color32::from_rgb(58, 66, 82);
-    v.selection.stroke = Stroke::new(1.0, TEXT);
-    v.hyperlink_color = TEAL;
+    v.selection.bg_fill = select;
+    v.selection.stroke = Stroke::new(1.0, text);
+    v.hyperlink_color = accent(true);
     let round = CornerRadius::same(4);
     let w = &mut v.widgets;
-    w.noninteractive.bg_stroke = Stroke::new(1.0, LINE);
-    w.noninteractive.fg_stroke = Stroke::new(1.0, TEXT);
+    w.noninteractive.bg_stroke = Stroke::new(1.0, line);
+    w.noninteractive.fg_stroke = Stroke::new(1.0, text);
     w.noninteractive.corner_radius = round;
-    w.inactive.bg_fill = Color32::from_rgb(48, 54, 66);
-    w.inactive.weak_bg_fill = PANEL_2;
+    w.inactive.bg_fill = idle;
+    w.inactive.weak_bg_fill = panel_2;
     w.inactive.bg_stroke = Stroke::NONE;
-    w.inactive.fg_stroke = Stroke::new(1.0, TEXT);
+    w.inactive.fg_stroke = Stroke::new(1.0, text);
     w.inactive.corner_radius = round;
-    w.hovered.bg_fill = Color32::from_rgb(46, 51, 62);
-    w.hovered.weak_bg_fill = Color32::from_rgb(46, 51, 62);
-    w.hovered.bg_stroke = Stroke::new(1.0, Color32::from_rgb(78, 86, 102));
-    w.hovered.fg_stroke = Stroke::new(1.0, Color32::WHITE);
+    w.hovered.bg_fill = hover;
+    w.hovered.weak_bg_fill = hover;
+    w.hovered.bg_stroke = Stroke::new(1.0, hover_edge);
+    w.hovered.fg_stroke = Stroke::new(1.0, strong);
     w.hovered.corner_radius = round;
-    w.active.bg_fill = Color32::from_rgb(56, 62, 75);
-    w.active.weak_bg_fill = Color32::from_rgb(56, 62, 75);
-    w.active.bg_stroke = Stroke::new(1.0, Color32::from_rgb(110, 120, 140));
-    w.active.fg_stroke = Stroke::new(1.0, Color32::WHITE);
+    w.active.bg_fill = press;
+    w.active.weak_bg_fill = press;
+    w.active.bg_stroke = Stroke::new(1.0, press_edge);
+    w.active.fg_stroke = Stroke::new(1.0, strong);
     w.active.corner_radius = round;
-    w.open.bg_fill = Color32::from_rgb(46, 51, 62);
-    w.open.weak_bg_fill = Color32::from_rgb(46, 51, 62);
+    w.open.bg_fill = hover;
+    w.open.weak_bg_fill = hover;
     w.open.corner_radius = round;
     style.visuals = v;
     ctx.set_global_style(style);
@@ -232,7 +350,7 @@ pub fn draw_icon(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
 /// A square icon button. Lights up when `active`.
 pub fn icon_button(ui: &mut egui::Ui, icon: Icon, active: bool, accent: Color32, tip: &str) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(30.0), egui::Sense::click());
-    let resp = resp.on_hover_text(tip);
+    let resp = resp.on_hover_text(crate::i18n::tr(tip));
     let painter = ui.painter();
     let fill = if active {
         accent.gamma_multiply(0.28)
@@ -245,7 +363,7 @@ pub fn icon_button(ui: &mut egui::Ui, icon: Icon, active: bool, accent: Color32,
     if active {
         painter.rect_stroke(rect, 5.0, Stroke::new(1.0, accent), StrokeKind::Inside);
     }
-    let color = if active { accent } else if resp.hovered() { Color32::WHITE } else { DIM };
+    let color = if active { accent } else if resp.hovered() { Color32::WHITE } else { CANVAS_DIM };
     draw_icon(painter, rect.shrink(7.0), icon, color);
     resp
 }
@@ -254,11 +372,11 @@ pub fn icon_button(ui: &mut egui::Ui, icon: Icon, active: bool, accent: Color32,
 pub fn section(ui: &mut egui::Ui, title: &str) {
     ui.add_space(6.0);
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(title).size(11.5).color(DIM).strong());
+        ui.label(egui::RichText::new(crate::i18n::tr(title)).size(11.5).color(ui_dim()).strong());
         let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 10.0), egui::Sense::hover());
         ui.painter().line_segment(
             [Pos2::new(rect.left() + 4.0, rect.center().y), Pos2::new(rect.right(), rect.center().y)],
-            Stroke::new(1.0, LINE),
+            Stroke::new(1.0, ui_line()),
         );
     });
     ui.add_space(2.0);
@@ -284,4 +402,50 @@ pub fn ramp(t: f32) -> [u8; 3] {
         (a[1] + (b[1] - a[1]) * f) as u8,
         (a[2] + (b[2] - a[2]) * f) as u8,
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn luminance(c: Color32) -> f32 {
+        let f = |v: u8| {
+            let v = v as f32 / 255.0;
+            if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * f(c.r()) + 0.7152 * f(c.g()) + 0.0722 * f(c.b())
+    }
+
+    fn contrast(a: Color32, b: Color32) -> f32 {
+        let (x, y) = (luminance(a), luminance(b));
+        (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    }
+
+    #[test]
+    fn both_themes_keep_text_readable_on_their_panels() {
+        // One test, since the theme is a global.
+        for t in Theme::ALL {
+            set_theme(t);
+            for (name, c, min) in [
+                ("text", ui_text(), 7.0),
+                ("dim", ui_dim(), 4.5),
+                ("red", ui_red(), 4.0),
+                ("green", ui_green(), 4.0),
+                ("yellow", ui_yellow(), 4.0),
+                ("accent fdm", accent(false), 3.0),
+                ("accent resin", accent(true), 3.0),
+            ] {
+                let r = contrast(c, ui_panel());
+                assert!(r >= min, "{t:?} {name}: contrast {r:.1} on the panel");
+            }
+            // Faint is a hint colour, not for reading long text.
+            assert!(contrast(ui_faint(), ui_panel()) >= 2.5, "{t:?} faint");
+            // Lines stand apart from the panel.
+            assert!(ui_line() != ui_panel());
+        }
+        // Text over the 3D view is readable on its dark ground.
+        assert!(contrast(CANVAS_TEXT, Color32::from_rgb(20, 22, 28)) >= 7.0);
+        assert!(contrast(CANVAS_DIM, Color32::from_rgb(20, 22, 28)) >= 4.5);
+        set_theme(Theme::Dark);
+    }
 }

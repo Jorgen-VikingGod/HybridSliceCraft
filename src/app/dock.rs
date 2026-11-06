@@ -214,12 +214,12 @@ impl App {
         egui::Panel::left("dock_left")
             .default_size(318.0)
             .size_range(260.0..=480.0)
-            .frame(egui::Frame::new().fill(PANEL).inner_margin(egui::Margin::same(8)))
+            .frame(egui::Frame::new().fill(ui_panel()).inner_margin(egui::Margin::same(8)))
             .show(ui, |ui| self.dock_side(ui, true));
         egui::Panel::right("dock_right")
             .default_size(318.0)
             .size_range(240.0..=480.0)
-            .frame(egui::Frame::new().fill(PANEL).inner_margin(egui::Margin::same(8)))
+            .frame(egui::Frame::new().fill(ui_panel()).inner_margin(egui::Margin::same(8)))
             .show(ui, |ui| self.dock_side(ui, false));
         self.editor_windows(ui.ctx());
         // A drag dropped outside both panels just ends.
@@ -260,7 +260,7 @@ impl App {
                 }
                 if card_rects.is_empty() && !(!left && self.stage == Stage::Preview) {
                     ui.add_space(20.0);
-                    ui.label(RichText::new("Drag a section here by its title.").color(FAINT));
+                    ui.label(RichText::new(crate::i18n::tr("Drag a section here by its title.")).color(ui_faint()));
                 }
                 ui.add_space(14.0);
             });
@@ -313,8 +313,8 @@ impl App {
         let folded = self.layout.folded.contains(&sec);
         let dragging_me = egui::DragAndDrop::payload::<Section>(&ctx).map(|p| *p == sec).unwrap_or(false);
         let frame = egui::Frame::new()
-            .fill(if dragging_me { PANEL_2 } else { Color32::from_rgb(28, 31, 38) })
-            .stroke(Stroke::new(1.0, if dragging_me { self.accent() } else { Color32::from_rgb(38, 42, 51) }))
+            .fill(if dragging_me { ui_panel_2() } else { ui_card() })
+            .stroke(Stroke::new(1.0, if dragging_me { self.accent() } else { ui_card_line() }))
             .corner_radius(6.0)
             .inner_margin(egui::Margin { left: 8, right: 8, top: 4, bottom: if folded { 4 } else { 8 } });
         let response = frame.show(ui, |ui| {
@@ -330,15 +330,15 @@ impl App {
             for row in 0..3 {
                 for col in 0..2 {
                     let c = Pos2::new(bar.left() + 3.0 + col as f32 * 4.0, bar.center().y - 4.0 + row as f32 * 4.0);
-                    painter.circle_filled(c, 1.1, if hovered { DIM } else { FAINT });
+                    painter.circle_filled(c, 1.1, if hovered { ui_dim() } else { ui_faint() });
                 }
             }
             painter.text(
                 Pos2::new(bar.left() + 14.0, bar.center().y),
                 Align2::LEFT_CENTER,
-                sec.title(),
+                crate::i18n::tr(sec.title()),
                 FontId::proportional(11.5),
-                if hovered { TEXT } else { DIM },
+                if hovered { ui_text() } else { ui_dim() },
             );
             // Fold arrow.
             let arrow_c = Pos2::new(bar.right() - 6.0, bar.center().y);
@@ -347,7 +347,7 @@ impl App {
             } else {
                 vec![arrow_c + Vec2::new(-4.0, -2.0), arrow_c + Vec2::new(4.0, -2.0), arrow_c + Vec2::new(0.0, 3.0)]
             };
-            painter.add(egui::Shape::convex_polygon(pts, if hovered { TEXT } else { FAINT }, Stroke::NONE));
+            painter.add(egui::Shape::convex_polygon(pts, if hovered { ui_text() } else { ui_faint() }, Stroke::NONE));
             if hovered {
                 ctx.set_cursor_icon(egui::CursorIcon::Grab);
             }
@@ -358,7 +358,7 @@ impl App {
                 ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
                 if let Some(p) = ctx.input(|i| i.pointer.hover_pos()) {
                     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, Id::unique("dock_ghost")));
-                    let galley = painter.layout_no_wrap(sec.title().to_string(), FontId::proportional(12.0), Color32::WHITE);
+                    let galley = painter.layout_no_wrap(crate::i18n::tr(sec.title()).to_string(), FontId::proportional(12.0), Color32::WHITE);
                     let r = Rect::from_min_size(p + Vec2::new(14.0, 6.0), galley.size() + Vec2::new(16.0, 8.0));
                     painter.rect_filled(r, 5.0, self.accent().gamma_multiply(0.9));
                     painter.galley(r.min + Vec2::new(8.0, 4.0), galley, Color32::WHITE);
@@ -367,16 +367,16 @@ impl App {
             if bar_resp.clicked() {
                 actions.push(CardAction::Fold(sec));
             }
-            bar_resp.on_hover_text("Click to fold. Drag to move it, even to the other panel. Right-click for more.").context_menu(|ui| {
-                if ui.button(if folded { "Unfold" } else { "Fold" }).clicked() {
+            bar_resp.on_hover_text(crate::i18n::tr("Click to fold. Drag to move it, even to the other panel. Right-click for more.")).context_menu(|ui| {
+                if ui.button(crate::i18n::tr(if folded { "Unfold" } else { "Fold" })).clicked() {
                     actions.push(CardAction::Fold(sec));
                     ui.close();
                 }
-                if index > 0 && ui.button("Move up").clicked() {
+                if index > 0 && ui.button(crate::i18n::tr("Move up")).clicked() {
                     actions.push(CardAction::Move { sec, to_left: left, index: index - 1 });
                     ui.close();
                 }
-                if index + 1 < count && ui.button("Move down").clicked() {
+                if index + 1 < count && ui.button(crate::i18n::tr("Move down")).clicked() {
                     actions.push(CardAction::Move { sec, to_left: left, index: index + 2 });
                     ui.close();
                 }
@@ -386,7 +386,7 @@ impl App {
                     ui.close();
                 }
                 ui.separator();
-                if ui.button("Restore default layout").clicked() {
+                if ui.button(crate::i18n::tr("Restore default layout")).clicked() {
                     actions.push(CardAction::Reset);
                     ui.close();
                 }
@@ -424,7 +424,7 @@ impl App {
 
     /// Shown in a card that needs a model picked first.
     pub fn select_hint(&self, ui: &mut egui::Ui, what: &str) {
-        ui.label(RichText::new(format!("Select a model to {what}.")).color(FAINT));
+        ui.label(RichText::new(format!("Select a model to {what}.")).color(ui_faint()));
     }
 
     fn orient_section(&mut self, ui: &mut egui::Ui) {
@@ -435,16 +435,16 @@ impl App {
         } else {
             "Turns the model for the fewest overhangs and a large flat base."
         };
-        ui.label(RichText::new(text).small().color(DIM));
+        ui.label(RichText::new(text).small().color(ui_dim()));
         ui.add_space(2.0);
         ui.horizontal_wrapped(|ui| {
-            if ui.add_enabled(has, egui::Button::new("Auto-orient")).on_hover_text(format!("Shortcut: {}", self.keys.hint(Command::Orient))).clicked() {
+            if ui.add_enabled(has, egui::Button::new(crate::i18n::tr("Auto-orient"))).on_hover_text(format!("{} {}", crate::i18n::tr("Shortcut:"), self.keys.hint(Command::Orient))).clicked() {
                 self.orient_selected();
             }
-            if ui.add_enabled(has, egui::Button::new("Lay a face flat")).on_hover_text(format!("Then click a surface of the model. Shortcut: {}", self.keys.hint(Command::LayFlat))).clicked() {
+            if ui.add_enabled(has, egui::Button::new(crate::i18n::tr("Lay a face flat"))).on_hover_text(format!("{} {} {}", crate::i18n::tr("Then click a surface of the model."), crate::i18n::tr("Shortcut:"), self.keys.hint(Command::LayFlat))).clicked() {
                 self.tool = Tool::LayFlat;
             }
-            if ui.button("Arrange plate").on_hover_text(format!("Shortcut: {}", self.keys.hint(Command::Arrange))).clicked() {
+            if ui.button(crate::i18n::tr("Arrange plate")).on_hover_text(format!("{} {}", crate::i18n::tr("Shortcut:"), self.keys.hint(Command::Arrange))).clicked() {
                 self.arrange_now(&ctx);
             }
         });
@@ -454,16 +454,16 @@ impl App {
             if let Some(o) = self.selected() {
                 let r = crate::scene::orient_report(o);
                 ui.add_space(4.0);
-                ui.label(RichText::new("HOW IT SITS NOW").small().color(FAINT));
+                ui.label(RichText::new(crate::i18n::tr("HOW IT SITS NOW")).small().color(ui_faint()));
                 panels::stat(ui, "Print height", format!("{:.1} mm", r.height));
                 panels::stat(ui, "Lies on the plate", format!("{:.0} mm²", r.base));
                 panels::stat(ui, "Flat roof (suction)", format!("{:.0} mm²", r.roof));
                 panels::stat(ui, "Needs support", format!("{:.0} mm²", r.overhang));
                 if r.roof > 200.0 {
-                    ui.label(RichText::new("A big flat roof traps resin and pulls hard when peeling. Try Auto-orient, or tilt the model.").small().color(YELLOW));
+                    ui.label(RichText::new(crate::i18n::tr("A big flat roof traps resin and pulls hard when peeling. Try Auto-orient, or tilt the model.")).small().color(ui_yellow()));
                 }
                 if r.slender > 3.0 {
-                    ui.label(RichText::new("Tall and narrow: it may sway while peeling. Laying it down helps.").small().color(YELLOW));
+                    ui.label(RichText::new(crate::i18n::tr("Tall and narrow: it may sway while peeling. Laying it down helps.")).small().color(ui_yellow()));
                 }
             }
         }
