@@ -3,6 +3,7 @@ name = "hybridslicecraft"
 version = "0.2.0"
 edition = "2021"
 authors = ["Jürgen Könnemann"]
+license = "MIT"
 description = "Hybrid slicer for filament (FDM) and resin (MSLA) 3D printers"
 
 [[bin]]

@@ -74,3 +74,7 @@ Add model files after the command to open them straight away. Run with `--help` 
 - Printed files haven't been tried on real printers. Check a small print first, especially with the CTB format.
 - Only Linux has been built and run so far. Windows and macOS are the intended next targets.
 - Printing with two nozzle sizes assumes the printer's firmware handles each tool's offsets, as tool changers and IDEX printers do.
+
+## License
+
+Released under the [MIT License](LICENSE).
