@@ -438,13 +438,13 @@ impl App {
         ui.label(RichText::new(text).small().color(DIM));
         ui.add_space(2.0);
         ui.horizontal_wrapped(|ui| {
-            if ui.add_enabled(has, egui::Button::new("Auto-orient")).on_hover_text("Shortcut: O").clicked() {
+            if ui.add_enabled(has, egui::Button::new("Auto-orient")).on_hover_text(format!("Shortcut: {}", self.keys.hint(Command::Orient))).clicked() {
                 self.orient_selected();
             }
-            if ui.add_enabled(has, egui::Button::new("Lay a face flat")).on_hover_text("Then click a surface of the model. Shortcut: F").clicked() {
+            if ui.add_enabled(has, egui::Button::new("Lay a face flat")).on_hover_text(format!("Then click a surface of the model. Shortcut: {}", self.keys.hint(Command::LayFlat))).clicked() {
                 self.tool = Tool::LayFlat;
             }
-            if ui.button("Arrange plate").on_hover_text("Shortcut: A").clicked() {
+            if ui.button("Arrange plate").on_hover_text(format!("Shortcut: {}", self.keys.hint(Command::Arrange))).clicked() {
                 self.arrange_now(&ctx);
             }
         });

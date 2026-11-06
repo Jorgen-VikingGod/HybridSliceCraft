@@ -719,14 +719,14 @@ impl App {
         let (sep, _) = child.allocate_exact_size(Vec2::new(26.0, 1.0), Sense::hover());
         child.painter().rect_filled(sep, 0.0, LINE);
         child.add_space(2.0);
-        if icon_button(&mut child, Icon::Plus, false, accent, "Add models  (Ctrl+O)").clicked() {
+        if icon_button(&mut child, Icon::Plus, false, accent, &self.keys.caption("Add models", Command::AddModels)).clicked() {
             self.import_dialog();
         }
         let ctx = child.ctx().clone();
-        if icon_button(&mut child, Icon::Arrange, false, accent, "Arrange the plate  (A)").clicked() {
+        if icon_button(&mut child, Icon::Arrange, false, accent, &self.keys.caption("Arrange the plate", Command::Arrange)).clicked() {
             self.arrange_now(&ctx);
         }
-        if icon_button(&mut child, Icon::Orient, false, accent, "Auto-orient the selection  (O)").clicked() {
+        if icon_button(&mut child, Icon::Orient, false, accent, &self.keys.caption("Auto-orient the selection", Command::Orient)).clicked() {
             self.orient_selected();
         }
     }
@@ -803,7 +803,7 @@ impl App {
         ui.scope_builder(egui::UiBuilder::new().max_rect(at), |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                if icon_button(ui, Icon::Home, false, self.accent(), "Home view  (Home)").clicked() {
+                if icon_button(ui, Icon::Home, false, self.accent(), &self.keys.caption("Home view", Command::HomeView)).clicked() {
                     self.frame_all();
                 }
                 for (name, yaw, pitch) in [("Top", 0.0f32, 1.5697963f32), ("Right", 1.5707964, 0.0), ("Front", 0.0, 0.0)] {
