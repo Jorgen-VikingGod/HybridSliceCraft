@@ -47,6 +47,70 @@ fn segmented<T: Copy + PartialEq>(ui: &mut egui::Ui, value: &mut T, options: &[(
 }
 
 impl App {
+    /// The list of commands with their keys. Click a key to pick a new one.
+    fn shortcut_editor(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        use crate::keys::{Binding, Command};
+        // Catch the next key while one is waiting.
+        if let Some(command) = self.capturing {
+            let pressed = ctx.input(|i| {
+                i.events.iter().find_map(|e| match e {
+                    egui::Event::Key { key, pressed: true, repeat: false, modifiers, .. } => Some((*key, *modifiers)),
+                    _ => None,
+                })
+            });
+            if let Some((key, m)) = pressed {
+                if key == egui::Key::Escape {
+                    self.key_notice.clear();
+                } else {
+                    let b = Binding::new(key, m.command, m.shift, m.alt);
+                    self.key_notice = match self.keys.set(command, b) {
+                        Some(other) => format!("{} was on {}. It has no key now.", b.text(), other.label()),
+                        None => String::new(),
+                    };
+                    self.keys.save();
+                }
+                self.capturing = None;
+            }
+        }
+        egui::Grid::new("keys").num_columns(3).spacing([14.0, 5.0]).show(ui, |ui| {
+            for c in Command::ALL {
+                ui.label(c.label());
+                let waiting = self.capturing == Some(c);
+                let text = if waiting {
+                    "Press a key…  (Esc cancels)".to_string()
+                } else {
+                    let keys: Vec<String> = self.keys.bindings(c).iter().map(|b| b.text()).collect();
+                    if keys.is_empty() { "—".to_string() } else { keys.join("   ") }
+                };
+                let button = egui::Button::new(RichText::new(text).strong()).min_size(Vec2::new(170.0, 0.0));
+                if ui.add(button).on_hover_text("Click, then press the new key").clicked() {
+                    self.capturing = if waiting { None } else { Some(c) };
+                    self.key_notice.clear();
+                }
+                ui.horizontal(|ui| {
+                    if ui.add_enabled(!self.keys.bindings(c).is_empty(), egui::Button::new("Clear").small()).on_hover_text("Leave this without a key").clicked() {
+                        self.keys.clear(c);
+                        self.keys.save();
+                    }
+                    if ui.add_enabled(!self.keys.is_default(c), egui::Button::new("Reset").small()).on_hover_text("Back to the usual key").clicked() {
+                        self.keys.reset(c);
+                        self.keys.save();
+                    }
+                });
+                ui.end_row();
+            }
+        });
+        if !self.key_notice.is_empty() {
+            ui.label(RichText::new(&self.key_notice).small().color(YELLOW));
+        }
+        ui.add_space(4.0);
+        if ui.button("Reset all to the defaults").clicked() {
+            self.keys.reset_all();
+            self.keys.save();
+            self.key_notice.clear();
+        }
+    }
+
     pub fn top_bar(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         egui::Panel::top("top_bar")
@@ -95,7 +159,7 @@ impl App {
                         let button = egui::Button::new(RichText::new(slice_text).strong().color(Color32::WHITE))
                             .fill(if current { PANEL_2 } else { accent })
                             .min_size(Vec2::new(104.0, 28.0));
-                        let slice = ui.add_enabled(self.job.is_none(), button).on_hover_text("Ctrl+R");
+                        let slice = ui.add_enabled(self.job.is_none(), button).on_hover_text(self.keys.hint(Command::Slice));
                         if slice.clicked() {
                             self.start_slice();
                         }
@@ -125,7 +189,7 @@ impl App {
                 self.project_path = None;
                 ui.close();
             }
-            if ui.button("Add models…  (Ctrl+O)").clicked() {
+            if ui.button(self.keys.caption("Add models…", Command::AddModels)).clicked() {
                 self.import_dialog();
                 ui.close();
             }
@@ -134,7 +198,7 @@ impl App {
                 ui.close();
             }
             ui.separator();
-            if ui.button("Save project  (Ctrl+S)").clicked() {
+            if ui.button(self.keys.caption("Save project", Command::SaveProject)).clicked() {
                 self.save_project(ctx, false);
                 ui.close();
             }
@@ -143,7 +207,7 @@ impl App {
                 ui.close();
             }
             ui.separator();
-            if ui.button("Save print…  (Ctrl+E)").clicked() {
+            if ui.button(self.keys.caption("Save print…", Command::SavePrint)).clicked() {
                 self.export_print(ctx);
                 ui.close();
             }
@@ -161,20 +225,20 @@ impl App {
             }
         });
         ui.menu_button("Edit", |ui| {
-            if ui.add_enabled(!self.undo.is_empty(), egui::Button::new("Undo  (Ctrl+Z)")).clicked() {
+            if ui.add_enabled(!self.undo.is_empty(), egui::Button::new(self.keys.caption("Undo", Command::Undo))).clicked() {
                 self.do_undo();
                 ui.close();
             }
-            if ui.add_enabled(!self.redo.is_empty(), egui::Button::new("Redo  (Ctrl+Y)")).clicked() {
+            if ui.add_enabled(!self.redo.is_empty(), egui::Button::new(self.keys.caption("Redo", Command::Redo))).clicked() {
                 self.do_redo();
                 ui.close();
             }
             ui.separator();
-            if ui.button("Select all  (Ctrl+A)").clicked() {
+            if ui.button(self.keys.caption("Select all", Command::SelectAll)).clicked() {
                 self.select_all();
                 ui.close();
             }
-            if ui.button("Duplicate  (Ctrl+D)").clicked() {
+            if ui.button(self.keys.caption("Duplicate", Command::Duplicate)).clicked() {
                 self.duplicate_selected();
                 ui.close();
             }
@@ -186,7 +250,7 @@ impl App {
                     }
                 }
             });
-            if ui.button("Delete  (Del)").clicked() {
+            if ui.button(self.keys.caption("Delete", Command::Delete)).clicked() {
                 self.delete_selected();
                 ui.close();
             }
@@ -196,7 +260,7 @@ impl App {
             }
         });
         ui.menu_button("View", |ui| {
-            if ui.button("Home view  (Home)").clicked() {
+            if ui.button(self.keys.caption("Home view", Command::HomeView)).clicked() {
                 self.frame_all();
                 ui.close();
             }
@@ -407,31 +471,13 @@ impl App {
         egui::Window::new("Keyboard shortcuts")
             .open(&mut open)
             .collapsible(false)
-            .default_width(320.0)
+            .default_width(420.0)
             .show(ctx, |ui| {
-                egui::Grid::new("keys").num_columns(2).spacing([24.0, 4.0]).show(ui, |ui| {
-                    for (k, what) in [
-                        ("Ctrl+O", "Add models"),
-                        ("Ctrl+S", "Save project"),
-                        ("Ctrl+R", "Slice"),
-                        ("Ctrl+E", "Save print"),
-                        ("Ctrl+Z / Ctrl+Y", "Undo / redo"),
-                        ("Ctrl+D", "Duplicate"),
-                        ("Del", "Delete"),
-                        ("M / R / S", "Move / turn / resize"),
-                        ("F", "Lay a face flat"),
-                        ("C", "Cut"),
-                        ("A", "Arrange the plate"),
-                        ("O", "Auto-orient"),
-                        ("Tab", "Prepare / preview"),
-                        ("Home", "Reset the view"),
-                    ] {
-                        ui.label(RichText::new(k).strong());
-                        ui.label(what);
-                        ui.end_row();
-                    }
-                });
+                self.shortcut_editor(ui, ctx);
             });
+        if !open {
+            self.capturing = None;
+        }
         self.show_shortcuts = open;
 
         let mut open = self.show_note;

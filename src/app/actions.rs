@@ -934,75 +934,47 @@ impl App {
     }
 
     pub fn handle_keys(&mut self, ctx: &egui::Context) {
-        if ctx.egui_wants_keyboard_input() {
+        // While a new key is being picked, the keypress belongs to that.
+        if self.capturing.is_some() || ctx.egui_wants_keyboard_input() {
             return;
         }
-        use egui::{Key, Modifiers as M};
-        let cmd = M::COMMAND;
-        let mut actions: Vec<fn(&mut App, &egui::Context)> = Vec::new();
+        let mut commands = Vec::new();
         ctx.input_mut(|i| {
-            if i.consume_key(cmd | M::SHIFT, Key::S) {
-                actions.push(|a, c| a.save_project(c, true));
-            }
-            if i.consume_key(cmd, Key::S) {
-                actions.push(|a, c| a.save_project(c, false));
-            }
-            if i.consume_key(cmd | M::SHIFT, Key::Z) || i.consume_key(cmd, Key::Y) {
-                actions.push(|a, _| a.do_redo());
-            }
-            if i.consume_key(cmd, Key::Z) {
-                actions.push(|a, _| a.do_undo());
-            }
-            if i.consume_key(cmd, Key::O) {
-                actions.push(|a, _| a.import_dialog());
-            }
-            if i.consume_key(cmd, Key::R) {
-                actions.push(|a, _| a.start_slice());
-            }
-            if i.consume_key(cmd, Key::E) {
-                actions.push(|a, c| a.export_print(c));
-            }
-            if i.consume_key(cmd, Key::D) {
-                actions.push(|a, _| a.duplicate_selected());
-            }
-            if i.consume_key(cmd, Key::A) {
-                actions.push(|a, _| a.select_all());
-            }
-            if i.consume_key(M::NONE, Key::Delete) || i.consume_key(M::NONE, Key::Backspace) {
-                actions.push(|a, _| a.delete_selected());
-            }
-            if i.consume_key(M::NONE, Key::M) {
-                actions.push(|a, _| a.tool = Tool::Move);
-            }
-            if i.consume_key(M::NONE, Key::R) {
-                actions.push(|a, _| a.tool = Tool::Rotate);
-            }
-            if i.consume_key(M::NONE, Key::S) {
-                actions.push(|a, _| a.tool = Tool::Scale);
-            }
-            if i.consume_key(M::NONE, Key::F) {
-                actions.push(|a, _| a.tool = Tool::LayFlat);
-            }
-            if i.consume_key(M::NONE, Key::C) {
-                actions.push(|a, _| a.tool = Tool::Cut);
-            }
-            if i.consume_key(M::NONE, Key::A) {
-                actions.push(|a, c| a.arrange_now(c));
-            }
-            if i.consume_key(M::NONE, Key::O) {
-                actions.push(|a, _| a.orient_selected());
-            }
-            if i.consume_key(M::NONE, Key::Home) {
-                actions.push(|a, _| a.frame_all());
-            }
-            if i.consume_key(M::NONE, Key::Tab) {
-                actions.push(|a, _| {
-                    a.stage = if a.stage == Stage::Prepare { Stage::Preview } else { Stage::Prepare };
-                });
+            for (command, b) in self.keys.in_matching_order() {
+                if i.consume_key(b.modifiers(), b.key) {
+                    commands.push(command);
+                }
             }
         });
-        for a in actions {
-            a(self, ctx);
+        for c in commands {
+            self.run_command(c, ctx);
+        }
+    }
+
+    /// Do what a key or a menu entry asks for.
+    pub fn run_command(&mut self, command: Command, ctx: &egui::Context) {
+        match command {
+            Command::AddModels => self.import_dialog(),
+            Command::SaveProject => self.save_project(ctx, false),
+            Command::SaveProjectAs => self.save_project(ctx, true),
+            Command::Slice => self.start_slice(),
+            Command::SavePrint => self.export_print(ctx),
+            Command::Undo => self.do_undo(),
+            Command::Redo => self.do_redo(),
+            Command::Duplicate => self.duplicate_selected(),
+            Command::SelectAll => self.select_all(),
+            Command::Delete => self.delete_selected(),
+            Command::ToolMove => self.tool = Tool::Move,
+            Command::ToolRotate => self.tool = Tool::Rotate,
+            Command::ToolScale => self.tool = Tool::Scale,
+            Command::LayFlat => self.tool = Tool::LayFlat,
+            Command::Cut => self.tool = Tool::Cut,
+            Command::Arrange => self.arrange_now(ctx),
+            Command::Orient => self.orient_selected(),
+            Command::HomeView => self.frame_all(),
+            Command::TogglePreview => {
+                self.stage = if self.stage == Stage::Prepare { Stage::Preview } else { Stage::Prepare };
+            }
         }
     }
 

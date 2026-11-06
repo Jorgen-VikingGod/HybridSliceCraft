@@ -4,6 +4,7 @@
 mod app;
 mod fdm;
 mod geom;
+mod keys;
 mod mesh;
 mod profiles;
 mod project;

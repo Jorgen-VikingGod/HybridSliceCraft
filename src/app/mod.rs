@@ -10,6 +10,7 @@ pub mod theme;
 mod top;
 mod view;
 
+use crate::keys::Command;
 use crate::fdm::{FdmResult, Feature};
 use crate::mesh::Mesh;
 use crate::profiles::*;
@@ -164,6 +165,10 @@ pub struct App {
     pub cut_z: f32,
     /// Copies for the array tool: across, deep, and the space between.
     pub array: (u32, u32, f32),
+    /// Keyboard shortcuts, and the command waiting for its new key.
+    pub keys: crate::keys::Keymap,
+    pub capturing: Option<crate::keys::Command>,
+    pub key_notice: String,
     pub measure: Vec<Vec3>,
     pub show_overhang: bool,
     pub lock_scale: bool,
@@ -310,6 +315,9 @@ impl App {
             drag: None,
             cut_z: 10.0,
             array: (2, 2, 5.0),
+            keys: crate::keys::Keymap::load(),
+            capturing: None,
+            key_notice: String::new(),
             measure: Vec::new(),
             show_overhang: false,
             lock_scale: true,
