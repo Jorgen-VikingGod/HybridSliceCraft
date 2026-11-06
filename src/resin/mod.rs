@@ -28,6 +28,50 @@ pub struct ResinJob {
     pub name: String,
 }
 
+/// How worried to be about a floating part, by the area that is cut off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum IslandSeverity {
+    /// Barely there: often just the tip of a support. Resin may hold it.
+    Speck,
+    /// Small, but enough to drop into the vat and spoil a print.
+    Minor,
+    /// A real piece of the model with nothing under it.
+    Critical,
+}
+
+impl IslandSeverity {
+    pub fn of(area_mm2: f32) -> Self {
+        if area_mm2 >= 1.0 {
+            IslandSeverity::Critical
+        } else if area_mm2 >= 0.15 {
+            IslandSeverity::Minor
+        } else {
+            IslandSeverity::Speck
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            IslandSeverity::Critical => "Needs support",
+            IslandSeverity::Minor => "Small",
+            IslandSeverity::Speck => "Speck",
+        }
+    }
+}
+
+/// One floating part, ready for a list: where it is and how big.
+#[derive(Clone, Debug)]
+pub struct IslandEntry {
+    /// Index of the layer it starts on.
+    pub layer: usize,
+    pub z: f32,
+    /// Where on the plate (mm), at its centre.
+    pub x: f32,
+    pub y: f32,
+    pub area_mm2: f32,
+    pub severity: IslandSeverity,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct LayerStat {
     pub z: f32,
@@ -53,6 +97,8 @@ pub struct ResinResult {
     pub slice_seconds: f32,
     pub trapped_ml: f32,
     pub unsupported_islands: usize,
+    /// Every floating part, biggest first.
+    pub island_entries: Vec<IslandEntry>,
     pub engine_note: String,
 }
 
@@ -287,7 +333,20 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
     let mut volume = 0.0f64;
     let mut max_area = 0.0f32;
     let mut unsupported = 0usize;
+    let mut entries: Vec<IslandEntry> = Vec::new();
     for (i, isl) in islands.into_iter().enumerate() {
+        for f in &isl {
+            let area_mm2 = f.area_px as f32 * pixel_area as f32;
+            let (x, y) = spec.from_px((f.bbox[0] + f.bbox[2]) as f32 * 0.5, (f.bbox[1] + f.bbox[3]) as f32 * 0.5);
+            entries.push(IslandEntry {
+                layer: i,
+                z: ((i + 1) as f64 * h) as f32,
+                x,
+                y,
+                area_mm2,
+                severity: IslandSeverity::of(area_mm2),
+            });
+        }
         let area = (layers[i].lit * pixel_area) as f32;
         let exposure = exposure_for(i, p, &job.material);
         let t = layer_time(i, p, exposure);
@@ -303,10 +362,28 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
             islands: isl,
         });
     }
+    entries.sort_by(|a, b| b.area_mm2.total_cmp(&a.area_mm2).then(a.layer.cmp(&b.layer)));
     if unsupported > 0 {
+        let count = |k: IslandSeverity| entries.iter().filter(|e| e.severity == k).count();
+        let (big, small, specks) = (count(IslandSeverity::Critical), count(IslandSeverity::Minor), count(IslandSeverity::Speck));
         let what = if unsupported == 1 { "1 part starts".to_string() } else { format!("{unsupported} parts start") };
+        let mut kinds = Vec::new();
+        if big > 0 {
+            kinds.push(format!("{big} large"));
+        }
+        if small > 0 {
+            kinds.push(format!("{small} small"));
+        }
+        if specks > 0 {
+            kinds.push(format!("{specks} specks"));
+        }
+        let worst = &entries[0];
         warnings.push(format!(
-            "{what} in mid-air and would fall into the vat. Marked in red on the layer view; add supports there."
+            "{what} in mid-air ({}) and would fall into the vat. The biggest is {:.1} mm² at layer {} ({:.1} mm up). Marked on the layer view; add supports there.",
+            kinds.join(", "),
+            worst.area_mm2,
+            worst.layer + 1,
+            worst.z,
         ));
     }
     let screen = spec.size_x * spec.size_y;
@@ -341,6 +418,7 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
         slice_seconds: started.elapsed().as_secs_f32(),
         trapped_ml,
         unsupported_islands: unsupported,
+        island_entries: entries,
         engine_note: note,
     })
 }
@@ -568,6 +646,31 @@ mod tests {
         assert_eq!(r.stats[40].islands.len(), 1);
         assert!(r.warnings.iter().any(|w| w.contains("mid-air")));
         assert!(r.warnings.iter().any(|w| w.starts_with("1 part starts")));
+        // The report says where it is and how big.
+        assert_eq!(r.island_entries.len(), 1);
+        let e = &r.island_entries[0];
+        assert_eq!(e.layer, 40);
+        assert_eq!(e.severity, IslandSeverity::Critical);
+        assert!((e.area_mm2 - 25.0).abs() < 1.0, "{}", e.area_mm2);
+        assert!((e.x - 62.5).abs() < 0.5 && (e.y - 32.5).abs() < 0.5, "{} {}", e.x, e.y);
+        assert!((e.z - 4.1).abs() < 0.11, "{}", e.z);
+        assert!(r.warnings.iter().any(|w| w.contains("1 large") && w.contains("layer 41")), "{:?}", r.warnings);
+    }
+
+    #[test]
+    fn island_report_orders_by_size_and_sorts_severity() {
+        let mut m = make_box(Vec3::splat(10.0)).transformed(&Mat4::from_translation(Vec3::new(30.0, 30.0, 0.0)));
+        // A big floater, a small one, and a speck.
+        m.append(&make_box(Vec3::new(2.0, 2.0, 2.0)).transformed(&Mat4::from_translation(Vec3::new(60.0, 30.0, 4.0))));
+        m.append(&make_box(Vec3::new(5.0, 5.0, 2.0)).transformed(&Mat4::from_translation(Vec3::new(80.0, 30.0, 6.0))));
+        m.append(&make_box(Vec3::new(0.5, 0.5, 2.0)).transformed(&Mat4::from_translation(Vec3::new(100.0, 30.0, 8.0))));
+        let r = slice(&job(m, Mesh::default()), None, &Progress::default()).unwrap();
+        let areas: Vec<f32> = r.island_entries.iter().map(|e| e.area_mm2).collect();
+        assert_eq!(areas.len(), 3, "{areas:?}");
+        assert!(areas[0] > areas[1] && areas[1] > areas[2], "{areas:?}");
+        let sev: Vec<IslandSeverity> = r.island_entries.iter().map(|e| e.severity).collect();
+        assert_eq!(sev, vec![IslandSeverity::Critical, IslandSeverity::Critical, IslandSeverity::Minor]);
+        assert!(r.warnings.iter().any(|w| w.contains("2 large") && w.contains("1 small")), "{:?}", r.warnings);
     }
 
     #[test]

@@ -599,22 +599,7 @@ impl App {
         section(ui, "LIT AREA BY HEIGHT");
         self.area_chart(ui, &res);
         if res.unsupported_islands > 0 {
-            section(ui, "FLOATING PARTS");
-            let list: Vec<usize> = res
-                .stats
-                .iter()
-                .enumerate()
-                .filter(|(_, s)| !s.islands.is_empty())
-                .map(|(k, _)| k)
-                .take(40)
-                .collect();
-            ui.horizontal_wrapped(|ui| {
-                for k in list {
-                    if ui.small_button(format!("Layer {}", k + 1)).clicked() {
-                        self.resin_layer = k;
-                    }
-                }
-            });
+            self.island_list(ui, &res);
         }
         section(ui, "SAVE IT");
         egui::ComboBox::from_id_salt("resin_format")
@@ -631,6 +616,55 @@ impl App {
         }
         if matches!(self.resin_format, ResinFormat::Ctb | ResinFormat::Goo) {
             ui.label(RichText::new("This format hasn't been tried on a real printer yet. Check the file on your printer before a long print.").small().color(YELLOW));
+        }
+    }
+
+    /// Floating parts, biggest first, with a way to step through them.
+    fn island_list(&mut self, ui: &mut egui::Ui, res: &crate::resin::ResinResult) {
+        use crate::resin::IslandSeverity;
+        section(ui, "FLOATING PARTS");
+        let count = |k: IslandSeverity| res.island_entries.iter().filter(|e| e.severity == k).count();
+        ui.horizontal_wrapped(|ui| {
+            for (k, color) in [(IslandSeverity::Critical, RED), (IslandSeverity::Minor, YELLOW), (IslandSeverity::Speck, DIM)] {
+                let n = count(k);
+                if n > 0 {
+                    ui.label(RichText::new(format!("{n} {}", k.label().to_lowercase())).color(color).small());
+                }
+            }
+        });
+        let total: f32 = res.island_entries.iter().map(|e| e.area_mm2).sum();
+        stat(ui, "Area with nothing under it", format!("{total:.1} mm²"));
+        // Step through them in order of height, the way they print.
+        let mut by_layer: Vec<usize> = (0..res.island_entries.len()).collect();
+        by_layer.sort_by_key(|&k| res.island_entries[k].layer);
+        ui.horizontal(|ui| {
+            let here = self.resin_layer;
+            let prev = by_layer.iter().rev().find(|&&k| res.island_entries[k].layer < here);
+            let next = by_layer.iter().find(|&&k| res.island_entries[k].layer > here);
+            if ui.add_enabled(prev.is_some(), egui::Button::new("◀ Previous")).clicked() {
+                if let Some(&k) = prev {
+                    self.resin_layer = res.island_entries[k].layer;
+                }
+            }
+            if ui.add_enabled(next.is_some(), egui::Button::new("Next ▶")).clicked() {
+                if let Some(&k) = next {
+                    self.resin_layer = res.island_entries[k].layer;
+                }
+            }
+        });
+        for e in res.island_entries.iter().take(12) {
+            let color = match e.severity {
+                IslandSeverity::Critical => RED,
+                IslandSeverity::Minor => YELLOW,
+                IslandSeverity::Speck => DIM,
+            };
+            let text = format!("Layer {} · {:.1} mm · {:.2} mm² · x {:.0}, y {:.0}", e.layer + 1, e.z, e.area_mm2, e.x, e.y);
+            if ui.add(egui::Button::new(RichText::new(text).small().color(color)).frame(false)).on_hover_text("Show this layer").clicked() {
+                self.resin_layer = e.layer;
+            }
+        }
+        if res.island_entries.len() > 12 {
+            ui.label(RichText::new(format!("and {} smaller ones. Use Next to step through all of them.", res.island_entries.len() - 12)).small().color(FAINT));
         }
     }
 
