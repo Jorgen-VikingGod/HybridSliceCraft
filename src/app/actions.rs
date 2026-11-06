@@ -312,7 +312,7 @@ impl App {
         self.push_undo();
         let (bx, by) = self.bed();
         if !arrange(&mut self.plates[self.active].objects, Vec2::new(bx, by), 5.0) {
-            self.toast(ctx, ToastKind::Warn, "Not everything fits on this plate. Try adding another plate.");
+            self.toast(ctx, ToastKind::Warn, crate::i18n::tr("Not everything fits on this plate. Try adding another plate."));
         }
     }
 
@@ -360,7 +360,7 @@ impl App {
         let Some(sel) = self.selected().cloned() else { return };
         let parts = sel.mesh.split_shells();
         if parts.len() < 2 {
-            self.toast(ctx, ToastKind::Info, "This model is already one piece.");
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("This model is already one piece."));
             return;
         }
         self.push_undo();
@@ -379,13 +379,13 @@ impl App {
 
     pub fn cut_selected(&mut self, ctx: &egui::Context) {
         let Some(sel) = self.selected().cloned() else {
-            self.toast(ctx, ToastKind::Info, "Select a model to cut first.");
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("Select a model to cut first."));
             return;
         };
         let world = sel.world_mesh();
         let (lo, up) = world.cut_z(self.cut_z);
         if lo.is_empty() || up.is_empty() {
-            self.toast(ctx, ToastKind::Info, "The cut height doesn't pass through this model.");
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("The cut height doesn't pass through this model."));
             return;
         }
         self.push_undo();
@@ -505,7 +505,7 @@ impl App {
 
     pub fn start_hollow(&mut self, ctx: &egui::Context) {
         let Some(o) = self.selected().cloned() else {
-            self.toast(ctx, ToastKind::Info, "Select a model to hollow first.");
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("Select a model to hollow first."));
             return;
         };
         let p = &self.resin_process;
@@ -535,7 +535,7 @@ impl App {
             .map(|i| (i, world.tri(i)[0].z))
             .min_by(|a, b| a.1.total_cmp(&b.1))
         else {
-            self.toast(ctx, ToastKind::Info, "Couldn't find a low point on this model.");
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("Couldn't find a low point on this model."));
             return;
         };
         let tri = world.tri(i);
@@ -760,7 +760,7 @@ impl App {
 
     fn export_gcode(&mut self, ctx: &egui::Context) {
         let Some(res) = self.fdm_result.clone() else {
-            self.toast(ctx, ToastKind::Info, "Slice the plate first.");
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("Slice the plate first."));
             return;
         };
         let Some(path) = rfd::FileDialog::new()
@@ -782,7 +782,7 @@ impl App {
 
     fn export_resin(&mut self, ctx: &egui::Context) {
         let (Some(res), Some(job)) = (self.resin_result.clone(), self.resin_job.clone()) else {
-            self.toast(ctx, ToastKind::Info, "Slice the plate first.");
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("Slice the plate first."));
             return;
         };
         let format = self.resin_format;
@@ -804,7 +804,7 @@ impl App {
 
     pub fn send_to_printer(&mut self, ctx: &egui::Context) {
         let Some(res) = self.fdm_result.clone() else {
-            self.toast(ctx, ToastKind::Info, "Slice the plate first.");
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("Slice the plate first."));
             return;
         };
         let host = self.fdm_printer.host.clone();
@@ -819,7 +819,7 @@ impl App {
     pub fn export_stl(&mut self, ctx: &egui::Context) {
         let objects: Vec<PlateObject> = self.plate().objects.iter().filter(|o| o.visible).cloned().collect();
         if objects.is_empty() {
-            self.toast(ctx, ToastKind::Info, "There's nothing on the plate to save.");
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("There's nothing on the plate to save."));
             return;
         }
         let Some(path) = rfd::FileDialog::new()

@@ -17,6 +17,7 @@ struct Rows {
 
 impl Rows {
     fn visible(&mut self, label: &str, adv: bool) -> bool {
+        let label = crate::i18n::tr(label);
         if !self.filter.is_empty() {
             let hit = label.to_lowercase().contains(&self.filter);
             if hit {
@@ -32,6 +33,7 @@ impl Rows {
     }
 
     fn row(&mut self, ui: &mut egui::Ui, label: &str, tip: &str, changed: bool, on_reset: &mut bool, widget: impl FnOnce(&mut egui::Ui)) {
+        let (label, tip) = (crate::i18n::tr(label), crate::i18n::tr(tip));
         if let Some(title) = self.pending.take() {
             section(ui, &title);
         }
@@ -43,7 +45,7 @@ impl Rows {
                 if changed
                     && ui
                         .add(egui::Button::new(RichText::new("⟲").size(12.0)).frame(false))
-                        .on_hover_text("Back to the preset's value")
+                        .on_hover_text(crate::i18n::tr("Back to the preset's value"))
                         .clicked()
                 {
                     *on_reset = true;
@@ -51,9 +53,9 @@ impl Rows {
                 // The label takes what's left, so long names shorten rather than push.
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                     let text = if changed {
-                        RichText::new(label).color(Color32::WHITE).strong()
+                        RichText::new(label).color(ui_strong()).strong()
                     } else {
-                        RichText::new(label).color(TEXT)
+                        RichText::new(label).color(ui_text())
                     };
                     let r = ui.add(egui::Label::new(text).truncate());
                     if !tip.is_empty() {
@@ -138,7 +140,7 @@ fn group(_ui: &mut egui::Ui, rows: &mut Rows, title: &str) {
 /// A small label inside a card.
 fn subheading(ui: &mut egui::Ui, text: &str) {
     ui.add_space(3.0);
-    ui.label(RichText::new(text).small().color(FAINT));
+    ui.label(RichText::new(crate::i18n::tr(text)).small().color(ui_faint()));
 }
 
 fn same_json<T: Serialize>(a: &T, b: &T) -> bool {
@@ -150,11 +152,11 @@ impl App {
         ui.horizontal(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut self.settings_filter)
-                    .hint_text("Find a setting…")
+                    .hint_text(crate::i18n::tr("Find a setting…"))
                     .desired_width(ui.available_width() - 104.0),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.checkbox(&mut self.advanced, "Advanced");
+                ui.checkbox(&mut self.advanced, crate::i18n::tr("Advanced"));
             });
         });
         let tabs: &[&str] = if self.resin() {
@@ -169,7 +171,7 @@ impl App {
             ui.spacing_mut().item_spacing.x = 2.0;
             for (i, t) in tabs.iter().enumerate() {
                 let on = self.settings_tab == i;
-                let text = RichText::new(*t).color(if on { Color32::WHITE } else { DIM });
+                let text = RichText::new(crate::i18n::tr(*t)).color(if on { Color32::WHITE } else { ui_dim() });
                 let r = ui.add(egui::Button::new(text).fill(if on { accent.gamma_multiply(0.45) } else { Color32::TRANSPARENT }));
                 if r.clicked() {
                     self.settings_tab = i;
@@ -202,7 +204,7 @@ impl App {
         }
         if rows.shown == 0 {
             ui.add_space(8.0);
-            ui.label(RichText::new("No settings match that search.").color(DIM));
+            ui.label(RichText::new(crate::i18n::tr("No settings match that search.")).color(ui_dim()));
         }
     }
 
@@ -228,7 +230,7 @@ impl App {
                 self.place_new_objects();
                 self.frame_all();
             }
-            if ui.button("Edit").on_hover_text("Bed size, nozzle, retraction, start and end scripts").clicked() {
+            if ui.button(crate::i18n::tr("Edit")).on_hover_text(crate::i18n::tr("Bed size, nozzle, retraction, start and end scripts")).clicked() {
                 self.show_printer = true;
             }
         });
@@ -243,8 +245,8 @@ impl App {
             ui.horizontal(|ui| {
                 swatch(ui, self.filaments[slot].color, 18.0);
                 if self.fdm_printer.mixed_nozzles() {
-                    ui.label(RichText::new(format!("{:.1}", self.fdm_printer.nozzle_for(slot))).small().color(DIM))
-                        .on_hover_text("Nozzle size of this tool, in mm");
+                    ui.label(RichText::new(format!("{:.1}", self.fdm_printer.nozzle_for(slot))).small().color(ui_dim()))
+                        .on_hover_text(crate::i18n::tr("Nozzle size of this tool, in mm"));
                 }
                 let current = self.filaments[slot].name.clone();
                 let mut pick = None;
@@ -261,7 +263,7 @@ impl App {
                 if let Some(i) = pick {
                     self.filaments[slot] = self.cat.filaments[i].clone();
                 }
-                if ui.button("Edit").on_hover_text("Temperatures, cooling, flow, cost").clicked() {
+                if ui.button(crate::i18n::tr("Edit")).on_hover_text(crate::i18n::tr("Temperatures, cooling, flow, cost")).clicked() {
                     self.show_material = true;
                 }
             });
@@ -287,7 +289,7 @@ impl App {
                 self.fdm_process = self.cat.fdm_processes[i].clone();
                 self.fdm_process_base = self.fdm_process.clone();
             }
-            if ui.add_enabled(modified, egui::Button::new("Save")).on_hover_text("Keep these settings as your own preset").clicked() {
+            if ui.add_enabled(modified, egui::Button::new(crate::i18n::tr("Save"))).on_hover_text(crate::i18n::tr("Keep these settings as your own preset")).clicked() {
                 self.save_process_preset(ui.ctx());
             }
         });
@@ -318,7 +320,7 @@ impl App {
             self.fdm_process_base = p;
         }
         match self.cat.save_custom() {
-            Ok(()) => self.toast(ctx, ToastKind::Good, "Preset saved."),
+            Ok(()) => self.toast(ctx, ToastKind::Good, crate::i18n::tr("Preset saved.")),
             Err(e) => self.toast(ctx, ToastKind::Bad, format!("Couldn't save the preset: {e}")),
         }
     }
@@ -344,7 +346,7 @@ impl App {
                 self.place_new_objects();
                 self.frame_all();
             }
-            if ui.button("Edit").on_hover_text("Screen size and resolution").clicked() {
+            if ui.button(crate::i18n::tr("Edit")).on_hover_text(crate::i18n::tr("Screen size and resolution")).clicked() {
                 self.show_printer = true;
             }
         });
@@ -367,7 +369,7 @@ impl App {
             if let Some(i) = pick {
                 self.resin_mat = self.cat.resins[i].clone();
             }
-            if ui.button("Edit").on_hover_text("Exposure, density, cost").clicked() {
+            if ui.button(crate::i18n::tr("Edit")).on_hover_text(crate::i18n::tr("Exposure, density, cost")).clicked() {
                 self.show_material = true;
             }
         });
@@ -392,7 +394,7 @@ impl App {
                 self.resin_process = self.cat.resin_processes[i].clone();
                 self.resin_process_base = self.resin_process.clone();
             }
-            if ui.add_enabled(modified, egui::Button::new("Save")).on_hover_text("Keep these settings as your own preset").clicked() {
+            if ui.add_enabled(modified, egui::Button::new(crate::i18n::tr("Save"))).on_hover_text(crate::i18n::tr("Keep these settings as your own preset")).clicked() {
                 self.save_process_preset(ui.ctx());
             }
         });
@@ -413,7 +415,7 @@ impl App {
                     }
                 });
                 ui.add_space(6.0);
-                if ui.button("Keep this printer in my list").clicked() {
+                if ui.button(crate::i18n::tr("Keep this printer in my list")).clicked() {
                     save = true;
                 }
             });
@@ -433,7 +435,7 @@ impl App {
                 }
             }
             match self.cat.save_custom() {
-                Ok(()) => self.toast(ctx, ToastKind::Good, "Printer saved."),
+                Ok(()) => self.toast(ctx, ToastKind::Good, crate::i18n::tr("Printer saved.")),
                 Err(e) => self.toast(ctx, ToastKind::Bad, format!("Couldn't save the printer: {e}")),
             }
             self.place_new_objects();
@@ -459,7 +461,7 @@ impl App {
                     }
                 });
                 ui.add_space(6.0);
-                if ui.button("Keep in my list").clicked() {
+                if ui.button(crate::i18n::tr("Keep in my list")).clicked() {
                     save = true;
                 }
             });
@@ -480,7 +482,7 @@ impl App {
                 }
             }
             match self.cat.save_custom() {
-                Ok(()) => self.toast(ctx, ToastKind::Good, "Saved."),
+                Ok(()) => self.toast(ctx, ToastKind::Good, crate::i18n::tr("Saved.")),
                 Err(e) => self.toast(ctx, ToastKind::Bad, format!("Couldn't save: {e}")),
             }
         }
@@ -746,13 +748,13 @@ fn fdm_printer_editor(ui: &mut egui::Ui, p: &mut FdmPrinter) {
         });
     });
     ui.add_space(6.0);
-    ui.label(RichText::new("Start script").strong());
+    ui.label(RichText::new(crate::i18n::tr("Start script")).strong());
     ui.add(egui::TextEdit::multiline(&mut p.start_gcode).font(egui::TextStyle::Monospace).desired_rows(6).desired_width(f32::INFINITY));
-    ui.label(RichText::new("End script").strong());
+    ui.label(RichText::new(crate::i18n::tr("End script")).strong());
     ui.add(egui::TextEdit::multiline(&mut p.end_gcode).font(egui::TextStyle::Monospace).desired_rows(4).desired_width(f32::INFINITY));
-    ui.label(RichText::new("Tool change script").strong());
+    ui.label(RichText::new(crate::i18n::tr("Tool change script")).strong());
     ui.add(egui::TextEdit::multiline(&mut p.tool_change_gcode).font(egui::TextStyle::Monospace).desired_rows(2).desired_width(f32::INFINITY));
-    ui.label(RichText::new("Scripts can use {bed_temp}, {nozzle_temp}, {bed_x}, {bed_y}, {height}, {layer_height}, {filament_type}, and {tool} in tool changes.").small().color(DIM));
+    ui.label(RichText::new(crate::i18n::tr("Scripts can use {bed_temp}, {nozzle_temp}, {bed_x}, {bed_y}, {height}, {layer_height}, {filament_type}, and {tool} in tool changes.")).small().color(ui_dim()));
 }
 
 fn resin_printer_editor(ui: &mut egui::Ui, p: &mut ResinPrinter) {
@@ -784,7 +786,7 @@ fn resin_printer_editor(ui: &mut egui::Ui, p: &mut ResinPrinter) {
     });
     let px = p.size_x / p.res_x.max(1) as f32 * 1000.0;
     ui.add_space(4.0);
-    ui.label(RichText::new(format!("Each pixel is about {px:.0} microns wide.")).small().color(DIM));
+    ui.label(RichText::new(format!("Each pixel is about {px:.0} microns wide.")).small().color(ui_dim()));
 }
 
 fn resin_material_editor(ui: &mut egui::Ui, m: &mut ResinMaterial) {
