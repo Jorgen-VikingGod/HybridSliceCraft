@@ -319,25 +319,120 @@ pub enum OrientGoal {
     ResinTilt,
 }
 
-/// Try many directions and keep the best-scoring one.
-pub fn auto_orient(obj: &PlateObject, goal: OrientGoal) -> Quat {
-    let stride = (obj.mesh.t.len() / 20_000).max(1);
-    let m = Mat4::from_scale(obj.scale);
-    let faces: Vec<(Vec3, f32)> = obj
-        .mesh
-        .t
-        .iter()
-        .step_by(stride)
-        .filter_map(|t| {
+/// How a model fares in one orientation, for resin printing. Areas are in mm².
+#[derive(Clone, Copy, Debug, Default)]
+pub struct OrientReport {
+    /// Surface facing down at a steep angle: needs supports.
+    pub overhang: f32,
+    /// Flat surface lying on the plate. Large ones are hard to peel off.
+    pub base: f32,
+    /// Biggest flat roof inside one thin slab of height. Resin gets trapped
+    /// under a roof like that, so it pulls hard when the model peels.
+    pub roof: f32,
+    /// Height of the print in mm. Every extra mm is more layers and more time.
+    pub height: f32,
+    /// Height against the width of the footprint. Tall and thin sways in the peel.
+    pub slender: f32,
+}
+
+impl OrientReport {
+    /// Lower is better.
+    fn score(&self, total_area: f32, tallest: f32) -> f32 {
+        let a = total_area.max(1e-3);
+        (self.overhang * 2.0 + self.base * 3.0 + self.roof * 4.0) / a
+            + 0.5 * self.height / tallest.max(1e-3)
+            + 0.3 * (self.slender - 1.5).max(0.0)
+    }
+}
+
+/// Thickness of the slabs used to look for flat roofs.
+const ROOF_SLAB: f32 = 0.5;
+
+/// What the scoring needs from a model, gathered once.
+struct OrientSample {
+    /// Face direction and area, scale applied.
+    faces: Vec<(Vec3, f32)>,
+    /// Face centre, in the same frame as `faces`.
+    centres: Vec<Vec3>,
+    /// A thinned-out set of vertices for bounds.
+    verts: Vec<Vec3>,
+    total_area: f32,
+    tallest: f32,
+}
+
+impl OrientSample {
+    fn new(obj: &PlateObject) -> Self {
+        let stride = (obj.mesh.t.len() / 20_000).max(1);
+        let m = Mat4::from_scale(obj.scale);
+        let mut faces = Vec::new();
+        let mut centres = Vec::new();
+        for t in obj.mesh.t.iter().step_by(stride) {
             let a = m.transform_point3(obj.mesh.v[t[0] as usize]);
             let b = m.transform_point3(obj.mesh.v[t[1] as usize]);
             let c = m.transform_point3(obj.mesh.v[t[2] as usize]);
             let n = (b - a).cross(c - a);
             let len = n.length();
-            (len > 1e-9).then(|| (n / len, len * 0.5))
-        })
-        .collect();
-    let total_area: f32 = faces.iter().map(|f| f.1).sum::<f32>().max(1e-3);
+            if len > 1e-9 {
+                // Thinned-out faces stand in for their neighbours.
+                faces.push((n / len, len * 0.5 * stride as f32));
+                centres.push((a + b + c) / 3.0);
+            }
+        }
+        let vstride = (obj.mesh.v.len() / 4000).max(1);
+        let verts: Vec<Vec3> = obj.mesh.v.iter().step_by(vstride).map(|v| m.transform_point3(*v)).collect();
+        let total_area = faces.iter().map(|f| f.1).sum::<f32>().max(1e-3);
+        let (mut mn, mut mx) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+        for v in &verts {
+            mn = mn.min(*v);
+            mx = mx.max(*v);
+        }
+        let tallest = if verts.is_empty() { 1.0 } else { (mx - mn).max_element() };
+        Self { faces, centres, verts, total_area, tallest }
+    }
+
+    fn report(&self, q: Quat) -> OrientReport {
+        let (mut mn, mut mx) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+        for v in &self.verts {
+            let w = q * *v;
+            mn = mn.min(w);
+            mx = mx.max(w);
+        }
+        if self.verts.is_empty() {
+            return OrientReport::default();
+        }
+        let height = mx.z - mn.z;
+        let mut r = OrientReport { height, ..Default::default() };
+        let slabs = ((height / ROOF_SLAB) as usize + 1).min(4000);
+        let mut roofs = vec![0.0f32; slabs];
+        for ((n, a), c) in self.faces.iter().zip(&self.centres) {
+            let w = q * *n;
+            let z = (q * *c).z - mn.z;
+            if w.z < -0.9995 && z < ROOF_SLAB {
+                r.base += a;
+            } else if w.z < -0.9 {
+                // Close to flat and facing down, above the plate: a roof.
+                roofs[((z / ROOF_SLAB) as usize).min(slabs - 1)] += a * -w.z;
+            } else if w.z < -0.5 {
+                r.overhang += a * (-w.z - 0.5);
+            }
+        }
+        r.roof = roofs.iter().cloned().fold(0.0, f32::max);
+        let foot = ((mx.x - mn.x) * (mx.y - mn.y)).max(1e-3);
+        r.slender = height / foot.sqrt();
+        r
+    }
+}
+
+/// How the model fares as it is turned right now.
+pub fn orient_report(obj: &PlateObject) -> OrientReport {
+    OrientSample::new(obj).report(obj.rot)
+}
+
+/// Try many directions and keep the best-scoring one.
+pub fn auto_orient(obj: &PlateObject, goal: OrientGoal) -> Quat {
+    let sample = OrientSample::new(obj);
+    let faces = &sample.faces;
+    let total_area = sample.total_area;
     // Evenly spread directions on the sphere, plus every big flat face.
     let mut candidates: Vec<Quat> = Vec::new();
     let n_dirs = 96;
@@ -363,23 +458,34 @@ pub fn auto_orient(obj: &PlateObject, goal: OrientGoal) -> Quat {
     let mut best = obj.rot;
     let mut best_score = f32::MAX;
     let score_of = |q: Quat| -> f32 {
-        let mut overhang = 0.0f32;
-        let mut base = 0.0f32;
-        let mut footprint = 0.0f32;
-        for (n, a) in &faces {
-            let w = q * *n;
-            if w.z < -0.9995 {
-                base += a;
-            } else if w.z < -0.5 {
-                overhang += a * (-w.z - 0.5);
-            }
-            if w.z > 0.0 {
-                footprint += a * w.z;
-            }
-        }
         match goal {
-            OrientGoal::FewestSupports => (overhang * 3.0 - base * 1.2 + footprint * 0.02) / total_area,
-            OrientGoal::ResinTilt => (overhang * 2.0 + footprint * 1.5 + base * 3.0) / total_area,
+            OrientGoal::FewestSupports => {
+                let mut overhang = 0.0f32;
+                let mut base = 0.0f32;
+                let mut footprint = 0.0f32;
+                for (n, a) in faces {
+                    let w = q * *n;
+                    if w.z < -0.9995 {
+                        base += a;
+                    } else if w.z < -0.5 {
+                        overhang += a * (-w.z - 0.5);
+                    }
+                    if w.z > 0.0 {
+                        footprint += a * w.z;
+                    }
+                }
+                (overhang * 3.0 - base * 1.2 + footprint * 0.02) / total_area
+            }
+            OrientGoal::ResinTilt => {
+                let mut footprint = 0.0f32;
+                for (n, a) in faces {
+                    let w = q * *n;
+                    if w.z > 0.0 {
+                        footprint += a * w.z;
+                    }
+                }
+                sample.report(q).score(total_area, sample.tallest) + 1.5 * footprint / total_area
+            }
         }
     };
     for &c in &candidates {
@@ -526,6 +632,54 @@ mod tests {
         for (a, b) in first.v.iter().zip(&again.v) {
             assert!(a.distance(*b) < 1e-3);
         }
+    }
+
+    /// A flat top on four legs: a table.
+    fn table() -> PlateObject {
+        let mut m = make_box(Vec3::new(40.0, 40.0, 3.0)).transformed(&Mat4::from_translation(Vec3::new(0.0, 0.0, 12.0)));
+        for (x, y) in [(2.0, 2.0), (34.0, 2.0), (2.0, 34.0), (34.0, 34.0)] {
+            m.append(&make_box(Vec3::new(4.0, 4.0, 12.0)).transformed(&Mat4::from_translation(Vec3::new(x, y, 0.0))));
+        }
+        PlateObject::new("table", m)
+    }
+
+    #[test]
+    fn orient_report_sees_the_roof_of_a_table() {
+        let mut up = table();
+        up.rot = Quat::IDENTITY;
+        let mut upside_down = table();
+        upside_down.rot = Quat::from_rotation_x(std::f32::consts::PI);
+        let a = orient_report(&up);
+        let b = orient_report(&upside_down);
+        // Standing on its legs, the underside of the top is a 40 x 40 roof.
+        assert!(a.roof > 1200.0, "{}", a.roof);
+        // (The legs are separate boxes, so their hidden end faces add a little.)
+        assert!(b.roof < 100.0, "{}", b.roof);
+        // Upside down, the whole top lies on the plate.
+        assert!(b.base > 1500.0 && a.base < 100.0, "{} {}", a.base, b.base);
+        assert!((a.height - 15.0).abs() < 0.1 && (b.height - 15.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn resin_orient_avoids_the_roof() {
+        let mut t = table();
+        t.rot = Quat::IDENTITY;
+        let before = orient_report(&t);
+        t.rot = auto_orient(&t, OrientGoal::ResinTilt);
+        let after = orient_report(&t);
+        assert!(after.roof < before.roof * 0.25, "roof {} -> {}", before.roof, after.roof);
+    }
+
+    #[test]
+    fn resin_orient_lays_a_tall_rod_down() {
+        let mut rod = PlateObject::new("rod", make_box(Vec3::new(6.0, 6.0, 80.0)));
+        rod.rot = Quat::IDENTITY;
+        let before = orient_report(&rod);
+        assert!(before.slender > 6.0, "{}", before.slender);
+        rod.rot = auto_orient(&rod, OrientGoal::ResinTilt);
+        let after = orient_report(&rod);
+        assert!(after.height < before.height * 0.8, "{} -> {}", before.height, after.height);
+        assert!(after.slender < before.slender);
     }
 
     #[test]

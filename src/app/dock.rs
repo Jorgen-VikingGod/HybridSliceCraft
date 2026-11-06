@@ -450,6 +450,22 @@ impl App {
         });
         if !has {
             self.select_hint(ui, "orient it");
+        } else if self.resin() {
+            if let Some(o) = self.selected() {
+                let r = crate::scene::orient_report(o);
+                ui.add_space(4.0);
+                ui.label(RichText::new("HOW IT SITS NOW").small().color(FAINT));
+                panels::stat(ui, "Print height", format!("{:.1} mm", r.height));
+                panels::stat(ui, "Lies on the plate", format!("{:.0} mm²", r.base));
+                panels::stat(ui, "Flat roof (suction)", format!("{:.0} mm²", r.roof));
+                panels::stat(ui, "Needs support", format!("{:.0} mm²", r.overhang));
+                if r.roof > 200.0 {
+                    ui.label(RichText::new("A big flat roof traps resin and pulls hard when peeling. Try Auto-orient, or tilt the model.").small().color(YELLOW));
+                }
+                if r.slender > 3.0 {
+                    ui.label(RichText::new("Tall and narrow: it may sway while peeling. Laying it down helps.").small().color(YELLOW));
+                }
+            }
         }
     }
 }
