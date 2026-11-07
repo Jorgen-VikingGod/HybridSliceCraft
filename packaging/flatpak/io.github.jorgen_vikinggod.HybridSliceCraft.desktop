@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=HybridSliceCraft
+GenericName=3D print slicer
+Comment=Slice models for filament (FDM) and resin (MSLA) 3D printers
+Exec=hybridslicecraft %F
+Icon=io.github.jorgen_vikinggod.HybridSliceCraft
+Terminal=false
+Categories=Graphics;3DGraphics;Engineering;
+Keywords=3D;printing;slicer;resin;FDM;SLA;MSLA;STL;gcode;
+MimeType=model/stl;model/obj;model/3mf;application/vnd.ms-package.3dmanufacturing-3dmodel+xml;
+StartupWMClass=io.github.jorgen_vikinggod.HybridSliceCraft

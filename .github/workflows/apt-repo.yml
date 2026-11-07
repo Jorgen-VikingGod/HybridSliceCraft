@@ -1,0 +1,102 @@
+# Publishes the Linux .deb of each release to a signed apt repository on GitHub
+# Pages (the gh-pages branch), so Debian and Ubuntu users can install and update
+# with apt.
+#
+# It runs once "Release installers" has finished for a release, because that is
+# when the .deb has been attached. It can also be started by hand with a tag.
+#
+# One-time setup, see docs/distribution.md:
+#   - secret APT_GPG_PRIVATE_KEY      armored private key (gpg --armor --export-secret-keys)
+#   - secret APT_GPG_PASSPHRASE       its passphrase (leave empty if it has none)
+#   - Settings > Pages > Deploy from branch "gh-pages" (root)
+
+name: Publish apt repository
+
+on:
+  workflow_run:
+    workflows: ["Release installers"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag whose .deb to publish, like v0.3.0
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apt-repo
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # After an automatic run, only go on if the installers were built and the
+    # run came from a release (its "branch" is then the tag).
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'release')
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.event.workflow_run.head_branch }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is the signing key set up?
+        id: key
+        env:
+          KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::warning::APT_GPG_PRIVATE_KEY isn't set, so the apt repository wasn't updated. See docs/distribution.md."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Get the .deb from the release
+        if: steps.key.outputs.ready == 'true'
+        run: |
+          mkdir -p debs
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir debs
+          ls -la debs
+
+      - name: Get the repository so far
+        if: steps.key.outputs.ready == 'true'
+        run: |
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
+            git clone --quiet --depth 1 --branch gh-pages "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" site
+            rm -rf site/.git
+          else
+            mkdir site
+          fi
+
+      - name: Import the signing key
+        if: steps.key.outputs.ready == 'true'
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          echo "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
+          id=$(gpg --batch --list-secret-keys --with-colons | awk -F: '/^sec/ {print $5; exit}')
+          echo "APT_GPG_KEY_ID=$id" >> "$GITHUB_ENV"
+
+      - name: Build the repository
+        if: steps.key.outputs.ready == 'true'
+        env:
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq apt-utils
+          ./packaging/apt/publish.sh site debs/*.deb
+
+      - name: Publish
+        if: steps.key.outputs.ready == 'true'
+        run: |
+          cd site
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "apt repository for $TAG"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages

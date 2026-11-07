@@ -57,6 +57,13 @@ Each published GitHub release gets installers built automatically:
 | macOS, Apple silicon and Intel | `.dmg` disk image (one for each chip) |
 | Linux | `.deb` package and a portable `.AppImage` |
 
+On Debian and Ubuntu you can also install from the apt repository, which keeps the program up to date:
+
+    sudo install -d -m 0755 /etc/apt/keyrings
+    curl -fsSL https://jorgen-vikinggod.github.io/HybridSliceCraft/hybridslicecraft.gpg | sudo tee /etc/apt/keyrings/hybridslicecraft.gpg >/dev/null
+    echo "deb [signed-by=/etc/apt/keyrings/hybridslicecraft.gpg] https://jorgen-vikinggod.github.io/HybridSliceCraft stable main" | sudo tee /etc/apt/sources.list.d/hybridslicecraft.list
+    sudo apt update && sudo apt install hybrid-slice-craft
+
 The installers aren't code-signed yet. Windows SmartScreen and macOS Gatekeeper will warn on first launch; on macOS, right-click the app and choose Open.
 
 To make installers yourself, install `cargo-packager` (`cargo install cargo-packager --locked`) and run `cargo packager --release` on the system you're building for. They appear in `dist/`.

@@ -120,15 +120,21 @@ fn main() {
         wgpu_options.surface.present_mode = wgpu::PresentMode::AutoNoVsync;
     }
 
+    // In a Flatpak the window must carry the app's id, or the desktop can't match
+    // it to its icon and launcher.
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("HybridSliceCraft")
+        .with_inner_size([1440.0, 900.0])
+        .with_min_inner_size([960.0, 600.0])
+        .with_drag_and_drop(true)
+        .with_icon(window_icon());
+    if let Ok(id) = std::env::var("FLATPAK_ID") {
+        viewport = viewport.with_app_id(id);
+    }
     let native = eframe::NativeOptions {
         renderer: eframe::Renderer::Wgpu,
         wgpu_options,
-        viewport: egui::ViewportBuilder::default()
-            .with_title("HybridSliceCraft")
-            .with_inner_size([1440.0, 900.0])
-            .with_min_inner_size([960.0, 600.0])
-            .with_drag_and_drop(true)
-            .with_icon(window_icon()),
+        viewport,
         ..Default::default()
     };
 

@@ -1,0 +1,1 @@
+flatpak-cargo-generator.py
