@@ -8,6 +8,10 @@ if [ ! -f "$tool" ]; then
   curl -fsSL -o "$tool" \
     https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py
 fi
-python3 -m pip install --quiet --user aiohttp toml tomlkit 2>/dev/null || true
-python3 "$tool" ../../Cargo.lock -o cargo-sources.json
+# A private virtualenv, because many systems refuse to install into the system Python.
+if [ ! -x .venv/bin/python ]; then
+  python3 -m venv .venv
+  .venv/bin/pip install --quiet aiohttp toml tomlkit
+fi
+.venv/bin/python "$tool" ../../Cargo.lock -o cargo-sources.json
 echo "Wrote $(pwd)/cargo-sources.json"
