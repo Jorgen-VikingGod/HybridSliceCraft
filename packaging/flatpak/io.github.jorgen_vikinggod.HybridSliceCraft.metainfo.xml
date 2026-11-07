@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.jorgen_vikinggod.HybridSliceCraft</id>
+  <name>HybridSliceCraft</name>
+  <summary>Slicer for filament (FDM) and resin (MSLA) 3D printers</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.jorgen_vikinggod">
+    <name>Jürgen Könnemann</name>
+  </developer>
+  <description>
+    <p>
+      HybridSliceCraft prepares models for both kinds of 3D printer in one program:
+      filament printers (FDM) and resin printers (MSLA).
+    </p>
+    <p>For filament printers:</p>
+    <ul>
+      <li>Slices to G-code and sends it to OctoPrint or Moonraker</li>
+      <li>Supports, infill patterns and calibration prints</li>
+    </ul>
+    <p>For resin printers:</p>
+    <ul>
+      <li>Saves files for Elegoo (GOO), Anycubic (Photon Workshop), Chitu (CTB) and SL1 printers</li>
+      <li>Hollowing with drain holes, automatic supports with a raft, and a list of floating parts</li>
+      <li>Smoother sloped surfaces with Z anti-aliasing</li>
+    </ul>
+    <p>
+      Also: repair, cut, mirror, copy and auto-orient models, several plates, undo and redo,
+      a light and a dark theme, English, German, French and Spanish, and shortcuts you can change.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.jorgen_vikinggod.HybridSliceCraft.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/Jorgen-VikingGod/HybridSliceCraft/main/docs/resin-prepare.png</image>
+      <caption>Preparing a resin print</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Jorgen-VikingGod/HybridSliceCraft/main/docs/resin-preview.png</image>
+      <caption>Looking through the resin layers</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Jorgen-VikingGod/HybridSliceCraft/main/docs/fdm-preview.png</image>
+      <caption>Previewing a filament print</caption>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://github.com/Jorgen-VikingGod/HybridSliceCraft</url>
+  <url type="bugtracker">https://github.com/Jorgen-VikingGod/HybridSliceCraft/issues</url>
+  <categories>
+    <category>Graphics</category>
+    <category>3DGraphics</category>
+    <category>Engineering</category>
+  </categories>
+  <provides>
+    <binary>hybridslicecraft</binary>
+  </provides>
+  <content_rating type="oars-1.1" />
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">1000</display_length>
+  </requires>
+  <releases>
+    <release version="0.3.0" date="2026-11-06">
+      <description>
+        <p>Adds GOO export for Elegoo, support strength presets, a vented raft, orient scoring for resin, a list of floating parts, Z anti-aliasing, a light theme, German, French and Spanish, and editable shortcuts.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.3.0</url>
+    </release>
+  </releases>
+</component>
