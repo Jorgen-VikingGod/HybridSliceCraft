@@ -1,2 +1,4 @@
 flatpak-cargo-generator.py
 .venv/
+.local-manifest.yml
+build-dir/

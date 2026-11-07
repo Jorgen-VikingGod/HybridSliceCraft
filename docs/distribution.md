@@ -47,7 +47,7 @@ Before the first submission:
    Run it again whenever `Cargo.lock` changes.
 2. Build and try it:
 
-       flatpak install flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08 org.freedesktop.Sdk.Extension.rust-stable//24.08
+       flatpak install flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08 org.freedesktop.Sdk.Extension.rust-stable//25.08
        flatpak-builder --user --install --force-clean build-dir packaging/flatpak/io.github.jorgen_vikinggod.HybridSliceCraft.yml
        flatpak run io.github.jorgen_vikinggod.HybridSliceCraft
 
