@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.3.1" date="2026-11-07">
+      <description>
+        <p>Adds saving for Anycubic printers and a list of Elegoo and Anycubic machines.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.3.1</url>
+    </release>
     <release version="0.3.0" date="2026-11-06">
       <description>
         <p>Adds GOO export for Elegoo, support strength presets, a vented raft, orient scoring for resin, a list of floating parts, Z anti-aliasing, a light theme, German, French and Spanish, and editable shortcuts.</p>
