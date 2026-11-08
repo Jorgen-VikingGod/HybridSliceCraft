@@ -287,7 +287,12 @@ impl<'a> Writer<'a> {
     pub fn emit_island(&mut self, island: &IslandPlan, z: f64, h: f64, flow: f64) {
         let comb = Some(&island.comb);
         let outer_first = self.job.process.outer_wall_first;
-        let depths: Vec<usize> = if outer_first {
+        let n = island.walls.len();
+        let depths: Vec<usize> = if self.job.process.inner_outer_inner && n >= 3 {
+            let mut v = vec![1, 0];
+            v.extend(2..n);
+            v
+        } else if outer_first {
             (0..island.walls.len()).collect()
         } else {
             (0..island.walls.len()).rev().collect()

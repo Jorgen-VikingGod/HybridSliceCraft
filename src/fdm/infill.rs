@@ -190,6 +190,56 @@ fn honeycomb(idx: &EdgeIndex, mn: DVec2, mx: DVec2, flat: f64, out: &mut Vec<Pol
     }
 }
 
+/// Hilbert curve covering the bounding box, one cell per bead spacing.
+fn hilbert(idx: &EdgeIndex, mn: DVec2, mx: DVec2, spacing: f64, out: &mut Vec<Polyline>) {
+    let side = (mx.x - mn.x).max(mx.y - mn.y).max(spacing);
+    let order = ((side / spacing).log2().round() as i32).clamp(1, 8) as u32;
+    let n = 1u64 << order;
+    let cell = side / n as f64;
+    let mut line: Polyline = Vec::with_capacity((n * n) as usize);
+    for d in 0..n * n {
+        // Standard distance-to-coordinates walk of the Hilbert curve.
+        let (mut x, mut y) = (0u64, 0u64);
+        let mut t = d;
+        let mut s = 1u64;
+        while s < n {
+            let rx = 1 & (t / 2);
+            let ry = 1 & (t ^ rx);
+            if ry == 0 {
+                if rx == 1 {
+                    x = s - 1 - x;
+                    y = s - 1 - y;
+                }
+                std::mem::swap(&mut x, &mut y);
+            }
+            x += s * rx;
+            y += s * ry;
+            t /= 4;
+            s *= 2;
+        }
+        line.push(mn + DVec2::new((x as f64 + 0.5) * cell, (y as f64 + 0.5) * cell));
+    }
+    idx.clip_polyline(&line, out);
+}
+
+/// One Archimedean spiral around the middle of the box, cut into chords.
+fn archimedean(idx: &EdgeIndex, mn: DVec2, mx: DVec2, spacing: f64, out: &mut Vec<Polyline>) {
+    let c = (mn + mx) * 0.5;
+    let reach = (mx - mn).length() * 0.5 + spacing;
+    let mut line: Polyline = Vec::new();
+    let mut theta = 0.0f64;
+    loop {
+        let r = spacing * theta / TAU;
+        if r > reach {
+            break;
+        }
+        line.push(c + DVec2::new(theta.cos(), theta.sin()) * r);
+        // Shorter angle steps near the middle keep the curve smooth.
+        theta += (0.5 / r.max(0.5)).min(0.5);
+    }
+    idx.clip_polyline(&line, out);
+}
+
 fn concentric(region: &Region, spacing: f64, out: &mut Vec<Polyline>) {
     let mut cur = geom::offset(region, -spacing * 0.5);
     let mut guard = 0;
@@ -276,6 +326,28 @@ pub fn sparse(
             let band = (z / (s * 1.5)).floor() as i64;
             let a = if band.rem_euclid(2) == 0 { base_angle } else { base_angle + PI / 2.0 };
             add_lines(a, s, 0.0, true);
+        }
+        InfillPattern::QuarterCubic => {
+            // One fixed family and two that drift with height.
+            let s = width * 3.0 / density;
+            add_lines(base_angle, s, 0.0, false);
+            for k in 1..3 {
+                let phase = (z / 2f64.sqrt() + k as f64 * s / 3.0) % s;
+                add_lines(base_angle + k as f64 * PI / 3.0, s, phase, false);
+            }
+        }
+        InfillPattern::Stars => {
+            let s = width * 6.0 / density;
+            for k in 0..3 {
+                add_lines(base_angle + k as f64 * PI / 3.0, s, 0.0, false);
+                add_lines(base_angle + k as f64 * PI / 3.0, s, s / 3.0, false);
+            }
+        }
+        InfillPattern::Hilbert => {
+            hilbert(&idx, mn, mx, (width / density).max(width), &mut out);
+        }
+        InfillPattern::Archimedean => {
+            archimedean(&idx, mn, mx, (width / density).max(width), &mut out);
         }
         InfillPattern::Gyroid => {
             let period = (2.0 * width / density).max(width * 2.2);

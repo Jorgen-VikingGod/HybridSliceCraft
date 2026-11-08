@@ -5,7 +5,7 @@ use super::infill;
 use super::support::{self, SupportLayer};
 use super::{bead_spacing, ExPath, Feature, FdmJob};
 use crate::geom::{self, EdgeIndex, Polyline, Region};
-use crate::profiles::{InfillPattern, SurfacePattern};
+use crate::profiles::{BrimType, FuzzyMode, InfillPattern, SurfacePattern};
 use crate::slicing::{slice_mesh, Progress};
 use glam::DVec2;
 use rayon::prelude::*;
@@ -338,7 +338,16 @@ fn build_walls(
         let mut loops = Vec::with_capacity(ring.len());
         for path in &ring {
             let mut pts = loop_points(path, tol);
-            if k == 0 && p.fuzzy_skin {
+            if p.reverse_walls {
+                pts.reverse();
+            }
+            let hole = geom::path_area_mm2(path) < 0.0;
+            let rough = match p.fuzzy_mode {
+                FuzzyMode::All => true,
+                FuzzyMode::Outline => !hole,
+                FuzzyMode::Holes => hole,
+            };
+            if k == 0 && p.fuzzy_skin && rough {
                 pts = fuzzy(&pts, p.fuzzy_thickness as f64, seed ^ (g.index as u64).wrapping_mul(2654435761));
             }
             let mut ex = ExPath::closed(Vec::new(), width, feature);
@@ -838,7 +847,13 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
             for k in 0..count {
                 let ring = geom::offset_round(&footprint, s0 * (k as f64 + 0.5));
                 for path in &ring {
-                    if geom::path_area_mm2(path) > 0.0 {
+                    let hole = geom::path_area_mm2(path) < 0.0;
+                    let wanted = match p.brim_type {
+                        BrimType::Outer => !hole,
+                        BrimType::Inner => hole,
+                        BrimType::Both => true,
+                    };
+                    if wanted && geom::path_area_mm2(path).abs() > 0.0 {
                         adhesion.push(ExPath::closed(geom::path_to_mm(path), w0, Feature::Brim));
                     }
                 }

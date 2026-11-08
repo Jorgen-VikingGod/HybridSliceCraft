@@ -515,12 +515,15 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.num(ui, "Ironing flow", "", &mut p.ironing_flow, b.ironing_flow, 0.0..=50.0, "%", 1, true);
             r.num(ui, "Ironing spacing", "", &mut p.ironing_spacing, b.ironing_spacing, 0.03..=1.0, "mm", 3, true);
             r.flag(ui, "Fuzzy skin", "A rough texture on outer walls.", &mut p.fuzzy_skin, b.fuzzy_skin, false);
+            r.pick(ui, "Fuzzy skin on", "Which outer walls get the texture.", &mut p.fuzzy_mode, b.fuzzy_mode, &FuzzyMode::ALL, FuzzyMode::label, true);
             r.num(ui, "Fuzzy thickness", "", &mut p.fuzzy_thickness, b.fuzzy_thickness, 0.05..=2.0, "mm", 2, true);
         }
         1 => {
             group(ui, r, "WALLS");
             r.int(ui, "Wall loops", "More walls make a stronger part.", &mut p.walls, b.walls, 0..=30, false);
             r.flag(ui, "Outer wall first", "Better accuracy, slightly worse overhangs.", &mut p.outer_wall_first, b.outer_wall_first, true);
+            r.flag(ui, "Inner-outer-inner walls", "Prints the first inner wall, then the outer wall, then the rest. Good accuracy with clean overhangs. Needs three or more walls.", &mut p.inner_outer_inner, b.inner_outer_inner, true);
+            r.flag(ui, "Reverse wall direction", "Prints wall loops the other way round.", &mut p.reverse_walls, b.reverse_walls, true);
             r.flag(ui, "Detect thin walls", "Print features too narrow for a full loop.", &mut p.thin_walls, b.thin_walls, true);
             r.flag(ui, "Fill gaps", "Fill narrow spaces between walls.", &mut p.gap_fill, b.gap_fill, true);
             group(ui, r, "TOP AND BOTTOM");
@@ -578,6 +581,7 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.int(ui, "Skirt loops", "Lines around the print that prime the nozzle.", &mut p.skirt_loops, b.skirt_loops, 0..=20, false);
             r.num(ui, "Skirt distance", "", &mut p.skirt_distance, b.skirt_distance, 0.0..=50.0, "mm", 1, true);
             r.num(ui, "Brim width", "A flat border that helps parts stay down.", &mut p.brim_width, b.brim_width, 0.0..=50.0, "mm", 1, false);
+            r.pick(ui, "Brim type", "Put the brim outside the part, inside its holes, or both.", &mut p.brim_type, b.brim_type, &BrimType::ALL, BrimType::label, true);
             r.int(ui, "Raft layers", "A disposable base under the whole print.", &mut p.raft_layers, b.raft_layers, 0..=10, false);
             r.num(ui, "Raft margin", "", &mut p.raft_margin, b.raft_margin, 0.0..=30.0, "mm", 1, true);
             group(ui, r, "SEVERAL FILAMENTS");
@@ -748,6 +752,15 @@ fn fdm_printer_editor(ui: &mut egui::Ui, p: &mut FdmPrinter) {
         });
         line(ui, "Smooth arcs (G2/G3)", |ui| {
             ui.checkbox(&mut p.arc_fitting, "");
+        });
+        line(ui, "Input shaper X", |ui| {
+            ui.add(num(&mut p.shaper_freq_x, 0.0, 300.0, "Hz"));
+        });
+        line(ui, "Input shaper Y", |ui| {
+            ui.add(num(&mut p.shaper_freq_y, 0.0, 300.0, "Hz"));
+        });
+        line(ui, "Label objects", |ui| {
+            ui.checkbox(&mut p.label_objects, "");
         });
     });
     ui.add_space(6.0);

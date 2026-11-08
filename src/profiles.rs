@@ -47,6 +47,11 @@ pub struct FdmPrinter {
     pub wipe_on_retract: f32,
     pub relative_e: bool,
     pub arc_fitting: bool,
+    /// Input shaper frequencies in Hz; zero leaves the printer's own setting.
+    pub shaper_freq_x: f32,
+    pub shaper_freq_y: f32,
+    /// Mark each object in the G-code so the printer can skip a failed one.
+    pub label_objects: bool,
     pub start_gcode: String,
     pub end_gcode: String,
     pub tool_change_gcode: String,
@@ -78,6 +83,9 @@ impl Default for FdmPrinter {
             wipe_on_retract: 0.0,
             relative_e: true,
             arc_fitting: false,
+            shaper_freq_x: 0.0,
+            shaper_freq_y: 0.0,
+            label_objects: false,
             start_gcode: DEFAULT_START.into(),
             end_gcode: DEFAULT_END.into(),
             tool_change_gcode: String::new(),
@@ -176,10 +184,14 @@ pub enum InfillPattern {
     Concentric,
     CrossHatch,
     Lightning,
+    QuarterCubic,
+    Stars,
+    Hilbert,
+    Archimedean,
 }
 
 impl InfillPattern {
-    pub const ALL: [InfillPattern; 10] = [
+    pub const ALL: [InfillPattern; 14] = [
         InfillPattern::Grid,
         InfillPattern::Lines,
         InfillPattern::Rectilinear,
@@ -190,6 +202,10 @@ impl InfillPattern {
         InfillPattern::Concentric,
         InfillPattern::CrossHatch,
         InfillPattern::Lightning,
+        InfillPattern::QuarterCubic,
+        InfillPattern::Stars,
+        InfillPattern::Hilbert,
+        InfillPattern::Archimedean,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -203,6 +219,10 @@ impl InfillPattern {
             InfillPattern::Concentric => "Concentric",
             InfillPattern::CrossHatch => "Cross hatch",
             InfillPattern::Lightning => "Lightning",
+            InfillPattern::QuarterCubic => "Quarter cubic",
+            InfillPattern::Stars => "Stars",
+            InfillPattern::Hilbert => "Hilbert curve",
+            InfillPattern::Archimedean => "Archimedean chords",
         }
     }
 }
@@ -226,6 +246,46 @@ impl SurfacePattern {
             SurfacePattern::Monotonic => "Monotonic",
             SurfacePattern::Rectilinear => "Zig-zag",
             SurfacePattern::Concentric => "Concentric",
+        }
+    }
+}
+
+/// Which outer walls get the rough fuzzy-skin texture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum FuzzyMode {
+    #[default]
+    All,
+    Outline,
+    Holes,
+}
+
+impl FuzzyMode {
+    pub const ALL: [FuzzyMode; 3] = [FuzzyMode::All, FuzzyMode::Outline, FuzzyMode::Holes];
+    pub fn label(self) -> &'static str {
+        match self {
+            FuzzyMode::All => "Outline and holes",
+            FuzzyMode::Outline => "Outline only",
+            FuzzyMode::Holes => "Holes only",
+        }
+    }
+}
+
+/// Where the brim goes around the first layer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum BrimType {
+    #[default]
+    Outer,
+    Inner,
+    Both,
+}
+
+impl BrimType {
+    pub const ALL: [BrimType; 3] = [BrimType::Outer, BrimType::Inner, BrimType::Both];
+    pub fn label(self) -> &'static str {
+        match self {
+            BrimType::Outer => "Outside",
+            BrimType::Inner => "Inside holes",
+            BrimType::Both => "Outside and inside",
         }
     }
 }
@@ -300,6 +360,7 @@ pub struct FdmProcess {
     pub seam_gap: f32,
     pub fuzzy_skin: bool,
     pub fuzzy_thickness: f32,
+    pub fuzzy_mode: FuzzyMode,
     pub ironing: bool,
     pub ironing_flow: f32,
     pub ironing_spacing: f32,
@@ -309,6 +370,10 @@ pub struct FdmProcess {
     pub top_layers: u32,
     pub bottom_layers: u32,
     pub outer_wall_first: bool,
+    /// Print the first inner wall, then the outer wall, then the rest.
+    pub inner_outer_inner: bool,
+    /// Print wall loops the other way round.
+    pub reverse_walls: bool,
     pub extra_wall_on_overhang: bool,
     pub thin_walls: bool,
     pub gap_fill: bool,
@@ -349,6 +414,7 @@ pub struct FdmProcess {
     pub skirt_loops: u32,
     pub skirt_distance: f32,
     pub brim_width: f32,
+    pub brim_type: BrimType,
     pub raft_layers: u32,
     pub raft_margin: f32,
     // Multi-material
@@ -381,6 +447,7 @@ impl Default for FdmProcess {
             seam_gap: 0.05,
             fuzzy_skin: false,
             fuzzy_thickness: 0.2,
+            fuzzy_mode: FuzzyMode::All,
             ironing: false,
             ironing_flow: 12.0,
             ironing_spacing: 0.15,
@@ -389,6 +456,8 @@ impl Default for FdmProcess {
             top_layers: 4,
             bottom_layers: 3,
             outer_wall_first: false,
+            inner_outer_inner: false,
+            reverse_walls: false,
             extra_wall_on_overhang: false,
             thin_walls: true,
             gap_fill: true,
@@ -426,6 +495,7 @@ impl Default for FdmProcess {
             skirt_loops: 1,
             skirt_distance: 4.0,
             brim_width: 0.0,
+            brim_type: BrimType::Outer,
             raft_layers: 0,
             raft_margin: 2.0,
             prime_tower: true,
