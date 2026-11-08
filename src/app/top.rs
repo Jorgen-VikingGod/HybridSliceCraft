@@ -351,6 +351,14 @@ impl App {
                     self.apply_calibration(shapes::pressure_advance_tower(0.1));
                     ui.close();
                 }
+                if ui.button(crate::i18n::tr("Max flow tower")).clicked() {
+                    self.apply_calibration(shapes::max_volumetric_tower(5.0));
+                    ui.close();
+                }
+                if ui.button(crate::i18n::tr("Speed ripple tower")).clicked() {
+                    self.apply_calibration(shapes::speed_ripple_tower(60.0));
+                    ui.close();
+                }
                 if ui.button(crate::i18n::tr("First layer test")).clicked() {
                     self.apply_calibration(shapes::first_layer_test());
                     ui.close();

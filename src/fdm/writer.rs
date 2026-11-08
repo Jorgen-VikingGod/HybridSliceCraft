@@ -29,6 +29,10 @@ pub(super) struct Writer<'a> {
     pub retract_len: f64,
     pub temp: Vec<f64>,
     pub fan_override: Option<f64>,
+    /// Calibration: flow rate in mm³/s that replaces the usual line speeds.
+    pub volumetric_override: Option<f64>,
+    /// Calibration: one speed in mm/s for every line.
+    pub speed_override: Option<f64>,
     pub last_fan: f64,
     pub last_accel: f64,
     pub feed: f64,
@@ -166,8 +170,13 @@ impl<'a> Writer<'a> {
         let area = bead_area(width, height) * flow;
         let mut speed = self.feature_speed(feature);
         let cap = self.filament().max_volumetric as f64 / area.max(1e-4);
-        if cap > 0.0 && feature != Feature::Ironing {
+        if let (Some(v), true) = (self.volumetric_override, feature != Feature::Ironing) {
+            speed = v / area.max(1e-4);
+        } else if cap > 0.0 && feature != Feature::Ironing {
             speed = speed.min(cap);
+        }
+        if let (Some(v), true) = (self.speed_override, feature != Feature::Ironing) {
+            speed = v;
         }
         self.moves.push(Mv::Ext {
             to: DVec3::new(to.x, to.y, z),

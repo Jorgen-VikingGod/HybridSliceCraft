@@ -360,3 +360,7 @@ Prints wall loops the other way round.	Druckt Wandschleifen in die andere Richtu
 Input shaper X	Input-Shaper X	Input shaper X	Input shaper X
 Input shaper Y	Input-Shaper Y	Input shaper Y	Input shaper Y
 Label objects	Objekte kennzeichnen	Étiqueter les objets	Etiquetar objetos
+Ironing type	Glättungsart	Type de lissage	Tipo de planchado
+Which surfaces get ironed.	Welche Flächen geglättet werden.	Quelles surfaces sont lissées.	Qué superficies se planchan.
+Max flow tower	Max-Fluss-Turm	Tour de débit maximal	Torre de flujo máximo
+Speed ripple tower	Geschwindigkeits-Wellenturm	Tour d'ondulations de vitesse	Torre de ondulaciones por velocidad

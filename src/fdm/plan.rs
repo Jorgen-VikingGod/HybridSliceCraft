@@ -5,7 +5,7 @@ use super::infill;
 use super::support::{self, SupportLayer};
 use super::{bead_spacing, ExPath, Feature, FdmJob};
 use crate::geom::{self, EdgeIndex, Polyline, Region};
-use crate::profiles::{BrimType, FuzzyMode, InfillPattern, SurfacePattern};
+use crate::profiles::{BrimType, FuzzyMode, InfillPattern, IroningType, SurfacePattern};
 use crate::slicing::{slice_mesh, Progress};
 use glam::DVec2;
 use rayon::prelude::*;
@@ -765,7 +765,23 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             &mut fill,
                         );
                         if p.ironing && !top_skin.is_empty() {
-                            let iron = geom::offset(&top_skin, -w * 0.25);
+                            let mut target = top_skin.clone();
+                            match p.ironing_type {
+                                IroningType::TopSurfaces => {}
+                                IroningType::Topmost => {
+                                    // Whatever is still bare after every layer above is the very top.
+                                    for upper in slices.iter().skip(i + 1) {
+                                        target = geom::diff(&target, upper);
+                                        if target.is_empty() {
+                                            break;
+                                        }
+                                    }
+                                }
+                                IroningType::AllSolid => {
+                                    target = geom::union2(&target, &internal_solid);
+                                }
+                            }
+                            let iron = geom::offset(&target, -w * 0.25);
                             let spacing = (p.ironing_spacing as f64).max(0.05);
                             let rows = infill::lines(&iron, angle + PI / 2.0, spacing, 0.0);
                             let bound = EdgeIndex::new(&geom::offset(&iron, 0.02));

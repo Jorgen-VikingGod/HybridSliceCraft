@@ -270,6 +270,29 @@ impl FuzzyMode {
     }
 }
 
+/// Which surfaces get ironed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum IroningType {
+    /// Every top surface, on each layer that has one.
+    #[default]
+    TopSurfaces,
+    /// Only surfaces with nothing printed above them anywhere.
+    Topmost,
+    /// Top surfaces and the solid layers beneath them.
+    AllSolid,
+}
+
+impl IroningType {
+    pub const ALL: [IroningType; 3] = [IroningType::TopSurfaces, IroningType::Topmost, IroningType::AllSolid];
+    pub fn label(self) -> &'static str {
+        match self {
+            IroningType::TopSurfaces => "All top surfaces",
+            IroningType::Topmost => "Topmost surface only",
+            IroningType::AllSolid => "All solid layers",
+        }
+    }
+}
+
 /// Where the brim goes around the first layer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum BrimType {
@@ -362,6 +385,7 @@ pub struct FdmProcess {
     pub fuzzy_thickness: f32,
     pub fuzzy_mode: FuzzyMode,
     pub ironing: bool,
+    pub ironing_type: IroningType,
     pub ironing_flow: f32,
     pub ironing_spacing: f32,
     pub ironing_speed: f32,
@@ -449,6 +473,7 @@ impl Default for FdmProcess {
             fuzzy_thickness: 0.2,
             fuzzy_mode: FuzzyMode::All,
             ironing: false,
+            ironing_type: IroningType::TopSurfaces,
             ironing_flow: 12.0,
             ironing_spacing: 0.15,
             ironing_speed: 25.0,

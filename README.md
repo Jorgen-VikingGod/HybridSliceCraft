@@ -10,7 +10,7 @@ A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast des
 - Fourteen infill patterns: grid, lines, rectilinear, triangles, cubic, quarter cubic, stars, gyroid, honeycomb, concentric, cross hatch, lightning-style, Hilbert curve, Archimedean chords
 - Grid and tree supports with interface layers
 - Skirt, brim (outside, inside holes or both) and raft
-- Seam placement, ironing, fuzzy skin (outline, holes or both), spiral vase, adaptive layer heights
+- Seam placement, ironing (all top surfaces, topmost only, or all solid layers), fuzzy skin (outline, holes or both), spiral vase, adaptive layer heights
 - Several filaments in one print, with a prime tower
 - **Several nozzle sizes in one print**: each tool can have its own nozzle (for example 0.4 mm and 0.8 mm). Each model's lines follow the size of the nozzle that prints it. A model can also print its walls with the fine nozzle and its infill with the big one, for speed without losing surface detail.
 - Cooling, time and filament estimates that account for acceleration
@@ -18,7 +18,7 @@ A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast des
 - Input shaper settings and object labels so a failed object can be skipped mid-print (Klipper, Marlin)
 - Arc fitting (G2/G3), pressure advance, Marlin, Klipper and RepRapFirmware output
 - Preview by line type, speed, flow, layer height, width, fan, temperature, layer time or filament
-- Calibration tests: temperature tower, flow, retraction, pressure advance, first layer
+- Calibration tests: temperature tower, flow, max flow tower, speed ripple tower, retraction, pressure advance, first layer
 - Sending to OctoPrint or Moonraker printers over the local network
 
 ## Resin (MSLA)

@@ -1,0 +1,13 @@
+**Next release** brings more filament print options, inspired by what OrcaSlicer offers.
+
+## New for filament printing
+
+- **Four more infill patterns:** quarter cubic, stars, Hilbert curve and Archimedean chords.
+- **Fuzzy skin on:** roughen the outline, the holes, or both.
+- **Brim type:** outside the part, inside its holes, or both.
+- **Ironing type:** all top surfaces, only the topmost one, or all solid layers.
+- **Wall order:** inner-outer-inner printing, and reversed wall direction.
+- **Printer settings:** input shaper frequencies, and object labels so a failed object can be skipped mid-print (Klipper and Marlin).
+- **Two new calibration prints:** a max flow tower and a speed ripple tower.
+
+None of this has been tried on a real printer yet.

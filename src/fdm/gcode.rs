@@ -221,6 +221,14 @@ fn apply_z_change(w: &mut Writer, change: ZChange, firmware: Firmware) {
             w.retract_len = l as f64;
         }
         ZChange::Fan(v) => w.fan_override = Some(v as f64),
+        ZChange::Volumetric(v) => {
+            let _ = writeln!(w.chunk, "; calibration: {v:.1} mm3/s");
+            w.volumetric_override = Some(v as f64);
+        }
+        ZChange::Speed(v) => {
+            let _ = writeln!(w.chunk, "; calibration: {v:.0} mm/s");
+            w.speed_override = Some(v as f64);
+        }
     }
 }
 
@@ -245,6 +253,8 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
         retract_len: printer.retract_length as f64,
         temp: job.filaments.iter().map(|f| f.nozzle_first as f64).collect(),
         fan_override: None,
+        volumetric_override: None,
+        speed_override: None,
         last_fan: -1.0,
         last_accel: -1.0,
         feed: -1.0,

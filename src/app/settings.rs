@@ -512,6 +512,7 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.num(ui, "Elephant foot fix", "Pulls the first layer in so it doesn't bulge.", &mut p.elephant_foot, b.elephant_foot, 0.0..=1.0, "mm", 3, true);
             group(ui, r, "SURFACE");
             r.flag(ui, "Ironing", "Runs the hot nozzle over the top to smooth it.", &mut p.ironing, b.ironing, false);
+            r.pick(ui, "Ironing type", "Which surfaces get ironed.", &mut p.ironing_type, b.ironing_type, &IroningType::ALL, IroningType::label, true);
             r.num(ui, "Ironing flow", "", &mut p.ironing_flow, b.ironing_flow, 0.0..=50.0, "%", 1, true);
             r.num(ui, "Ironing spacing", "", &mut p.ironing_spacing, b.ironing_spacing, 0.03..=1.0, "mm", 3, true);
             r.flag(ui, "Fuzzy skin", "A rough texture on outer walls.", &mut p.fuzzy_skin, b.fuzzy_skin, false);

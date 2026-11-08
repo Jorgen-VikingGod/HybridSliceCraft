@@ -142,6 +142,10 @@ pub enum ZChange {
     PressureAdvance(f32),
     Retraction(f32),
     Fan(f32),
+    /// Print as fast as this many mm³/s allow, whatever the line speeds say.
+    Volumetric(f32),
+    /// Print all lines at this speed in mm/s.
+    Speed(f32),
 }
 
 #[derive(Clone)]

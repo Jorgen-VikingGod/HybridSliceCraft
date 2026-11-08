@@ -328,6 +328,10 @@ fn calibration_tests_really_change_settings_as_they_rise() {
     let (lo, hi) = flows.iter().fold((f32::MAX, 0f32), |(a, b), v| (a.min(*v), b.max(*v)));
     assert!(hi / lo > 1.15, "flow should differ between slabs: {lo} {hi}");
     run(shapes::first_layer_test());
+    let v = run(shapes::max_volumetric_tower(5.0));
+    assert!(v.gcode.matches("; calibration: ").count() >= 10);
+    let s = run(shapes::speed_ripple_tower(60.0));
+    assert!(s.gcode.contains("; calibration: 240 mm/s"));
 }
 
 #[test]
@@ -512,4 +516,21 @@ fn objects_are_labelled_and_the_shaper_is_set() {
     j.printer.firmware = crate::profiles::Firmware::Marlin;
     let g = slice(&j, &Progress::default()).unwrap().gcode;
     assert!(g.contains("M486 S0") && g.contains("M593 X F55.0"));
+}
+
+#[test]
+fn ironing_types_cover_different_amounts() {
+    use crate::profiles::IroningType;
+    let iron = |t: IroningType| {
+        let mut p = FdmProcess::default();
+        p.ironing = true;
+        p.ironing_type = t;
+        let j = job(centered(make_box(Vec3::new(20.0, 20.0, 6.0))), p);
+        let r = slice(&j, &Progress::default()).unwrap();
+        r.segs.iter().filter(|s| s.feature == Feature::Ironing as u32).count()
+    };
+    let top = iron(IroningType::TopSurfaces);
+    assert!(top > 0);
+    assert_eq!(iron(IroningType::Topmost), top, "a plain box has only one top");
+    assert!(iron(IroningType::AllSolid) >= top);
 }
