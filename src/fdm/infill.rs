@@ -269,6 +269,7 @@ pub fn sparse(
     z: f64,
     layer: usize,
     base_angle: f64,
+    anchor: f64,
 ) -> Vec<Polyline> {
     if region.is_empty() || density <= 0.0 {
         return Vec::new();
@@ -287,7 +288,7 @@ pub fn sparse(
     let mut add_lines = |angle: f64, spacing: f64, phase: f64, join: bool| {
         let rows = lines(region, angle, spacing, phase);
         if join {
-            out.extend(zigzag(rows, &link_bound, spacing * 3.0, mn));
+            out.extend(zigzag(rows, &link_bound, (spacing * 3.0).max(anchor), mn));
         } else {
             out.extend(rows.into_iter().map(|(a, b)| vec![a, b]));
         }
@@ -434,7 +435,7 @@ mod tests {
         let r = square(40.0);
         for pattern in InfillPattern::ALL {
             let density = 0.2;
-            let lines = sparse(pattern, &r, density, 0.45, 10.0, 3, 0.7);
+            let lines = sparse(pattern, &r, density, 0.45, 10.0, 3, 0.7, 0.0);
             assert!(!lines.is_empty(), "{pattern:?}");
             let idx = EdgeIndex::new(&geom::offset(&r, 0.01));
             for l in &lines {
@@ -451,7 +452,7 @@ mod tests {
     fn gyroid_is_continuous_at_many_heights() {
         let r = square(30.0);
         for i in 0..40 {
-            let lines = sparse(InfillPattern::Gyroid, &r, 0.15, 0.45, i as f64 * 0.31, i, 0.0);
+            let lines = sparse(InfillPattern::Gyroid, &r, 0.15, 0.45, i as f64 * 0.31, i, 0.0, 0.0);
             assert!(!lines.is_empty());
             for l in &lines {
                 for w in l.windows(2) {

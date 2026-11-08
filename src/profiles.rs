@@ -381,6 +381,8 @@ pub struct FdmProcess {
     pub elephant_foot: f32,
     pub seam: SeamMode,
     pub seam_gap: f32,
+    /// Move the seam of inner walls a little on every layer.
+    pub stagger_inner_seams: bool,
     pub fuzzy_skin: bool,
     pub fuzzy_thickness: f32,
     pub fuzzy_mode: FuzzyMode,
@@ -398,6 +400,8 @@ pub struct FdmProcess {
     pub inner_outer_inner: bool,
     /// Print wall loops the other way round.
     pub reverse_walls: bool,
+    /// Print a single wall on islands that are completely open to the sky.
+    pub one_wall_on_top: bool,
     pub extra_wall_on_overhang: bool,
     pub thin_walls: bool,
     pub gap_fill: bool,
@@ -405,6 +409,8 @@ pub struct FdmProcess {
     pub infill_pattern: InfillPattern,
     pub infill_angle: f32,
     pub infill_overlap: f32,
+    /// Longest link between neighbouring infill lines, in mm; zero keeps the default of three line gaps.
+    pub infill_anchor: f32,
     pub top_pattern: SurfacePattern,
     pub bottom_pattern: SurfacePattern,
     pub spiral_vase: bool,
@@ -469,6 +475,7 @@ impl Default for FdmProcess {
             elephant_foot: 0.1,
             seam: SeamMode::Aligned,
             seam_gap: 0.05,
+            stagger_inner_seams: false,
             fuzzy_skin: false,
             fuzzy_thickness: 0.2,
             fuzzy_mode: FuzzyMode::All,
@@ -483,6 +490,7 @@ impl Default for FdmProcess {
             outer_wall_first: false,
             inner_outer_inner: false,
             reverse_walls: false,
+            one_wall_on_top: false,
             extra_wall_on_overhang: false,
             thin_walls: true,
             gap_fill: true,
@@ -490,6 +498,7 @@ impl Default for FdmProcess {
             infill_pattern: InfillPattern::Gyroid,
             infill_angle: 45.0,
             infill_overlap: 15.0,
+            infill_anchor: 0.0,
             top_pattern: SurfacePattern::Monotonic,
             bottom_pattern: SurfacePattern::Monotonic,
             spiral_vase: false,

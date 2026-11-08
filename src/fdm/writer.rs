@@ -201,6 +201,11 @@ impl<'a> Writer<'a> {
         let here = DVec2::new(self.pos.x, self.pos.y);
         let mode = if is_outer { self.job.process.seam } else { SeamMode::Nearest };
         match mode {
+            SeamMode::Nearest if !is_outer && self.job.process.stagger_inner_seams => {
+                // Walk a different distance round the loop each layer so seams don't stack.
+                let step = (n as f64 * 0.07 * (self.layer_index % 5) as f64) as usize;
+                (nearest(pts, here) + step) % n
+            }
             SeamMode::Nearest => nearest(pts, here),
             SeamMode::Back => {
                 let mut best = 0;

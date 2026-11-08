@@ -534,3 +534,41 @@ fn ironing_types_cover_different_amounts() {
     assert_eq!(iron(IroningType::Topmost), top, "a plain box has only one top");
     assert!(iron(IroningType::AllSolid) >= top);
 }
+
+#[test]
+fn anchor_and_staggered_seams_run_and_keep_the_plastic() {
+    let run = |f: fn(&mut FdmProcess)| {
+        let mut p = FdmProcess::default();
+        p.infill_pattern = InfillPattern::Rectilinear;
+        p.walls = 3;
+        f(&mut p);
+        let j = job(centered(make_box(Vec3::new(30.0, 30.0, 6.0))), p);
+        slice(&j, &Progress::default()).unwrap()
+    };
+    let base = run(|_| {});
+    let a = run(|p| p.infill_anchor = 20.0);
+    let s = run(|p| p.stagger_inner_seams = true);
+    for r in [&a, &s] {
+        assert!((r.filament_mm[0] - base.filament_mm[0]).abs() / base.filament_mm[0] < 0.03);
+    }
+    assert_ne!(s.gcode, base.gcode, "seams should move");
+}
+
+#[test]
+fn one_wall_on_top_only_changes_the_top_layer() {
+    let walls = |on: bool| {
+        let mut p = FdmProcess::default();
+        p.walls = 3;
+        p.one_wall_on_top = on;
+        let j = job(centered(make_box(Vec3::new(20.0, 20.0, 4.0))), p);
+        let r = slice(&j, &Progress::default()).unwrap();
+        let top = r.layers.len() as u32 - 1;
+        let count = |layer: u32| r.segs.iter().filter(|s| s.layer == layer && s.feature == Feature::InnerWall as u32).count();
+        (count(top), count(1))
+    };
+    let (top_off, mid_off) = walls(false);
+    let (top_on, mid_on) = walls(true);
+    assert_eq!(top_on, 0, "the top layer should have no inner walls");
+    assert!(top_off > 0);
+    assert_eq!(mid_on, mid_off);
+}

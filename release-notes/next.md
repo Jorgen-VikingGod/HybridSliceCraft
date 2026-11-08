@@ -7,6 +7,8 @@
 - **Brim type:** outside the part, inside its holes, or both.
 - **Ironing type:** all top surfaces, only the topmost one, or all solid layers.
 - **Wall order:** inner-outer-inner printing, and reversed wall direction.
+- **One wall on top:** a single wall on islands that are fully open to the sky.
+- **Stagger inner seams** and **Infill anchor** (longer links between infill lines, fewer travel moves).
 - **Printer settings:** input shaper frequencies, and object labels so a failed object can be skipped mid-print (Klipper and Marlin).
 - **Two new calibration prints:** a max flow tower and a speed ripple tower.
 

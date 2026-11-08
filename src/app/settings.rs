@@ -507,6 +507,7 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             group(ui, r, "SEAM");
             r.pick(ui, "Seam position", "Where each wall starts and ends.", &mut p.seam, b.seam, &SeamMode::ALL, SeamMode::label, false);
             r.num(ui, "Seam gap", "Stops slightly short to hide the join (fraction of line width).", &mut p.seam_gap, b.seam_gap, 0.0..=0.5, "", 2, true);
+            r.flag(ui, "Stagger inner seams", "Moves the seam of inner walls a little on every layer so they don't line up.", &mut p.stagger_inner_seams, b.stagger_inner_seams, true);
             group(ui, r, "SIZE ACCURACY");
             r.num(ui, "Size correction", "Grow or shrink outlines to match real measurements.", &mut p.xy_compensation, b.xy_compensation, -1.0..=1.0, "mm", 3, true);
             r.num(ui, "Elephant foot fix", "Pulls the first layer in so it doesn't bulge.", &mut p.elephant_foot, b.elephant_foot, 0.0..=1.0, "mm", 3, true);
@@ -524,6 +525,7 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.int(ui, "Wall loops", "More walls make a stronger part.", &mut p.walls, b.walls, 0..=30, false);
             r.flag(ui, "Outer wall first", "Better accuracy, slightly worse overhangs.", &mut p.outer_wall_first, b.outer_wall_first, true);
             r.flag(ui, "Inner-outer-inner walls", "Prints the first inner wall, then the outer wall, then the rest. Good accuracy with clean overhangs. Needs three or more walls.", &mut p.inner_outer_inner, b.inner_outer_inner, true);
+            r.flag(ui, "One wall on top", "Prints a single wall on islands that are fully open to the sky, which leaves a smoother top.", &mut p.one_wall_on_top, b.one_wall_on_top, true);
             r.flag(ui, "Reverse wall direction", "Prints wall loops the other way round.", &mut p.reverse_walls, b.reverse_walls, true);
             r.flag(ui, "Detect thin walls", "Print features too narrow for a full loop.", &mut p.thin_walls, b.thin_walls, true);
             r.flag(ui, "Fill gaps", "Fill narrow spaces between walls.", &mut p.gap_fill, b.gap_fill, true);
@@ -536,6 +538,7 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.num(ui, "Infill density", "How full the inside is. 15% suits most decorative prints.", &mut p.infill_density, b.infill_density, 0.0..=100.0, "%", 0, false);
             r.pick(ui, "Infill pattern", "", &mut p.infill_pattern, b.infill_pattern, &InfillPattern::ALL, InfillPattern::label, false);
             r.num(ui, "Infill angle", "", &mut p.infill_angle, b.infill_angle, 0.0..=180.0, "°", 0, true);
+            r.num(ui, "Infill anchor", "Longest link joining neighbouring infill lines. Longer links mean fewer travel moves. Zero uses the default.", &mut p.infill_anchor, b.infill_anchor, 0.0..=50.0, "mm", 1, true);
             r.num(ui, "Infill overlap", "How far infill reaches into the walls.", &mut p.infill_overlap, b.infill_overlap, 0.0..=50.0, "%", 0, true);
             group(ui, r, "SPECIAL");
             r.flag(ui, "Spiral vase", "One continuous wall rising in a spiral, with no top. Great for vases.", &mut p.spiral_vase, b.spiral_vase, false);

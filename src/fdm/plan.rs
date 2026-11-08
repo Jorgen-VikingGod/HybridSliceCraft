@@ -580,7 +580,13 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                     .enumerate()
                     .map(|(k, isl)| {
                         let reg = isl.region();
-                        let wr = build_walls(&reg, g, job, wall_count, below.as_ref(), k as u64 + 7);
+                        // An island with nothing printed above it at all is a top surface.
+                        let open_top = p.one_wall_on_top && (i + 1 == n || {
+                            let bare = geom::diff(&reg, &slices[i + 1]);
+                            geom::region_area(&bare) > 0.9 * geom::region_area(&reg)
+                        });
+                        let count = if open_top { wall_count.min(1) } else { wall_count };
+                        let wr = build_walls(&reg, g, job, count, below.as_ref(), k as u64 + 7);
                         (reg, wr)
                     })
                     .collect();
@@ -743,7 +749,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             // The first layer is solid, so a second tool only ever fills above it.
                             let other = infill_tool != tool && i > 0;
                             let wi = if other { p.line_width as f64 * infill_scale } else { w };
-                            let lines = infill::sparse(p.infill_pattern, &target, density, wi, z, i, base_angle);
+                            let lines = infill::sparse(p.infill_pattern, &target, density, wi, z, i, base_angle, p.infill_anchor as f64);
                             for l in lines {
                                 let path = ExPath::open(l, wi, Feature::SparseInfill);
                                 if other {

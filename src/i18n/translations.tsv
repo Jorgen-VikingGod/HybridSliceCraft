@@ -364,3 +364,9 @@ Ironing type	Glättungsart	Type de lissage	Tipo de planchado
 Which surfaces get ironed.	Welche Flächen geglättet werden.	Quelles surfaces sont lissées.	Qué superficies se planchan.
 Max flow tower	Max-Fluss-Turm	Tour de débit maximal	Torre de flujo máximo
 Speed ripple tower	Geschwindigkeits-Wellenturm	Tour d'ondulations de vitesse	Torre de ondulaciones por velocidad
+Stagger inner seams	Innennähte versetzen	Décaler les coutures intérieures	Escalonar costuras interiores
+Moves the seam of inner walls a little on every layer so they don't line up.	Verschiebt die Naht der Innenwände auf jeder Schicht etwas, damit sie nicht übereinanderliegen.	Déplace un peu la couture des parois intérieures à chaque couche pour qu'elles ne s'alignent pas.	Mueve un poco la costura de las paredes interiores en cada capa para que no se alineen.
+Infill anchor	Füllungsanker	Ancrage du remplissage	Anclaje del relleno
+Longest link joining neighbouring infill lines. Longer links mean fewer travel moves. Zero uses the default.	Längste Verbindung zwischen benachbarten Füllungslinien. Längere Verbindungen bedeuten weniger Leerfahrten. Null nutzt den Standard.	Plus long lien entre lignes de remplissage voisines. Des liens plus longs réduisent les déplacements. Zéro utilise la valeur par défaut.	Enlace más largo entre líneas de relleno vecinas. Enlaces más largos reducen los desplazamientos. Cero usa el valor predeterminado.
+One wall on top	Eine Wand oben	Une paroi en haut	Una pared arriba
+Prints a single wall on islands that are fully open to the sky, which leaves a smoother top.	Druckt eine einzelne Wand auf Inseln, die nach oben ganz frei sind, was eine glattere Oberseite ergibt.	Imprime une seule paroi sur les îlots entièrement ouverts vers le haut, pour un dessus plus lisse.	Imprime una sola pared en las islas totalmente abiertas hacia arriba, lo que deja una parte superior más lisa.
