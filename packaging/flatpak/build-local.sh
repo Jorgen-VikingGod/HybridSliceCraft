@@ -9,9 +9,7 @@ cd "$(dirname "$0")"
 app=io.github.jorgen_vikinggod.HybridSliceCraft
 test -f cargo-sources.json || ./update-cargo-sources.sh
 
-# Same manifest, but with this folder as the source.
-sed '/- type: git/,/commit:/c\      - type: dir\n        path: ../..\n        skip: [target, dist, .git, .flatpak-builder, build-dir]' \
-  "$app.yml" > .local-manifest.yml
+./local-manifest.sh
 
 # --disable-rofiles-fuse: some systems can't start the helper it uses to cache steps.
 flatpak-builder --user --install --force-clean --disable-rofiles-fuse \

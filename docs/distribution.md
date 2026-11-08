@@ -32,6 +32,14 @@ To try the script on your own machine without signing:
 
     APT_SKIP_SIGNING=1 packaging/apt/publish.sh /tmp/apt-test path/to/hybridslicecraft_0.3.0_amd64.deb
 
+## Flatpak file on each release
+
+`.github/workflows/flatpak-bundle.yml` builds the Flatpak from the tagged source when a release is
+published and attaches `HybridSliceCraft-<version>-x86_64.flatpak` to it. It can also be started by
+hand with a tag. It is separate from Flathub: no updates, but nothing to submit. It uses the
+committed `cargo-sources.json`, so run `packaging/flatpak/update-cargo-sources.sh` and commit the
+result whenever `Cargo.lock` changes.
+
 ## Flathub
 
 Files are in `packaging/flatpak/`: the manifest, a desktop entry, and AppStream metadata
