@@ -64,6 +64,10 @@ On Debian and Ubuntu you can also install from the apt repository, which keeps t
     echo "deb [signed-by=/etc/apt/keyrings/hybridslicecraft.gpg] https://jorgen-vikinggod.github.io/HybridSliceCraft stable main" | sudo tee /etc/apt/sources.list.d/hybridslicecraft.list
     sudo apt update && sudo apt install hybrid-slice-craft
 
+There is also a Flatpak file (`HybridSliceCraft-<version>-x86_64.flatpak`) on each release:
+
+    flatpak install --user HybridSliceCraft-0.3.1-x86_64.flatpak
+
 The installers aren't code-signed yet. Windows SmartScreen and macOS Gatekeeper will warn on first launch; on macOS, right-click the app and choose Open.
 
 To make installers yourself, install `cargo-packager` (`cargo install cargo-packager --locked`) and run `cargo packager --release` on the system you're building for. They appear in `dist/`.

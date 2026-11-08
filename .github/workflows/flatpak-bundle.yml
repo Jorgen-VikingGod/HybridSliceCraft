@@ -1,0 +1,71 @@
+# Builds the Flatpak and attaches it to a release as a single .flatpak file:
+#   flatpak install --user HybridSliceCraft-0.3.1-x86_64.flatpak
+#
+# This is separate from Flathub. It runs when a release is published, or by
+# hand from the Actions tab with a tag; by hand, the file is kept as a build
+# artifact and also added to that release.
+
+name: Flatpak bundle
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach the file to, like v0.3.1
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  APP_ID: io.github.jorgen_vikinggod.HybridSliceCraft
+  RUNTIME: '25.08'
+
+jobs:
+  bundle:
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Install Flatpak tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub \
+            org.freedesktop.Platform//${RUNTIME} \
+            org.freedesktop.Sdk//${RUNTIME} \
+            org.freedesktop.Sdk.Extension.rust-stable//${RUNTIME}
+
+      - name: Build
+        working-directory: packaging/flatpak
+        run: |
+          test -f cargo-sources.json || { echo "::error::cargo-sources.json is missing; run update-cargo-sources.sh"; exit 1; }
+          ./local-manifest.sh
+          flatpak-builder --user --force-clean --disable-rofiles-fuse \
+            --repo=repo build-dir .local-manifest.yml
+
+      - name: Make the .flatpak file
+        working-directory: packaging/flatpak
+        run: |
+          version="${TAG#v}"
+          flatpak build-bundle \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            repo "HybridSliceCraft-${version}-x86_64.flatpak" "$APP_ID"
+          ls -la *.flatpak
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-bundle
+          path: packaging/flatpak/*.flatpak
+          if-no-files-found: error
+
+      - name: Attach to the release
+        run: gh release upload "$TAG" packaging/flatpak/*.flatpak --clobber --repo "$GITHUB_REPOSITORY"
