@@ -48,7 +48,10 @@ jobs:
         working-directory: packaging/flatpak
         run: |
           test -f cargo-sources.json || { echo "::error::cargo-sources.json is missing; run update-cargo-sources.sh"; exit 1; }
-          ./local-manifest.sh
+          # Same manifest, built from this checkout. Done here rather than with
+          # local-manifest.sh so that older tags, which lack that script, work too.
+          sed '/- type: git/,/commit:/c\      - type: dir\n        path: ../..\n        skip: [target, dist, .git, .flatpak-builder, build-dir, repo]' \
+            "${APP_ID}.yml" > .local-manifest.yml
           flatpak-builder --user --force-clean --disable-rofiles-fuse \
             --repo=repo build-dir .local-manifest.yml
 
