@@ -5,7 +5,7 @@ use super::infill;
 use super::support::{self, SupportLayer};
 use super::{bead_spacing, ExPath, Feature, FdmJob};
 use crate::geom::{self, EdgeIndex, Polyline, Region};
-use crate::profiles::{InfillPattern, SurfacePattern};
+use crate::profiles::{BrimType, FuzzyMode, InfillPattern, IroningType, SurfacePattern};
 use crate::slicing::{slice_mesh, Progress};
 use glam::DVec2;
 use rayon::prelude::*;
@@ -338,7 +338,16 @@ fn build_walls(
         let mut loops = Vec::with_capacity(ring.len());
         for path in &ring {
             let mut pts = loop_points(path, tol);
-            if k == 0 && p.fuzzy_skin {
+            if p.reverse_walls {
+                pts.reverse();
+            }
+            let hole = geom::path_area_mm2(path) < 0.0;
+            let rough = match p.fuzzy_mode {
+                FuzzyMode::All => true,
+                FuzzyMode::Outline => !hole,
+                FuzzyMode::Holes => hole,
+            };
+            if k == 0 && p.fuzzy_skin && rough {
                 pts = fuzzy(&pts, p.fuzzy_thickness as f64, seed ^ (g.index as u64).wrapping_mul(2654435761));
             }
             let mut ex = ExPath::closed(Vec::new(), width, feature);
@@ -571,7 +580,13 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                     .enumerate()
                     .map(|(k, isl)| {
                         let reg = isl.region();
-                        let wr = build_walls(&reg, g, job, wall_count, below.as_ref(), k as u64 + 7);
+                        // An island with nothing printed above it at all is a top surface.
+                        let open_top = p.one_wall_on_top && (i + 1 == n || {
+                            let bare = geom::diff(&reg, &slices[i + 1]);
+                            geom::region_area(&bare) > 0.9 * geom::region_area(&reg)
+                        });
+                        let count = if open_top { wall_count.min(1) } else { wall_count };
+                        let wr = build_walls(&reg, g, job, count, below.as_ref(), k as u64 + 7);
                         (reg, wr)
                     })
                     .collect();
@@ -734,7 +749,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             // The first layer is solid, so a second tool only ever fills above it.
                             let other = infill_tool != tool && i > 0;
                             let wi = if other { p.line_width as f64 * infill_scale } else { w };
-                            let lines = infill::sparse(p.infill_pattern, &target, density, wi, z, i, base_angle);
+                            let lines = infill::sparse(p.infill_pattern, &target, density, wi, z, i, base_angle, p.infill_anchor as f64);
                             for l in lines {
                                 let path = ExPath::open(l, wi, Feature::SparseInfill);
                                 if other {
@@ -756,7 +771,23 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             &mut fill,
                         );
                         if p.ironing && !top_skin.is_empty() {
-                            let iron = geom::offset(&top_skin, -w * 0.25);
+                            let mut target = top_skin.clone();
+                            match p.ironing_type {
+                                IroningType::TopSurfaces => {}
+                                IroningType::Topmost => {
+                                    // Whatever is still bare after every layer above is the very top.
+                                    for upper in slices.iter().skip(i + 1) {
+                                        target = geom::diff(&target, upper);
+                                        if target.is_empty() {
+                                            break;
+                                        }
+                                    }
+                                }
+                                IroningType::AllSolid => {
+                                    target = geom::union2(&target, &internal_solid);
+                                }
+                            }
+                            let iron = geom::offset(&target, -w * 0.25);
                             let spacing = (p.ironing_spacing as f64).max(0.05);
                             let rows = infill::lines(&iron, angle + PI / 2.0, spacing, 0.0);
                             let bound = EdgeIndex::new(&geom::offset(&iron, 0.02));
@@ -838,7 +869,13 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
             for k in 0..count {
                 let ring = geom::offset_round(&footprint, s0 * (k as f64 + 0.5));
                 for path in &ring {
-                    if geom::path_area_mm2(path) > 0.0 {
+                    let hole = geom::path_area_mm2(path) < 0.0;
+                    let wanted = match p.brim_type {
+                        BrimType::Outer => !hole,
+                        BrimType::Inner => hole,
+                        BrimType::Both => true,
+                    };
+                    if wanted && geom::path_area_mm2(path).abs() > 0.0 {
                         adhesion.push(ExPath::closed(geom::path_to_mm(path), w0, Feature::Brim));
                     }
                 }

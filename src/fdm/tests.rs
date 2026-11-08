@@ -328,6 +328,10 @@ fn calibration_tests_really_change_settings_as_they_rise() {
     let (lo, hi) = flows.iter().fold((f32::MAX, 0f32), |(a, b), v| (a.min(*v), b.max(*v)));
     assert!(hi / lo > 1.15, "flow should differ between slabs: {lo} {hi}");
     run(shapes::first_layer_test());
+    let v = run(shapes::max_volumetric_tower(5.0));
+    assert!(v.gcode.matches("; calibration: ").count() >= 10);
+    let s = run(shapes::speed_ripple_tower(60.0));
+    assert!(s.gcode.contains("; calibration: 240 mm/s"));
 }
 
 #[test]
@@ -450,4 +454,121 @@ fn thick_layers_on_a_small_nozzle_are_flagged() {
     });
     let r = slice(&j, &Progress::default()).unwrap();
     assert!(r.warnings.iter().any(|w| w.contains("0.25 mm nozzle")), "{:?}", r.warnings);
+}
+
+#[test]
+fn brim_type_picks_where_the_brim_goes() {
+    use crate::profiles::BrimType;
+    let count = |t: BrimType| {
+        let mut p = FdmProcess::default();
+        p.brim_width = 3.0;
+        p.brim_type = t;
+        let j = job(centered(make_box(Vec3::new(20.0, 20.0, 4.0))), p);
+        let r = slice(&j, &Progress::default()).unwrap();
+        r.segs.iter().filter(|s| s.feature == Feature::Brim as u32).count()
+    };
+    assert!(count(BrimType::Outer) > 0);
+    assert_eq!(count(BrimType::Inner), 0, "a solid box has no holes to fill");
+    assert!(count(BrimType::Both) >= count(BrimType::Outer));
+}
+
+#[test]
+fn fuzzy_skin_modes_run() {
+    use crate::profiles::FuzzyMode;
+    for m in FuzzyMode::ALL {
+        let mut p = FdmProcess::default();
+        p.fuzzy_skin = true;
+        p.fuzzy_mode = m;
+        let j = job(centered(make_box(Vec3::new(20.0, 20.0, 4.0))), p);
+        slice(&j, &Progress::default()).unwrap();
+    }
+}
+
+#[test]
+fn wall_order_options_keep_the_plastic_amount() {
+    let amount = |f: fn(&mut FdmProcess)| {
+        let mut p = FdmProcess::default();
+        p.walls = 3;
+        f(&mut p);
+        let j = job(centered(make_box(Vec3::new(20.0, 20.0, 4.0))), p);
+        slice(&j, &Progress::default()).unwrap().filament_mm[0]
+    };
+    let base = amount(|_| {});
+    for f in [
+        (|p: &mut FdmProcess| p.inner_outer_inner = true) as fn(&mut FdmProcess),
+        |p| p.reverse_walls = true,
+    ] {
+        let v = amount(f);
+        assert!((v - base).abs() / base < 0.02, "{v} vs {base}");
+    }
+}
+
+#[test]
+fn objects_are_labelled_and_the_shaper_is_set() {
+    let mut j = job(centered(make_box(Vec3::new(20.0, 20.0, 4.0))), FdmProcess::default());
+    j.printer.firmware = crate::profiles::Firmware::Klipper;
+    j.printer.label_objects = true;
+    j.printer.shaper_freq_x = 55.0;
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(g.contains("EXCLUDE_OBJECT_DEFINE NAME="));
+    assert!(g.contains("EXCLUDE_OBJECT_START NAME="));
+    assert!(g.contains("SET_INPUT_SHAPER SHAPER_FREQ_X=55.0"));
+    j.printer.firmware = crate::profiles::Firmware::Marlin;
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(g.contains("M486 S0") && g.contains("M593 X F55.0"));
+}
+
+#[test]
+fn ironing_types_cover_different_amounts() {
+    use crate::profiles::IroningType;
+    let iron = |t: IroningType| {
+        let mut p = FdmProcess::default();
+        p.ironing = true;
+        p.ironing_type = t;
+        let j = job(centered(make_box(Vec3::new(20.0, 20.0, 6.0))), p);
+        let r = slice(&j, &Progress::default()).unwrap();
+        r.segs.iter().filter(|s| s.feature == Feature::Ironing as u32).count()
+    };
+    let top = iron(IroningType::TopSurfaces);
+    assert!(top > 0);
+    assert_eq!(iron(IroningType::Topmost), top, "a plain box has only one top");
+    assert!(iron(IroningType::AllSolid) >= top);
+}
+
+#[test]
+fn anchor_and_staggered_seams_run_and_keep_the_plastic() {
+    let run = |f: fn(&mut FdmProcess)| {
+        let mut p = FdmProcess::default();
+        p.infill_pattern = InfillPattern::Rectilinear;
+        p.walls = 3;
+        f(&mut p);
+        let j = job(centered(make_box(Vec3::new(30.0, 30.0, 6.0))), p);
+        slice(&j, &Progress::default()).unwrap()
+    };
+    let base = run(|_| {});
+    let a = run(|p| p.infill_anchor = 20.0);
+    let s = run(|p| p.stagger_inner_seams = true);
+    for r in [&a, &s] {
+        assert!((r.filament_mm[0] - base.filament_mm[0]).abs() / base.filament_mm[0] < 0.03);
+    }
+    assert_ne!(s.gcode, base.gcode, "seams should move");
+}
+
+#[test]
+fn one_wall_on_top_only_changes_the_top_layer() {
+    let walls = |on: bool| {
+        let mut p = FdmProcess::default();
+        p.walls = 3;
+        p.one_wall_on_top = on;
+        let j = job(centered(make_box(Vec3::new(20.0, 20.0, 4.0))), p);
+        let r = slice(&j, &Progress::default()).unwrap();
+        let top = r.layers.len() as u32 - 1;
+        let count = |layer: u32| r.segs.iter().filter(|s| s.layer == layer && s.feature == Feature::InnerWall as u32).count();
+        (count(top), count(1))
+    };
+    let (top_off, mid_off) = walls(false);
+    let (top_on, mid_on) = walls(true);
+    assert_eq!(top_on, 0, "the top layer should have no inner walls");
+    assert!(top_off > 0);
+    assert_eq!(mid_on, mid_off);
 }

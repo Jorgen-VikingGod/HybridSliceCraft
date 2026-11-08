@@ -206,6 +206,68 @@ pub fn pressure_advance_tower(top_k: f32) -> Calibration {
     }
 }
 
+/// A thin-walled box in steps; each step prints at a higher flow rate.
+pub fn max_volumetric_tower(start: f32) -> Calibration {
+    let steps = 10usize;
+    let step = 1.5;
+    let (mesh, changes, lines) = stepped_box(steps, |i| {
+        let v = start + i as f32 * step;
+        (ZChange::Volumetric(v), format!("Step {} from the bottom: {v:.1} mm³/s", i + 1))
+    });
+    let mut p = part("Max flow tower", mesh);
+    p.walls = Some(1);
+    p.infill = Some(0.0);
+    Calibration {
+        name: "Max flow tower",
+        parts: vec![p],
+        z_changes: changes,
+        note: format!(
+            "Find the step where the walls turn rough or gappy; the step just below is the most your nozzle can melt. Set it as the filament's maximum flow.\n{}",
+            lines.join("\n")
+        ),
+    }
+}
+
+/// The same box, stepping through print speeds to show vertical fine artifacts (ripples).
+pub fn speed_ripple_tower(start: f32) -> Calibration {
+    let steps = 10usize;
+    let step = 20.0;
+    let (mesh, changes, lines) = stepped_box(steps, |i| {
+        let v = start + i as f32 * step;
+        (ZChange::Speed(v), format!("Step {} from the bottom: {v:.0} mm/s", i + 1))
+    });
+    let mut p = part("Speed ripple tower", mesh);
+    p.walls = Some(1);
+    p.infill = Some(0.0);
+    Calibration {
+        name: "Speed ripple tower",
+        parts: vec![p],
+        z_changes: changes,
+        note: format!(
+            "Look for the speeds where fine vertical ripples show on the walls and avoid them.\n{}",
+            lines.join("\n")
+        ),
+    }
+}
+
+/// A hollow square tower of equal steps, 4 mm each, over a thin base.
+fn stepped_box(steps: usize, change: impl Fn(usize) -> (ZChange, String)) -> (Mesh, Vec<(f32, ZChange)>, Vec<String>) {
+    let height = steps as f32 * 4.0;
+    let mut mesh = make_box(Vec3::new(30.0, 30.0, 1.0));
+    mesh.append(&at(make_box(Vec3::new(30.0, 1.0, height)), 0.0, 0.0, 1.0));
+    mesh.append(&at(make_box(Vec3::new(30.0, 1.0, height)), 0.0, 29.0, 1.0));
+    mesh.append(&at(make_box(Vec3::new(1.0, 30.0, height)), 0.0, 0.0, 1.0));
+    mesh.append(&at(make_box(Vec3::new(1.0, 30.0, height)), 29.0, 0.0, 1.0));
+    let mut changes = Vec::new();
+    let mut lines = Vec::new();
+    for i in 0..steps {
+        let (c, l) = change(i);
+        changes.push((1.0 + i as f32 * 4.0, c));
+        lines.push(l);
+    }
+    (mesh, changes, lines)
+}
+
 /// Five thin patches around the plate to judge nozzle height.
 pub fn first_layer_test() -> Calibration {
     let parts = (0..5)
@@ -269,6 +331,8 @@ mod tests {
             flow_test(),
             pressure_advance_tower(0.1),
             first_layer_test(),
+            max_volumetric_tower(5.0),
+            speed_ripple_tower(60.0),
             resin_exposure_test(),
         ] {
             assert!(!c.parts.is_empty(), "{}", c.name);

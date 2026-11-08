@@ -29,6 +29,10 @@ pub(super) struct Writer<'a> {
     pub retract_len: f64,
     pub temp: Vec<f64>,
     pub fan_override: Option<f64>,
+    /// Calibration: flow rate in mm³/s that replaces the usual line speeds.
+    pub volumetric_override: Option<f64>,
+    /// Calibration: one speed in mm/s for every line.
+    pub speed_override: Option<f64>,
     pub last_fan: f64,
     pub last_accel: f64,
     pub feed: f64,
@@ -166,8 +170,13 @@ impl<'a> Writer<'a> {
         let area = bead_area(width, height) * flow;
         let mut speed = self.feature_speed(feature);
         let cap = self.filament().max_volumetric as f64 / area.max(1e-4);
-        if cap > 0.0 && feature != Feature::Ironing {
+        if let (Some(v), true) = (self.volumetric_override, feature != Feature::Ironing) {
+            speed = v / area.max(1e-4);
+        } else if cap > 0.0 && feature != Feature::Ironing {
             speed = speed.min(cap);
+        }
+        if let (Some(v), true) = (self.speed_override, feature != Feature::Ironing) {
+            speed = v;
         }
         self.moves.push(Mv::Ext {
             to: DVec3::new(to.x, to.y, z),
@@ -192,6 +201,11 @@ impl<'a> Writer<'a> {
         let here = DVec2::new(self.pos.x, self.pos.y);
         let mode = if is_outer { self.job.process.seam } else { SeamMode::Nearest };
         match mode {
+            SeamMode::Nearest if !is_outer && self.job.process.stagger_inner_seams => {
+                // Walk a different distance round the loop each layer so seams don't stack.
+                let step = (n as f64 * 0.07 * (self.layer_index % 5) as f64) as usize;
+                (nearest(pts, here) + step) % n
+            }
             SeamMode::Nearest => nearest(pts, here),
             SeamMode::Back => {
                 let mut best = 0;
@@ -287,7 +301,12 @@ impl<'a> Writer<'a> {
     pub fn emit_island(&mut self, island: &IslandPlan, z: f64, h: f64, flow: f64) {
         let comb = Some(&island.comb);
         let outer_first = self.job.process.outer_wall_first;
-        let depths: Vec<usize> = if outer_first {
+        let n = island.walls.len();
+        let depths: Vec<usize> = if self.job.process.inner_outer_inner && n >= 3 {
+            let mut v = vec![1, 0];
+            v.extend(2..n);
+            v
+        } else if outer_first {
             (0..island.walls.len()).collect()
         } else {
             (0..island.walls.len()).rev().collect()

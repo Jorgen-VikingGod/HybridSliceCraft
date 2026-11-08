@@ -221,6 +221,14 @@ fn apply_z_change(w: &mut Writer, change: ZChange, firmware: Firmware) {
             w.retract_len = l as f64;
         }
         ZChange::Fan(v) => w.fan_override = Some(v as f64),
+        ZChange::Volumetric(v) => {
+            let _ = writeln!(w.chunk, "; calibration: {v:.1} mm3/s");
+            w.volumetric_override = Some(v as f64);
+        }
+        ZChange::Speed(v) => {
+            let _ = writeln!(w.chunk, "; calibration: {v:.0} mm/s");
+            w.speed_override = Some(v as f64);
+        }
     }
 }
 
@@ -245,6 +253,8 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
         retract_len: printer.retract_length as f64,
         temp: job.filaments.iter().map(|f| f.nozzle_first as f64).collect(),
         fan_override: None,
+        volumetric_override: None,
+        speed_override: None,
         last_fan: -1.0,
         last_accel: -1.0,
         feed: -1.0,
@@ -289,6 +299,12 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
     start.push_str("G92 E0\n");
     if w.tool != 0 {
         let _ = writeln!(start, "T{}", w.tool);
+    }
+    shaper_lines(&mut start, printer.firmware, printer.shaper_freq_x, printer.shaper_freq_y);
+    if printer.label_objects && printer.firmware == Firmware::Klipper {
+        for (oi, o) in job.objects.iter().enumerate() {
+            let _ = writeln!(start, "EXCLUDE_OBJECT_DEFINE NAME={}", object_label(oi, &o.name));
+        }
     }
     if let Some(f) = job.filaments.get(w.tool) {
         if f.pressure_advance > 0.0 {
@@ -480,7 +496,14 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
                     if spiral_active {
                         w.emit_spiral(island, z, h, flow, first_spiral);
                     } else {
+                        let labelled = printer.label_objects;
+                        if labelled {
+                            object_marker(&mut w.chunk, printer.firmware, oi, &job.objects[oi].name, true);
+                        }
                         w.emit_island(island, z, h, flow);
+                        if labelled {
+                            object_marker(&mut w.chunk, printer.firmware, oi, &job.objects[oi].name, false);
+                        }
                     }
                 }
                 // Infill that another tool prints, e.g. a bigger nozzle.
@@ -612,6 +635,68 @@ fn gather_layers(result: &mut FdmResult) {
         i = j;
     }
     result.segs = segs;
+}
+
+/// A name Klipper accepts: letters, digits and underscores only.
+fn object_label(index: usize, name: &str) -> String {
+    let clean: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    format!("{clean}_{index}")
+}
+
+/// Tell the printer which object the following lines belong to.
+fn object_marker(out: &mut String, fw: Firmware, index: usize, name: &str, start: bool) {
+    match (fw, start) {
+        (Firmware::Klipper, true) => {
+            let _ = writeln!(out, "EXCLUDE_OBJECT_START NAME={}", object_label(index, name));
+        }
+        (Firmware::Klipper, false) => {
+            let _ = writeln!(out, "EXCLUDE_OBJECT_END NAME={}", object_label(index, name));
+        }
+        (Firmware::Marlin, true) => {
+            let _ = writeln!(out, "M486 S{index}");
+        }
+        (Firmware::Marlin, false) => out.push_str("M486 S-1\n"),
+        (Firmware::RepRap, true) => {
+            let _ = writeln!(out, "; printing object {name} id:{index}");
+        }
+        (Firmware::RepRap, false) => {
+            let _ = writeln!(out, "; stop printing object {name} id:{index}");
+        }
+    }
+}
+
+/// Input shaper frequencies, when the printer has them set.
+fn shaper_lines(out: &mut String, fw: Firmware, fx: f32, fy: f32) {
+    if fx <= 0.0 && fy <= 0.0 {
+        return;
+    }
+    match fw {
+        Firmware::Marlin => {
+            if fx > 0.0 {
+                let _ = writeln!(out, "M593 X F{fx:.1}");
+            }
+            if fy > 0.0 {
+                let _ = writeln!(out, "M593 Y F{fy:.1}");
+            }
+        }
+        Firmware::Klipper => {
+            let mut line = String::from("SET_INPUT_SHAPER");
+            if fx > 0.0 {
+                let _ = write!(line, " SHAPER_FREQ_X={fx:.1}");
+            }
+            if fy > 0.0 {
+                let _ = write!(line, " SHAPER_FREQ_Y={fy:.1}");
+            }
+            let _ = writeln!(out, "{line}");
+        }
+        Firmware::RepRap => {
+            let f = if fx > 0.0 { fx } else { fy };
+            let _ = writeln!(out, "M593 P\"zvd\" F{f:.1}");
+        }
+    }
 }
 
 fn pressure_advance_line(out: &mut String, fw: Firmware, k: f32) {
