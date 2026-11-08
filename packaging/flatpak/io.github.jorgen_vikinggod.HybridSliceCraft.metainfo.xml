@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.4.0" date="2026-11-08">
+      <description>
+        <p>More filament print options: four infill patterns, brim, fuzzy skin and ironing choices, wall order, input shaper, object labels and two new calibration prints.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.4.0</url>
+    </release>
     <release version="0.3.1" date="2026-11-07">
       <description>
         <p>Adds saving for Anycubic printers and a list of Elegoo and Anycubic machines.</p>
