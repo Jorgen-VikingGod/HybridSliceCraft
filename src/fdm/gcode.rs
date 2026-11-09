@@ -14,6 +14,8 @@ fn substitute(template: &str, job: &FdmJob) -> String {
     let pr = &job.printer;
     template
         .replace("{bed_temp}", &format!("{:.0}", f.bed_first))
+        .replace("{nozzle_temp-90}", &format!("{:.0}", (f.nozzle_first - 90.0).max(0.0)))
+        .replace("{nozzle_temp-50}", &format!("{:.0}", (f.nozzle_first - 50.0).max(0.0)))
         .replace("{nozzle_temp}", &format!("{:.0}", f.nozzle_first))
         .replace("{bed_x}", &format!("{:.1}", pr.bed_x))
         .replace("{bed_y}", &format!("{:.1}", pr.bed_y))

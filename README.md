@@ -17,6 +17,7 @@ A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast des
 - Cooling, time and filament estimates that account for acceleration
 - Wall order options (inner-outer-inner, reversed direction)
 - Input shaper settings and object labels so a failed object can be skipped mid-print (Klipper, Marlin)
+- Snapmaker U1 printer presets (four tool heads, five nozzle choices), with start and end scripts from OrcaSlicer's profile
 - Arc fitting (G2/G3), pressure advance, Marlin, Klipper and RepRapFirmware output
 - Preview by line type, speed, flow, layer height, width, fan, temperature, layer time or filament
 - Calibration tests: temperature tower, flow, max flow tower, speed ripple tower, retraction, pressure advance, first layer

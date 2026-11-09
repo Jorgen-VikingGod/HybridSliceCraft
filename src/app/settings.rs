@@ -774,7 +774,7 @@ fn fdm_printer_editor(ui: &mut egui::Ui, p: &mut FdmPrinter) {
     ui.add(egui::TextEdit::multiline(&mut p.end_gcode).font(egui::TextStyle::Monospace).desired_rows(4).desired_width(f32::INFINITY));
     ui.label(RichText::new(crate::i18n::tr("Tool change script")).strong());
     ui.add(egui::TextEdit::multiline(&mut p.tool_change_gcode).font(egui::TextStyle::Monospace).desired_rows(2).desired_width(f32::INFINITY));
-    ui.label(RichText::new(crate::i18n::tr("Scripts can use {bed_temp}, {nozzle_temp}, {bed_x}, {bed_y}, {height}, {layer_height}, {filament_type}, and {tool} in tool changes.")).small().color(ui_dim()));
+    ui.label(RichText::new(crate::i18n::tr("Scripts can use {bed_temp}, {nozzle_temp}, {bed_x}, {bed_y}, {height}, {layer_height}, {filament_type}, {nozzle_temp-50}, {nozzle_temp-90}, and {tool} in tool changes.")).small().color(ui_dim()));
 }
 
 fn resin_printer_editor(ui: &mut egui::Ui, p: &mut ResinPrinter) {
