@@ -48,7 +48,28 @@ pub struct Plan {
     pub spiral_from: Option<usize>,
 }
 
-fn layer_stack(job: &FdmJob) -> (Vec<Layer>, f64) {
+/// The outline of a mesh on every layer, with size correction applied.
+/// The count is how many gaps in a damaged surface had to be bridged.
+pub(super) fn object_slices(mesh: &crate::mesh::Mesh, zs_mid: &[f64], xy: f64, foot: f64) -> (Vec<Region>, usize) {
+    let (loops, forced) = slice_mesh(mesh, zs_mid);
+    let slices: Vec<Region> = loops
+        .par_iter()
+        .enumerate()
+        .map(|(i, ls)| {
+            let paths: Region = ls.iter().map(|l| geom::path_from(l)).collect();
+            let mut r = geom::union(&paths);
+            r = geom::remove_small(&r, 0.002);
+            let d = xy - if i == 0 { foot } else { 0.0 };
+            if d != 0.0 {
+                r = geom::offset(&r, d);
+            }
+            r
+        })
+        .collect();
+    (slices, forced)
+}
+
+pub(super) fn layer_stack(job: &FdmJob) -> (Vec<Layer>, f64) {
     let p = &job.process;
     let top = job
         .objects
@@ -492,22 +513,13 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
     let mut all_slices: Vec<Vec<Region>> = Vec::with_capacity(job.objects.len());
     let mut stitched = 0;
     for o in &job.objects {
-        let (loops, forced) = slice_mesh(&o.mesh, &zs_mid);
+        if let Some(ready) = &o.slices {
+            // A painted piece: its outlines were cut when the model was split.
+            all_slices.push(ready.as_ref().clone());
+            continue;
+        }
+        let (slices, forced) = object_slices(&o.mesh, &zs_mid, xy, foot);
         stitched += forced;
-        let slices: Vec<Region> = loops
-            .par_iter()
-            .enumerate()
-            .map(|(i, ls)| {
-                let paths: Region = ls.iter().map(|l| geom::path_from(l)).collect();
-                let mut r = geom::union(&paths);
-                r = geom::remove_small(&r, 0.002);
-                let d = xy - if i == 0 { foot } else { 0.0 };
-                if d != 0.0 {
-                    r = geom::offset(&r, d);
-                }
-                r
-            })
-            .collect();
         all_slices.push(slices);
     }
     if stitched > 0 {
@@ -540,9 +552,15 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
     let obj_count = job.objects.len().max(1);
     for (oi, obj) in job.objects.iter().enumerate() {
         let slices = &all_slices[oi];
+        // Skins and overhangs look at the whole model, not just this colour.
+        let cover: &Vec<Region> = obj.cover.as_deref().unwrap_or(slices);
         let frac = |t: f32| 0.1 + 0.7 * (oi as f32 + t) / obj_count as f32;
         progress.set(frac(0.0), &format!("Planning supports for {}", obj.name));
-        let support_layers = support::generate(slices, &heights, p);
+        let support_layers = if obj.no_support {
+            vec![SupportLayer::default(); n]
+        } else {
+            support::generate(cover, &heights, p)
+        };
         if progress.cancelled() {
             return Err("Cancelled".into());
         }
@@ -571,7 +589,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
             .map(|i| {
                 let g = geom_of(i);
                 let below = if i > 0 {
-                    Some(EdgeIndex::new(&geom::offset(&slices[i - 1], g.w_out * 0.45)))
+                    Some(EdgeIndex::new(&geom::offset(&cover[i - 1], g.w_out * 0.45)))
                 } else {
                     None
                 };
@@ -582,7 +600,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                         let reg = isl.region();
                         // An island with nothing printed above it at all is a top surface.
                         let open_top = p.one_wall_on_top && (i + 1 == n || {
-                            let bare = geom::diff(&reg, &slices[i + 1]);
+                            let bare = geom::diff(&reg, &cover[i + 1]);
                             geom::region_area(&bare) > 0.9 * geom::region_area(&reg)
                         });
                         let count = if open_top { wall_count.min(1) } else { wall_count };
@@ -612,7 +630,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
             let mut acc: Region = Vec::new();
             for i in (0..n).rev() {
                 let exposed = if i + 1 < n {
-                    geom::diff(&slices[i], &slices[i + 1])
+                    geom::diff(&slices[i], &cover[i + 1])
                 } else {
                     slices[i].clone()
                 };
@@ -640,7 +658,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                     if k < 0 || k as usize >= n {
                         &empty_slice
                     } else {
-                        &slices[k as usize]
+                        &cover[k as usize]
                     }
                 };
                 // Everything that stays covered for the next `top_n` layers isn't skin.
@@ -665,12 +683,12 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                     covered_down = slices[i].clone();
                 }
                 let topmost = if i + 1 < n {
-                    geom::diff(&slices[i], &slices[i + 1])
+                    geom::diff(&slices[i], &cover[i + 1])
                 } else {
                     slices[i].clone()
                 };
                 let bare_below = if i > 0 {
-                    geom::diff(&slices[i], &slices[i - 1])
+                    geom::diff(&slices[i], &cover[i - 1])
                 } else {
                     Vec::new()
                 };
@@ -776,7 +794,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                                 IroningType::TopSurfaces => {}
                                 IroningType::Topmost => {
                                     // Whatever is still bare after every layer above is the very top.
-                                    for upper in slices.iter().skip(i + 1) {
+                                    for upper in cover.iter().skip(i + 1) {
                                         target = geom::diff(&target, upper);
                                         if target.is_empty() {
                                             break;

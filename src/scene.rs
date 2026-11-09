@@ -43,6 +43,13 @@ pub struct PlateObject {
     pub flow: f32,
     pub infill: Option<f32>,
     pub walls: Option<u32>,
+    /// Filament painted on the surface: one number per triangle of `mesh`.
+    /// 0 is unpainted, `k` is filament slot `k - 1`. Dropped if it stops matching the mesh.
+    pub paint: Option<Arc<Vec<u8>>>,
+    /// Changes whenever the paint does, so the 3D view knows to redraw it.
+    pub paint_id: u64,
+    /// How far painted colour reaches into the part, in mm.
+    pub paint_depth: f32,
     // Resin.
     pub support_points: Vec<SupportPoint>,
     pub cavity: Option<Arc<Mesh>>,
@@ -72,6 +79,9 @@ impl PlateObject {
             flow: 1.0,
             infill: None,
             walls: None,
+            paint: None,
+            paint_id: 0,
+            paint_depth: 2.4,
             support_points: Vec::new(),
             cavity: None,
             cavity_id: 0,

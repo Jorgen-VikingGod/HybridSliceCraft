@@ -641,6 +641,9 @@ impl App {
                     flow: o.flow,
                     infill: o.infill,
                     walls: o.walls,
+                    paint: o.paint.clone().filter(|p| p.len() == o.mesh.t.len()),
+                    paint_depth: o.paint_depth,
+                    ..Default::default()
                 })
                 .collect();
             let meshes: Vec<Arc<Mesh>> = job.objects.iter().map(|o| Arc::new(o.mesh.clone())).collect();
