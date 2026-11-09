@@ -572,3 +572,18 @@ fn one_wall_on_top_only_changes_the_top_layer() {
     assert!(top_off > 0);
     assert_eq!(mid_on, mid_off);
 }
+
+#[test]
+fn snapmaker_u1_slices_with_four_tools() {
+    let cat = Catalogue::builtin();
+    let names: Vec<_> = cat.fdm_printers.iter().filter(|p| p.name.starts_with("Snapmaker U1")).collect();
+    assert_eq!(names.len(), 5);
+    let mut j = job(centered(make_box(Vec3::new(20.0, 20.0, 4.0))), FdmProcess::default());
+    j.printer = names[0].clone();
+    assert_eq!(j.printer.extruders, 4);
+    assert_eq!(j.printer.firmware, crate::profiles::Firmware::Klipper);
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(g.contains("PRINT_START") && g.contains("BED_MESH_CALIBRATE"));
+    assert!(g.contains("PRINT_END"));
+    assert!(!g.contains('{'), "every placeholder should be filled in");
+}
