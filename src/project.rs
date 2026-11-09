@@ -30,6 +30,9 @@ struct SavedObject {
     visible: bool,
     support_points: Vec<SupportPoint>,
     holes: Vec<DrainHole>,
+    /// Name of the file holding one paint number per triangle, if painted.
+    paint_file: Option<String>,
+    paint_depth: Option<f32>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -83,6 +86,13 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
                 bytes.extend_from_slice(&[0, 0]);
             }
             zip.write_all(&bytes).map_err(|e| e.to_string())?;
+            let mut paint_file = None;
+            if let Some(p) = o.paint.as_ref().filter(|p| p.len() == o.mesh.t.len()) {
+                let name = format!("paint/{}.bin", next - 1);
+                zip.start_file(&name, opts).map_err(|e| e.to_string())?;
+                zip.write_all(p).map_err(|e| e.to_string())?;
+                paint_file = Some(name);
+            }
             list.push(SavedObject {
                 name: o.name.clone(),
                 file,
@@ -98,6 +108,8 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
                 visible: o.visible,
                 support_points: o.support_points.clone(),
                 holes: o.holes.clone(),
+                paint_file,
+                paint_depth: Some(o.paint_depth),
             });
         }
         saved.push(list);
@@ -139,7 +151,18 @@ pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
                 .read_to_end(&mut bytes)
                 .map_err(|e| e.to_string())?;
             let mut mesh: Mesh = parse_stl(&bytes)?;
-            mesh.weld(1e-4);
+            let kept = mesh.weld_tracked(1e-4);
+            // Paint is stored per triangle of the saved mesh; follow the welding.
+            let mut paint: Option<Vec<u8>> = None;
+            if let Some(name) = &s.paint_file {
+                let mut raw = Vec::new();
+                if let Ok(mut f) = zip.by_name(name) {
+                    let _ = f.read_to_end(&mut raw);
+                }
+                if raw.len() == kept.len() {
+                    paint = Some(raw.iter().zip(&kept).filter(|(_, k)| **k).map(|(v, _)| *v).collect());
+                }
+            }
             let mut o = PlateObject::new(s.name, mesh);
             o.pivot = Vec3::from(s.pivot);
             o.pos = Vec3::from(s.pos);
@@ -153,6 +176,11 @@ pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
             o.visible = s.visible;
             o.support_points = s.support_points;
             o.holes = s.holes;
+            if let Some(d) = s.paint_depth.filter(|d| *d > 0.0) {
+                o.paint_depth = d;
+            }
+            o.paint = paint.map(Arc::new);
+            o.refresh_paint();
             plate.objects.push(o);
         }
         plates.push(plate);
@@ -345,6 +373,11 @@ mod tests {
     #[test]
     fn project_round_trip() {
         let mut o = PlateObject::new("Thing", make_box(Vec3::new(5.0, 6.0, 7.0)));
+        // A painted corner, so the paint has to survive saving too.
+        o.paint_at(Vec3::new(0.0, 0.0, 3.5), 0, crate::scene::PaintOp::Brush { radius: 1.5, value: 2 });
+        let painted_before = o.paint.as_ref().map(|p| p.iter().filter(|v| **v == 2).count()).unwrap_or(0);
+        let tris_before = o.mesh.t.len();
+        assert!(painted_before > 0);
         o.pos = Vec3::new(10.0, 20.0, 3.5);
         o.rot = Quat::from_rotation_z(0.5);
         o.scale = Vec3::splat(2.0);
@@ -372,7 +405,10 @@ mod tests {
         assert_eq!(back.extruder, 1);
         assert_eq!(back.infill, Some(33.0));
         assert_eq!(back.holes.len(), 1);
-        assert_eq!(back.mesh.t.len(), 12);
+        assert_eq!(back.mesh.t.len(), tris_before);
+        let painted_after = back.paint.as_ref().map(|p| p.iter().filter(|v| **v == 2).count()).unwrap_or(0);
+        assert_eq!(painted_after, painted_before, "paint should come back");
+        assert_eq!(back.paint_values, vec![0, 2]);
         assert!((back.size() - plates[0].objects[0].size()).length() < 1e-3);
         assert!((back.pos - Vec3::new(10.0, 20.0, 3.5)).length() < 1e-4);
         assert!(loaded.resin_mode);

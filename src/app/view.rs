@@ -5,7 +5,7 @@ use super::theme::*;
 use super::*;
 use crate::render::{push_box, push_line, DrawList, DrawObject, LineVertex};
 use crate::resin::supports::SupportPoint;
-use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{Color32, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
 use glam::{Mat4, Vec2 as V2};
 
 const AXIS: [Color32; 3] = [
@@ -47,6 +47,42 @@ impl App {
             }
         }
         best.map(|b| (b.1, b.2, b.3))
+    }
+
+    /// Like `pick_at`, but also says which triangle was hit.
+    fn pick_tri(&self, rect: Rect, p: Pos2) -> Option<(u64, Vec3, Vec3, usize)> {
+        let (o, d) = self.ray_at(rect, p);
+        let mut best: Option<(f32, u64, Vec3, Vec3, usize)> = None;
+        for obj in &self.plate().objects {
+            if let Some((t, hit, n, tri)) = pick_object(obj, o, d) {
+                if best.map(|b| t < b.0).unwrap_or(true) {
+                    best = Some((t, obj.id, hit, n, tri));
+                }
+            }
+        }
+        best.map(|b| (b.1, b.2, b.3, b.4))
+    }
+
+    /// The value written by the current paint settings: a filament number, or 0 to erase.
+    fn paint_value(&self) -> u8 {
+        if self.paint_mode == PaintMode::Erase {
+            0
+        } else {
+            (self.paint_slot as u8).saturating_add(1)
+        }
+    }
+
+    /// One brush dab, or a bucket fill, at a picked spot.
+    fn paint_here(&mut self, id: u64, hit: Vec3, tri: usize) {
+        let value = self.paint_value();
+        let op = match self.paint_mode {
+            PaintMode::Fill => PaintOp::Fill { angle: self.paint_angle, value },
+            _ => PaintOp::Brush { radius: self.paint_radius, value },
+        };
+        if let Some(o) = self.plate_mut().objects.iter_mut().find(|o| o.id == id) {
+            o.paint_at(hit, tri, op);
+        }
+        self.last_dab = Some(hit);
     }
 
     fn floor_for(&self, o: &PlateObject) -> f32 {
@@ -157,7 +193,7 @@ impl App {
             self.camera.pan(d.x, d.y, rect.height());
         }
         // Left-drag turns the view unless a handle or model took the drag.
-        if resp.dragged_by(egui::PointerButton::Primary) && self.drag.is_none() {
+        if resp.dragged_by(egui::PointerButton::Primary) && self.drag.is_none() && !self.painting {
             let d = resp.drag_delta();
             self.camera.yaw -= d.x * 0.006;
             self.camera.pitch = (self.camera.pitch + d.y * 0.006).clamp(-1.5697963, 1.5697963);
@@ -173,7 +209,7 @@ impl App {
 
         // Show where a click would land for tools that act on the surface.
         self.hover_point = None;
-        if matches!(self.tool, Tool::LayFlat | Tool::SupportPoint | Tool::DrainHole | Tool::Measure) && resp.hovered() {
+        if matches!(self.tool, Tool::LayFlat | Tool::SupportPoint | Tool::DrainHole | Tool::Measure | Tool::Paint) && resp.hovered() {
             if let Some(p) = hover {
                 if let Some((_, hit, n)) = self.pick_at(rect, p) {
                     self.hover_point = Some((hit, n));
@@ -181,7 +217,31 @@ impl App {
             }
         }
 
-        if resp.drag_started_by(egui::PointerButton::Primary) {
+        if self.tool == Tool::Paint && self.paint_mode != PaintMode::Fill {
+            if resp.drag_started_by(egui::PointerButton::Primary) {
+                if let Some(press) = ui.input(|i| i.pointer.press_origin()) {
+                    if let Some((id, hit, _, tri)) = self.pick_tri(rect, press) {
+                        self.push_undo();
+                        self.painting = true;
+                        self.selection = vec![id];
+                        self.paint_here(id, hit, tri);
+                    }
+                }
+            }
+            if self.painting && resp.dragged_by(egui::PointerButton::Primary) {
+                if let Some((id, hit, _, tri)) = pointer.and_then(|p| self.pick_tri(rect, p)) {
+                    // Skip tiny moves so the model isn't rebuilt for nothing.
+                    let far = self.last_dab.map(|l| l.distance(hit) > self.paint_radius * 0.2).unwrap_or(true);
+                    if far {
+                        self.paint_here(id, hit, tri);
+                    }
+                }
+            }
+            if resp.drag_stopped() {
+                self.painting = false;
+                self.last_dab = None;
+            }
+        } else if resp.drag_started_by(egui::PointerButton::Primary) {
             if let Some(press) = ui.input(|i| i.pointer.press_origin()) {
                 self.begin_drag(rect, press);
             }
@@ -234,6 +294,14 @@ impl App {
                             self.selection = vec![id];
                             let d = self.resin_process.drain_diameter;
                             self.add_hole_world(hit, n, d);
+                        }
+                    }
+                    Tool::Paint => {
+                        if let Some((id, hit, _, tri)) = self.pick_tri(rect, p) {
+                            self.push_undo();
+                            self.selection = vec![id];
+                            self.paint_here(id, hit, tri);
+                            self.last_dab = None;
                         }
                     }
                     Tool::Measure => {
@@ -660,7 +728,25 @@ impl App {
                 }
             }
         }
-        if let Some((hit, n)) = self.hover_point {
+        if self.tool == Tool::Paint && self.paint_mode != PaintMode::Fill {
+            if let Some((hit, n)) = self.hover_point {
+                // A ring lying on the surface shows how big the brush is.
+                let up = if n.z.abs() < 0.9 { Vec3::Z } else { Vec3::X };
+                let u = n.cross(up).normalize_or_zero();
+                let w = n.cross(u).normalize_or_zero();
+                let ring: Vec<Pos2> = (0..=48)
+                    .filter_map(|k| {
+                        let a = k as f32 / 48.0 * std::f32::consts::TAU;
+                        self.to_screen(rect, hit + n * 0.05 + (u * a.cos() + w * a.sin()) * self.paint_radius)
+                    })
+                    .collect();
+                let slot = self.filaments.get(self.paint_slot).map(|f| f.color).unwrap_or([255, 255, 255]);
+                let col = if self.paint_mode == PaintMode::Erase { Color32::WHITE } else { Color32::from_rgb(slot[0], slot[1], slot[2]) };
+                painter.add(egui::Shape::line(ring.clone(), Stroke::new(3.5, Color32::BLACK)));
+                painter.add(egui::Shape::line(ring, Stroke::new(2.0, col)));
+            }
+        }
+        if let Some((hit, n)) = self.hover_point.filter(|_| self.tool != Tool::Paint) {
             if let (Some(a), Some(b)) = (self.to_screen(rect, hit), self.to_screen(rect, hit + n * self.camera.dist * 0.05)) {
                 painter.line_segment([a, b], Stroke::new(2.0, accent));
                 painter.circle_filled(a, 3.5, accent);
@@ -696,6 +782,9 @@ impl App {
         if self.resin() {
             tools.push((Tool::SupportPoint, Icon::Support, "Add supports by hand"));
             tools.push((Tool::DrainHole, Icon::Drain, "Add drain holes by hand"));
+        }
+        if !self.resin() {
+            tools.push((Tool::Paint, Icon::Paint, "Paint with filaments"));
         }
         tools.push((Tool::Measure, Icon::Measure, "Measure"));
         let height = (tools.len() as f32 + 3.0) * 34.0 + 14.0;
@@ -757,6 +846,7 @@ impl App {
                     self.cut_selected(&ctx);
                 }
             }
+            Tool::Paint => self.paint_panel(ui, rect),
             Tool::SupportPoint | Tool::DrainHole => {
                 ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
                     egui::Frame::new()
@@ -945,14 +1035,35 @@ impl App {
                     color = [0.82, 0.22, 0.2, 1.0];
                 }
                 let selected = !preview && self.selection.contains(&o.id);
-                objects.push(DrawObject {
-                    mesh_id: o.mesh_id,
-                    model: o.matrix(),
-                    color,
-                    selected,
-                    overhang: overhang_on,
-                    ghost: false,
-                });
+                if !self.resin() && !o.paint_values.is_empty() {
+                    // Painted: one piece of the model for each filament.
+                    for v in &o.paint_values {
+                        let mut c = color;
+                        if *v > 0 && inside {
+                            let slot = (*v as usize - 1).min(self.filaments.len().saturating_sub(1));
+                            if let Some(f) = self.filaments.get(slot) {
+                                c = [f.color[0] as f32 / 255.0, f.color[1] as f32 / 255.0, f.color[2] as f32 / 255.0, 1.0];
+                            }
+                        }
+                        objects.push(DrawObject {
+                            mesh_id: paint_piece_id(o.paint_id, *v),
+                            model: o.matrix(),
+                            color: c,
+                            selected,
+                            overhang: overhang_on,
+                            ghost: false,
+                        });
+                    }
+                } else {
+                    objects.push(DrawObject {
+                        mesh_id: o.mesh_id,
+                        model: o.matrix(),
+                        color,
+                        selected,
+                        overhang: overhang_on,
+                        ghost: false,
+                    });
+                }
                 if let Some(c) = &o.cavity {
                     if (o.cavity_scale - o.scale).length() < 1e-3 && !c.is_empty() {
                         let rest = Mat4::from_translation(o.pos) * Mat4::from_quat(o.rot) * Mat4::from_translation(-o.pivot * o.scale);
@@ -1046,6 +1157,18 @@ impl App {
                 continue;
             }
             let plate = &self.plates[self.active];
+            if d.mesh_id & PAINT_TAG != 0 {
+                // A painted piece: cut the model by paint and upload every piece.
+                let pid = (d.mesh_id >> 8) & ((1u64 << 54) - 1);
+                if let Some(o) = plate.objects.iter().find(|o| o.paint_id == pid) {
+                    if let Some(paint) = &o.paint {
+                        for (v, m) in crate::paint::split_by_paint(&o.mesh, paint) {
+                            vp.upload_mesh(paint_piece_id(pid, v), &m);
+                        }
+                    }
+                }
+                continue;
+            }
             let mesh = plate
                 .objects
                 .iter()
@@ -1061,6 +1184,93 @@ impl App {
                 .or_else(|| self.supports.values().find(|c| c.mesh_id == d.mesh_id).map(|c| c.mesh.clone()));
             if let Some(m) = mesh {
                 vp.upload_mesh(d.mesh_id, &m);
+            }
+        }
+    }
+}
+
+/// Painted models are drawn as one piece per filament. Their ids carry a tag
+/// bit so they can't be mistaken for ordinary model ids.
+const PAINT_TAG: u64 = 1 << 62;
+
+fn paint_piece_id(paint_id: u64, value: u8) -> u64 {
+    PAINT_TAG | (paint_id << 8) | value as u64
+}
+
+impl App {
+    /// The floating panel with the painting controls.
+    fn paint_panel(&mut self, ui: &mut egui::Ui, rect: Rect) {
+        let area = Rect::from_min_size(rect.left_top() + Vec2::new(60.0, 10.0), Vec2::new(330.0, 170.0));
+        let mut paint_all = false;
+        let mut clear = false;
+        ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
+            egui::Frame::new()
+                .fill(Color32::from_rgba_unmultiplied(26, 29, 36, 240))
+                .corner_radius(8.0)
+                .inner_margin(10.0)
+                .show(ui, |ui| {
+                    ui.visuals_mut().override_text_color = Some(CANVAS_TEXT);
+                    ui.horizontal(|ui| {
+                        for (m, label) in [(PaintMode::Brush, "Brush"), (PaintMode::Fill, "Fill"), (PaintMode::Erase, "Erase")] {
+                            ui.selectable_value(&mut self.paint_mode, m, crate::i18n::tr(label));
+                        }
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        for (i, f) in self.filaments.iter().enumerate() {
+                            let (r, resp) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::click());
+                            let c = Color32::from_rgb(f.color[0], f.color[1], f.color[2]);
+                            ui.painter().rect_filled(r, 5.0, c);
+                            let on = self.paint_slot == i && self.paint_mode != PaintMode::Erase;
+                            let ink = if f.color.iter().map(|v| *v as u32).sum::<u32>() > 380 { Color32::BLACK } else { Color32::WHITE };
+                            ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, format!("{}", i + 1), egui::FontId::proportional(13.0), ink);
+                            if on {
+                                ui.painter().rect_stroke(r.expand(2.0), 6.0, Stroke::new(2.0, Color32::WHITE), StrokeKind::Outside);
+                            }
+                            if resp.on_hover_text(&f.name).clicked() {
+                                self.paint_slot = i;
+                                if self.paint_mode == PaintMode::Erase {
+                                    self.paint_mode = PaintMode::Brush;
+                                }
+                            }
+                        }
+                    });
+                    if self.paint_mode == PaintMode::Fill {
+                        ui.horizontal(|ui| {
+                            ui.label(crate::i18n::tr("Stop at creases over"));
+                            ui.add(egui::Slider::new(&mut self.paint_angle, 1.0..=90.0).suffix(" °").max_decimals(0));
+                        });
+                    } else {
+                        ui.horizontal(|ui| {
+                            ui.label(crate::i18n::tr("Brush size"));
+                            ui.add(egui::Slider::new(&mut self.paint_radius, 0.5..=30.0).suffix(" mm").max_decimals(1));
+                        });
+                    }
+                    if let Some(o) = self.selected_mut() {
+                        ui.horizontal(|ui| {
+                            ui.label(crate::i18n::tr("Colour reaches in"));
+                            ui.add(egui::Slider::new(&mut o.paint_depth, 0.4..=20.0).suffix(" mm").max_decimals(1));
+                        });
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.button(crate::i18n::tr("Paint everything")).clicked() {
+                            paint_all = true;
+                        }
+                        if ui.button(crate::i18n::tr("Clear paint")).clicked() {
+                            clear = true;
+                        }
+                    });
+                });
+        });
+        if paint_all || clear {
+            self.push_undo();
+            let value = self.paint_value().max(1);
+            let slot_value = if self.paint_mode == PaintMode::Erase { 1 } else { value };
+            if let Some(o) = self.selected_mut() {
+                if clear {
+                    o.clear_paint();
+                } else {
+                    o.paint_at(Vec3::ZERO, 0, PaintOp::All { value: slot_value });
+                }
             }
         }
     }

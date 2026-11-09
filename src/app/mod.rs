@@ -47,6 +47,15 @@ pub enum Tool {
     SupportPoint,
     DrainHole,
     Measure,
+    /// Paint filaments onto the model.
+    Paint,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PaintMode {
+    Brush,
+    Fill,
+    Erase,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -175,6 +184,14 @@ pub struct App {
     pub show_overhang: bool,
     pub lock_scale: bool,
     pub hover_point: Option<(Vec3, Vec3)>,
+    /// Painting: filament slot, mode, brush size (mm) and crease angle for fill.
+    pub paint_slot: usize,
+    pub paint_mode: PaintMode,
+    pub paint_radius: f32,
+    pub paint_angle: f32,
+    /// True while a brush stroke is being dragged, and where its last dab landed.
+    pub painting: bool,
+    pub last_dab: Option<Vec3>,
     pub drag_plane_z: f32,
     pub framed: bool,
     pub layout: dock::DockLayout,
@@ -326,6 +343,12 @@ impl App {
             show_overhang: false,
             lock_scale: true,
             hover_point: None,
+            paint_slot: 1,
+            paint_mode: PaintMode::Brush,
+            paint_radius: 3.0,
+            paint_angle: 30.0,
+            painting: false,
+            last_dab: None,
             drag_plane_z: 0.0,
             framed: false,
             layout: dock::DockLayout::default(),
@@ -416,6 +439,10 @@ impl App {
                 let id = app.plate().objects[0].id;
                 app.selection = vec![id];
             }
+        } else if let Some(proj) = opts.files.iter().find(|f| f.extension().map(|e| e == "hscproject").unwrap_or(false)) {
+            // A saved project given on the command line opens as a project.
+            let ctx = cc.egui_ctx.clone();
+            app.load_project_from(&ctx, proj.clone());
         } else {
             app.import_files_now(&opts.files);
         }

@@ -429,6 +429,7 @@ impl App {
             Tool::SupportPoint => "Click the model to add a support. Shift-click a support to remove it.",
             Tool::DrainHole => "Click the model to add a drain hole. Shift-click a hole to remove it.",
             Tool::Measure => "Click two points to measure the distance between them.",
+            Tool::Paint => "Drag over the model to paint it with the chosen filament. Fill paints a whole face; Erase takes paint off.",
         })
     }
 

@@ -343,6 +343,8 @@ impl App {
             o.report = m.report();
             o.mesh = Arc::new(m);
             o.mesh_id = next_id();
+            // Repair can rebuild triangles, so painting no longer lines up.
+            o.clear_paint();
         }
         let text = if note.is_empty() {
             "Nothing needed fixing.".to_string()

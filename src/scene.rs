@@ -11,6 +11,17 @@ use std::sync::Arc;
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
+/// One painting action on a model.
+#[derive(Clone, Copy, Debug)]
+pub enum PaintOp {
+    /// A round dab, `radius` mm wide.
+    Brush { radius: f32, value: u8 },
+    /// Bucket fill: the connected patch around the triangle, stopping at creases.
+    Fill { angle: f32, value: u8 },
+    /// The whole model.
+    All { value: u8 },
+}
+
 pub fn next_id() -> u64 {
     NEXT_ID.fetch_add(1, Ordering::Relaxed)
 }
@@ -50,6 +61,8 @@ pub struct PlateObject {
     pub paint_id: u64,
     /// How far painted colour reaches into the part, in mm.
     pub paint_depth: f32,
+    /// Which paint values are in use, so the view knows which pieces to draw.
+    pub paint_values: Vec<u8>,
     // Resin.
     pub support_points: Vec<SupportPoint>,
     pub cavity: Option<Arc<Mesh>>,
@@ -82,12 +95,67 @@ impl PlateObject {
             paint: None,
             paint_id: 0,
             paint_depth: 2.4,
+            paint_values: Vec::new(),
             support_points: Vec::new(),
             cavity: None,
             cavity_id: 0,
             cavity_scale: Vec3::ONE,
             holes: Vec::new(),
         }
+    }
+
+    /// Make sure the paint still fits the mesh, and note what it uses.
+    pub fn refresh_paint(&mut self) {
+        let fits = self.paint.as_ref().map(|p| p.len() == self.mesh.t.len()).unwrap_or(false);
+        if !fits {
+            self.paint = None;
+        }
+        self.paint_values = match &self.paint {
+            Some(p) => {
+                let mut v: Vec<u8> = (0..=crate::paint::slots_used(p) as u8).filter(|x| p.contains(x)).collect();
+                if v.is_empty() {
+                    v.push(0);
+                }
+                v
+            }
+            None => Vec::new(),
+        };
+        if self.paint_values.iter().all(|v| *v == 0) {
+            self.paint = None;
+            self.paint_values.clear();
+        }
+        self.paint_id = next_id();
+    }
+
+    pub fn clear_paint(&mut self) {
+        self.paint = None;
+        self.refresh_paint();
+    }
+
+    /// Paint where the model was clicked. `hit` is in plate coordinates and
+    /// `tri` is the triangle under it.
+    pub fn paint_at(&mut self, hit: Vec3, tri: usize, op: PaintOp) {
+        let local = self.matrix().inverse().transform_point3(hit);
+        let avg_scale = (self.scale.x.abs() + self.scale.y.abs() + self.scale.z.abs()) / 3.0;
+        let mut paint = match self.paint.take() {
+            Some(p) if p.len() == self.mesh.t.len() => p,
+            _ => Arc::new(vec![crate::paint::UNPAINTED; self.mesh.t.len()]),
+        };
+        match op {
+            PaintOp::Brush { radius, value } => {
+                let mesh = Arc::make_mut(&mut self.mesh);
+                crate::paint::brush(mesh, Arc::make_mut(&mut paint), local, radius / avg_scale.max(1e-3), value);
+                self.mesh_id = next_id();
+            }
+            PaintOp::Fill { angle, value } => {
+                crate::paint::smart_fill(&self.mesh, Arc::make_mut(&mut paint), tri, angle, value);
+            }
+            PaintOp::All { value } => {
+                crate::paint::fill_all(Arc::make_mut(&mut paint), self.mesh.t.len(), value);
+            }
+        }
+        self.paint = Some(paint);
+        self.refresh_paint();
     }
 
     pub fn matrix(&self) -> Mat4 {
