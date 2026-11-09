@@ -370,3 +370,13 @@ Infill anchor	Füllungsanker	Ancrage du remplissage	Anclaje del relleno
 Longest link joining neighbouring infill lines. Longer links mean fewer travel moves. Zero uses the default.	Längste Verbindung zwischen benachbarten Füllungslinien. Längere Verbindungen bedeuten weniger Leerfahrten. Null nutzt den Standard.	Plus long lien entre lignes de remplissage voisines. Des liens plus longs réduisent les déplacements. Zéro utilise la valeur par défaut.	Enlace más largo entre líneas de relleno vecinas. Enlaces más largos reducen los desplazamientos. Cero usa el valor predeterminado.
 One wall on top	Eine Wand oben	Une paroi en haut	Una pared arriba
 Prints a single wall on islands that are fully open to the sky, which leaves a smoother top.	Druckt eine einzelne Wand auf Inseln, die nach oben ganz frei sind, was eine glattere Oberseite ergibt.	Imprime une seule paroi sur les îlots entièrement ouverts vers le haut, pour un dessus plus lisse.	Imprime una sola pared en las islas totalmente abiertas hacia arriba, lo que deja una parte superior más lisa.
+Paint with filaments	Mit Filamenten bemalen	Peindre avec les filaments	Pintar con filamentos
+Drag over the model to paint it with the chosen filament. Fill paints a whole face; Erase takes paint off.	Über das Modell ziehen, um es mit dem gewählten Filament zu bemalen. Füllen bemalt eine ganze Fläche; Radieren entfernt Farbe.	Faites glisser sur le modèle pour le peindre avec le filament choisi. Remplir peint une face entière ; Effacer retire la peinture.	Arrastra sobre el modelo para pintarlo con el filamento elegido. Rellenar pinta una cara entera; Borrar quita la pintura.
+Brush	Pinsel	Pinceau	Pincel
+Fill	Füllen	Remplir	Rellenar
+Erase	Radieren	Effacer	Borrar
+Stop at creases over	Bei Kanten ab	Arrêt aux plis au-delà de	Parar en pliegues de más de
+Brush size	Pinselgröße	Taille du pinceau	Tamaño del pincel
+Colour reaches in	Farbtiefe	Profondeur de la couleur	Profundidad del color
+Paint everything	Alles bemalen	Tout peindre	Pintar todo
+Clear paint	Farbe entfernen	Effacer la peinture	Quitar la pintura

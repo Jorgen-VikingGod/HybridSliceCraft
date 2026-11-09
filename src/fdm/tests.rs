@@ -17,6 +17,7 @@ fn job(mesh: Mesh, process: FdmProcess) -> FdmJob {
             flow: 1.0,
             infill: None,
             walls: None,
+            ..Default::default()
         }],
         printer: cat.fdm_printers[0].clone(),
         filaments: vec![cat.filaments[0].clone()],
@@ -243,6 +244,7 @@ fn two_filaments_change_tools() {
         flow: 1.0,
         infill: None,
         walls: None,
+        ..Default::default()
     });
     let r = slice(&j, &Progress::default()).unwrap();
     assert!(r.tool_changes > 10, "{}", r.tool_changes);
@@ -307,6 +309,7 @@ fn calibration_tests_really_change_settings_as_they_rise() {
                     flow: p.flow,
                     infill: p.infill,
                     walls: p.walls,
+                    ..Default::default()
                 }
             })
             .collect();
@@ -394,6 +397,7 @@ fn each_model_prints_with_its_own_nozzle_size() {
             flow: 1.0,
             infill: None,
             walls: None,
+            ..Default::default()
         });
     }
     let r = slice(&j, &Progress::default()).unwrap();
@@ -425,6 +429,7 @@ fn infill_can_use_the_big_nozzle_while_walls_keep_the_fine_one() {
         flow: 1.0,
         infill: None,
         walls: None,
+        ..Default::default()
     });
     let r = slice(&j, &Progress::default()).unwrap();
     let sparse: Vec<_> = r.segs.iter().filter(|s| s.feature == Feature::SparseInfill as u32).collect();
@@ -451,6 +456,7 @@ fn thick_layers_on_a_small_nozzle_are_flagged() {
         flow: 1.0,
         infill: None,
         walls: None,
+        ..Default::default()
     });
     let r = slice(&j, &Progress::default()).unwrap();
     assert!(r.warnings.iter().any(|w| w.contains("0.25 mm nozzle")), "{:?}", r.warnings);
@@ -571,6 +577,33 @@ fn one_wall_on_top_only_changes_the_top_layer() {
     assert_eq!(top_on, 0, "the top layer should have no inner walls");
     assert!(top_off > 0);
     assert_eq!(mid_on, mid_off);
+}
+
+#[test]
+fn painted_model_prints_each_colour_with_its_own_tool() {
+    use std::sync::Arc;
+    let mut mesh = centered(make_box(Vec3::new(20.0, 20.0, 8.0)));
+    // Paint everything facing the front with filament 2.
+    let paint: Vec<u8> = (0..mesh.t.len()).map(|i| if mesh.tri_normal(i).y < -0.9 { 2 } else { 0 }).collect();
+    let mut j = job(mesh.clone(), FdmProcess::default());
+    j.printer.extruders = 2;
+    j.filaments = vec![Filament::default(), Filament::default()];
+    let plain = slice(&j, &Progress::default()).unwrap();
+    j.objects[0].paint = Some(Arc::new(paint));
+    let painted = slice(&j, &Progress::default()).unwrap();
+    assert!(painted.tool_changes > 0, "the second filament should be used");
+    assert!(painted.segs.iter().any(|s| s.tool == 1), "some lines should print with tool 2");
+    // The amount of plastic stays about the same; colours only share it out.
+    let part = |r: &FdmResult| -> f32 {
+        Feature::ALL
+            .iter()
+            .filter(|f| !matches!(f, Feature::PrimeTower | Feature::Travel))
+            .map(|f| r.filament_by_feature[*f as usize])
+            .sum()
+    };
+    let (a, b) = (part(&plain), part(&painted));
+    assert!(b > a * 0.9 && b < a * 1.4, "{a} vs {b}");
+    mesh.compact();
 }
 
 #[test]

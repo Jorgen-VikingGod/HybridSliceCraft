@@ -119,6 +119,11 @@ impl Mesh {
 
     /// Merge duplicate corners so neighbouring triangles really share edges.
     pub fn weld(&mut self, eps: f32) {
+        self.weld_tracked(eps);
+    }
+
+    /// Like `weld`, and says which of the original triangles were kept.
+    pub fn weld_tracked(&mut self, eps: f32) -> Vec<bool> {
         let k = 1.0 / eps.max(1e-6);
         let mut map: AHashMap<(i32, i32, i32), u32> = AHashMap::with_capacity(self.v.len() / 2);
         let mut remap = Vec::with_capacity(self.v.len());
@@ -137,17 +142,21 @@ impl Mesh {
         }
         self.v = nv;
         let mut nt = Vec::with_capacity(self.t.len());
+        let mut kept = Vec::with_capacity(self.t.len());
         for t in &self.t {
             let n = [
                 remap[t[0] as usize],
                 remap[t[1] as usize],
                 remap[t[2] as usize],
             ];
-            if n[0] != n[1] && n[1] != n[2] && n[0] != n[2] {
+            let keep = n[0] != n[1] && n[1] != n[2] && n[0] != n[2];
+            if keep {
                 nt.push(n);
             }
+            kept.push(keep);
         }
         self.t = nt;
+        kept
     }
 
     fn edge_map(&self) -> AHashMap<(u32, u32), Vec<(u32, bool)>> {

@@ -212,6 +212,7 @@ pub enum Icon {
     Support,
     Drain,
     Measure,
+    Paint,
     Arrange,
     Orient,
     Plus,
@@ -294,6 +295,12 @@ pub fn draw_icon(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             line((-0.38, -0.05), (-0.18, 0.15));
             line((-0.1, -0.33), (0.1, -0.13));
             line((0.18, -0.6), (0.38, -0.4));
+        }
+        Icon::Paint => {
+            // A brush: handle, ferrule and a drop of paint.
+            line((0.7, -0.7), (-0.05, 0.05));
+            poly(&[(-0.05, 0.05), (-0.3, 0.1), (-0.45, 0.4), (-0.15, 0.45)], true);
+            p.circle_filled(pt(-0.55, 0.62), s * 0.2, color);
         }
         Icon::Arrange => {
             for (x, y) in [(-0.68, -0.68), (0.08, -0.68), (-0.68, 0.08), (0.08, 0.08)] {

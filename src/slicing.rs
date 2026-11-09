@@ -96,6 +96,19 @@ pub fn plane_segments(mesh: &Mesh, tris: &[u32], z: f64, out: &mut Vec<[f32; 4]>
     }
 }
 
+/// The outline at one plane in short pieces, each with the paint of the
+/// triangle it came from.
+pub fn painted_segments(mesh: &Mesh, paint: &[u8], tris: &[u32], z: f64, out: &mut Vec<(u8, DVec2, DVec2)>) {
+    for &ti in tris {
+        let t = &mesh.t[ti as usize];
+        if let Some((a, b, c, _)) = tri_crossing(mesh, t, z) {
+            let p = crossing(mesh, a, b, z);
+            let q = crossing(mesh, c, a, z);
+            out.push((paint.get(ti as usize).copied().unwrap_or(0), p, q));
+        }
+    }
+}
+
 /// Closed outlines at one plane. Open ends from damaged meshes get joined to
 /// the nearest loose end. The count of forced closures goes in the result.
 pub fn plane_loops(mesh: &Mesh, tris: &[u32], z: f64) -> (Vec<Vec<DVec2>>, usize) {

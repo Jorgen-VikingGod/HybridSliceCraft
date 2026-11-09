@@ -93,6 +93,16 @@ pub fn offset(r: &Region, delta_mm: f64) -> Region {
     )
 }
 
+/// Fatten line pieces into a band `radius` mm to each side.
+pub fn stroke(lines: &[(DVec2, DVec2)], radius: f64) -> Region {
+    if lines.is_empty() {
+        return Vec::new();
+    }
+    let paths: Region = lines.iter().map(|(a, b)| path_from(&[*a, *b])).collect();
+    let fat = inflate_paths_64(&paths, radius * SCALE, JoinType::Round, EndType::Round, 2.0, 0.02 * SCALE);
+    union(&fat)
+}
+
 /// Grow or shrink with rounded corners, used for brims and clearances.
 pub fn offset_round(r: &Region, delta_mm: f64) -> Region {
     if r.is_empty() {

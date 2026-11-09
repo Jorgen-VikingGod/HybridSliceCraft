@@ -343,6 +343,8 @@ impl App {
             o.report = m.report();
             o.mesh = Arc::new(m);
             o.mesh_id = next_id();
+            // Repair can rebuild triangles, so painting no longer lines up.
+            o.clear_paint();
         }
         let text = if note.is_empty() {
             "Nothing needed fixing.".to_string()
@@ -641,6 +643,9 @@ impl App {
                     flow: o.flow,
                     infill: o.infill,
                     walls: o.walls,
+                    paint: o.paint.clone().filter(|p| p.len() == o.mesh.t.len()),
+                    paint_depth: o.paint_depth,
+                    ..Default::default()
                 })
                 .collect();
             let meshes: Vec<Arc<Mesh>> = job.objects.iter().map(|o| Arc::new(o.mesh.clone())).collect();

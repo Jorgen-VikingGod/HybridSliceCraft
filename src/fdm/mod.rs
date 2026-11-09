@@ -3,6 +3,7 @@
 
 pub mod gcode;
 pub mod infill;
+pub mod painting;
 pub mod plan;
 pub mod support;
 #[cfg(test)]
@@ -123,7 +124,7 @@ impl Feature {
 }
 
 /// One object on the plate, already moved into its printed position.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct JobObject {
     pub name: String,
     pub mesh: Mesh,
@@ -133,6 +134,17 @@ pub struct JobObject {
     pub flow: f32,
     pub infill: Option<f32>,
     pub walls: Option<u32>,
+    /// Filament painted on the surface, one number per triangle (see `paint`).
+    pub paint: Option<std::sync::Arc<Vec<u8>>>,
+    /// How far painted colour reaches into the part, in mm.
+    pub paint_depth: f32,
+    /// Set on the pieces a painted model is split into: the layer outlines to
+    /// print, instead of slicing the mesh again.
+    pub slices: Option<std::sync::Arc<Vec<crate::geom::Region>>>,
+    /// The whole model's outlines, so skins and overhangs ignore colour borders.
+    pub cover: Option<std::sync::Arc<Vec<crate::geom::Region>>>,
+    /// Pieces of a painted model other than the first get no supports of their own.
+    pub no_support: bool,
 }
 
 /// A planned change partway up the print. Calibration towers use these.
@@ -275,6 +287,14 @@ pub fn slice(job: &FdmJob, progress: &Progress) -> Result<FdmResult, String> {
     if p.layer_height as f64 > p.line_width as f64 {
         return Err("Layer height can't be larger than the line width.".into());
     }
+    let split;
+    let job = if job.objects.iter().any(|o| o.paint.is_some()) {
+        progress.set(0.03, "Splitting the painted colours");
+        split = painting::split_painted(job);
+        &split
+    } else {
+        job
+    };
     let plan = plan::build_plan(job, progress)?;
     if progress.cancelled() {
         return Err("Cancelled".into());

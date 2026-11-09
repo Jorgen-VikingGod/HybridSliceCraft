@@ -7,6 +7,7 @@ mod geom;
 mod keys;
 mod i18n;
 mod mesh;
+mod paint;
 mod prefs;
 mod profiles;
 mod project;
