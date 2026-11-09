@@ -615,6 +615,15 @@ impl App {
 }
 
 impl eframe::App for App {
+    /// Pictures for the docs are taken without a mouse pointer, so a hover
+    /// tooltip under wherever the window opened doesn't end up in them.
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        if self.screenshot.is_some() {
+            raw_input.events.retain(|e| !matches!(e, egui::Event::PointerMoved(_) | egui::Event::PointerButton { .. }));
+            raw_input.events.push(egui::Event::PointerGone);
+        }
+    }
+
     fn on_exit(&mut self) {
         self.save_session();
     }

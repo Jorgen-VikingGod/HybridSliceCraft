@@ -22,6 +22,8 @@ A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast des
 - Calibration tests: temperature tower, flow, max flow tower, speed ripple tower, retraction, pressure advance, first layer
 - Sending to OctoPrint or Moonraker printers over the local network
 
+![Painting: the bear painted with two filaments, ready to slice](docs/fdm-painted.png)
+
 ## Resin (MSLA)
 
 ![Resin preview: supported bear, a cut through the model and the layer picture](docs/resin-preview.png)
