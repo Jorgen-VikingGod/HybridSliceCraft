@@ -397,6 +397,16 @@ pub enum OrientGoal {
     ResinTilt,
 }
 
+/// What printing in one orientation would cost in supports (filament).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SupportEstimate {
+    /// Rough volume of support material, mm³.
+    pub volume: f32,
+    /// Area lying flat on the plate, mm².
+    pub base: f32,
+    pub height: f32,
+}
+
 /// How a model fares in one orientation, for resin printing. Areas are in mm².
 #[derive(Clone, Copy, Debug, Default)]
 pub struct OrientReport {
@@ -468,6 +478,68 @@ impl OrientSample {
         Self { faces, centres, verts, total_area, tallest }
     }
 
+    /// How much material supports would need in this orientation, how much of
+    /// the model touches the plate, and how tall it stands.
+    ///
+    /// Every face that hangs over at more than 35° needs a column of support
+    /// under it. The column ends where it meets something facing up below it,
+    /// or at the plate, so a ledge sitting on the model's own shoulder costs a
+    /// little and a chin hanging over open air costs a lot.
+    fn support_estimate(&self, q: Quat) -> SupportEstimate {
+        if self.verts.is_empty() {
+            return SupportEstimate::default();
+        }
+        let (mut mn, mut mx) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+        for v in &self.verts {
+            let w = q * *v;
+            mn = mn.min(w);
+            mx = mx.max(w);
+        }
+        let height = mx.z - mn.z;
+        let foot = ((mx.x - mn.x) * (mx.y - mn.y)).max(1e-3);
+        let cell = (foot / 1500.0).sqrt().clamp(0.8, 4.0);
+        let nx = (((mx.x - mn.x) / cell) as usize + 2).min(4096);
+        // One entry per face: cell, height above the plate, projected area and
+        // how far it hangs over (0 for faces that don't).
+        let mut items: Vec<(u32, f32, f32, f32)> = Vec::with_capacity(self.faces.len());
+        let mut base = 0.0f32;
+        for ((n, a), c) in self.faces.iter().zip(&self.centres) {
+            let w = q * *n;
+            let p = q * *c;
+            let z = p.z - mn.z;
+            let cx = (((p.x - mn.x) / cell) as usize).min(nx - 1);
+            let cy = ((p.y - mn.y) / cell) as usize;
+            let key = (cy * nx + cx) as u32;
+            if w.z < -0.98 && z < 0.4 {
+                base += a;
+            }
+            // 0 at a 35° overhang (the usual support angle), 1 for a flat ceiling.
+            let hang = ((-w.z - 0.5736) / 0.4264).clamp(0.0, 1.0);
+            if hang > 0.0 && z > 0.4 {
+                items.push((key, z, a * -w.z, hang));
+            } else if w.z > 0.3 {
+                // Faces looking up hold up whatever hangs over them.
+                items.push((key, z, 0.0, -1.0));
+            }
+        }
+        items.sort_by(|x, y| x.0.cmp(&y.0).then(x.1.total_cmp(&y.1)));
+        let mut volume = 0.0f32;
+        let mut cur_cell = u32::MAX;
+        let mut floor_z = 0.0f32;
+        for (key, z, area, hang) in items {
+            if key != cur_cell {
+                cur_cell = key;
+                floor_z = 0.0;
+            }
+            if hang < 0.0 {
+                floor_z = z;
+            } else {
+                volume += area * hang * (z - floor_z).max(0.0);
+            }
+        }
+        SupportEstimate { volume, base, height }
+    }
+
     fn report(&self, q: Quat) -> OrientReport {
         let (mut mn, mut mx) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
         for v in &self.verts {
@@ -501,6 +573,12 @@ impl OrientSample {
     }
 }
 
+/// What supports would cost with the model turned as it is now (filament).
+#[cfg(test)]
+pub fn support_estimate(obj: &PlateObject) -> SupportEstimate {
+    OrientSample::new(obj).support_estimate(obj.rot)
+}
+
 /// How the model fares as it is turned right now.
 pub fn orient_report(obj: &PlateObject) -> OrientReport {
     OrientSample::new(obj).report(obj.rot)
@@ -527,6 +605,10 @@ pub fn auto_orient(obj: &PlateObject, goal: OrientGoal) -> Quat {
     for f in big.iter().take(24) {
         candidates.push(Quat::from_rotation_arc(f.0, -Vec3::Z));
     }
+    // The six ways a model usually sits, and how it is turned now.
+    for dir in [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y, Vec3::Z, -Vec3::Z] {
+        candidates.push(Quat::from_rotation_arc(dir, -Vec3::Z));
+    }
     candidates.push(obj.rot);
     let tilts: &[Quat] = &[
         Quat::from_rotation_x(30f32.to_radians()),
@@ -538,21 +620,13 @@ pub fn auto_orient(obj: &PlateObject, goal: OrientGoal) -> Quat {
     let score_of = |q: Quat| -> f32 {
         match goal {
             OrientGoal::FewestSupports => {
-                let mut overhang = 0.0f32;
-                let mut base = 0.0f32;
-                let mut footprint = 0.0f32;
-                for (n, a) in faces {
-                    let w = q * *n;
-                    if w.z < -0.9995 {
-                        base += a;
-                    } else if w.z < -0.5 {
-                        overhang += a * (-w.z - 0.5);
-                    }
-                    if w.z > 0.0 {
-                        footprint += a * w.z;
-                    }
-                }
-                (overhang * 3.0 - base * 1.2 + footprint * 0.02) / total_area
+                let e = sample.support_estimate(q);
+                // Support material relative to the size of the part, a small
+                // pull towards low prints (faster, steadier), and a penalty for
+                // standing on a sliver of a base.
+                let size = sample.total_area * sample.tallest * 0.02;
+                let steady = (e.base / (0.03 * sample.total_area)).min(1.0);
+                e.volume / size.max(1e-3) + 0.1 * e.height / sample.tallest.max(1e-3) + 0.3 * (1.0 - steady)
             }
             OrientGoal::ResinTilt => {
                 let mut footprint = 0.0f32;
@@ -566,8 +640,8 @@ pub fn auto_orient(obj: &PlateObject, goal: OrientGoal) -> Quat {
             }
         }
     };
-    for &c in &candidates {
-        if goal == OrientGoal::ResinTilt {
+    if goal == OrientGoal::ResinTilt {
+        for &c in &candidates {
             for &t in tilts {
                 let q = t * c;
                 let s = score_of(q);
@@ -576,12 +650,46 @@ pub fn auto_orient(obj: &PlateObject, goal: OrientGoal) -> Quat {
                     best = q;
                 }
             }
-        } else {
-            let s = score_of(c);
-            if s < best_score {
-                best_score = s;
-                best = c;
+        }
+        return best;
+    }
+    use rayon::prelude::*;
+    let mut scored: Vec<(f32, Quat)> = candidates.par_iter().map(|&c| (score_of(c), c)).collect();
+    scored.sort_by(|a, b| a.0.total_cmp(&b.0));
+    // The coarse search only gets close, so each of the best few is nudged in
+    // ever smaller steps towards a better turn.
+    let refined: Vec<(f32, Quat)> = scored
+        .iter()
+        .take(6)
+        .copied()
+        .collect::<Vec<_>>()
+        .par_iter()
+        .map(|&(mut sc, mut q)| {
+            for step_deg in [12.0f32, 6.0, 3.0, 1.5, 0.75] {
+                let step = step_deg.to_radians();
+                for _ in 0..8 {
+                    let mut improved = false;
+                    for axis in [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y] {
+                        let t = Quat::from_axis_angle(axis, step) * q;
+                        let ts = score_of(t);
+                        if ts < sc - 1e-5 {
+                            sc = ts;
+                            q = t;
+                            improved = true;
+                        }
+                    }
+                    if !improved {
+                        break;
+                    }
+                }
             }
+            (sc, q)
+        })
+        .collect();
+    for (sc, q) in refined.into_iter().chain(scored.into_iter().take(1)) {
+        if sc < best_score {
+            best_score = sc;
+            best = q;
         }
     }
     best

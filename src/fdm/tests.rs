@@ -620,3 +620,49 @@ fn snapmaker_u1_slices_with_four_tools() {
     assert!(g.contains("PRINT_END"));
     assert!(!g.contains('{'), "every placeholder should be filled in");
 }
+
+/// Plastic used by supports when the model is printed turned this way.
+fn support_plastic(o: &crate::scene::PlateObject) -> f32 {
+    let mut o = o.clone();
+    o.pos = Vec3::new(110.0, 110.0, 0.0);
+    o.drop_to_plate(0.0);
+    let mut p = FdmProcess::default();
+    p.support = SupportKind::Normal;
+    let j = job(o.world_mesh(), p);
+    let r = slice(&j, &Progress::default()).unwrap();
+    r.filament_by_feature[Feature::Support as usize] + r.filament_by_feature[Feature::SupportInterface as usize]
+}
+
+#[test]
+fn auto_orient_does_not_make_the_bear_need_more_support() {
+    use crate::scene::{auto_orient, OrientGoal, PlateObject};
+    let mut o = PlateObject::new("bear", crate::shapes::starter_bear(0.5));
+    let before = support_plastic(&o);
+    let e0 = crate::scene::support_estimate(&o);
+    o.rot = auto_orient(&o, OrientGoal::FewestSupports);
+    let e1 = crate::scene::support_estimate(&o);
+    let after = support_plastic(&o);
+    eprintln!("support filament: before {before:.1} after {after:.1}");
+    eprintln!("estimate before {e0:?}\nestimate after  {e1:?}");
+    assert!(after <= before * 1.1 + 1.0, "auto-orient made supports worse: {before} -> {after}");
+}
+
+#[test]
+fn auto_orient_rescues_a_bear_that_starts_upside_down_or_tilted() {
+    use crate::scene::{auto_orient, OrientGoal, PlateObject};
+    let upright = PlateObject::new("bear", crate::shapes::starter_bear(0.5));
+    let good = support_plastic(&upright);
+    for (name, rot) in [
+        ("upside down", glam::Quat::from_rotation_x(std::f32::consts::PI)),
+        ("on its side", glam::Quat::from_rotation_y(1.4)),
+        ("tilted", glam::Quat::from_euler(glam::EulerRot::XYZ, 0.9, -0.6, 2.0)),
+    ] {
+        let mut o = upright.clone();
+        o.rot = rot;
+        let start = support_plastic(&o);
+        o.rot = auto_orient(&o, OrientGoal::FewestSupports);
+        let after = support_plastic(&o);
+        eprintln!("{name}: start {start:.1}, after {after:.1}, upright {good:.1}");
+        assert!(after <= good * 1.3 + 1.0, "{name}: {start} -> {after}, upright needs {good}");
+    }
+}
