@@ -119,6 +119,99 @@ impl FdmPrinter {
 }
 
 pub const DEFAULT_START: &str = "G90 ; absolute positions\nM82 ; absolute extruder for the prime line\nM140 S{bed_temp}\nM104 S{nozzle_temp}\nG28 ; home all axes\nM190 S{bed_temp}\nM109 S{nozzle_temp}\nG92 E0\nG1 Z0.3 F600\nG1 X5 Y5 F6000\nG1 X100 E12 F1200 ; prime line\nG92 E0\nG1 Z0.6 F600";
+/// Snapmaker U1 start and end scripts, taken from OrcaSlicer's profile for this
+/// printer. They call the U1's own Klipper macros.
+pub const U1_START: &str = "SET_PRINT_AUTO_BED_LEVELING ENABLE=1
+SET_TIME_LAPSE_CAMERA ENABLE=1
+PRINT_START
+DEFECT_DETECTION_START
+TIMELAPSE_START
+M140 S{bed_temp}
+M104 T0 S140
+M204 S10000
+G28 X Y
+DEFECT_DETECT_NOODLE_FIRST
+T0
+G90
+DEFECT_DETECTION_DETECT_BED
+SM_PRINT_CHECK_SWITCH_EXTRUDER
+; Load, check and prime every tool
+SM_PRINT_EXTRUDER_PREHEAT EXTRUDER=1 TEMP=140
+SM_PRINT_AUTO_FEED EXTRUDER=0
+SM_PRINT_FLOW_CALIBRATE EXTRUDER=0
+SM_PRINT_EXTRUDER_PREHEAT EXTRUDER=2 TEMP=140
+SM_PRINT_AUTO_FEED EXTRUDER=1
+SM_PRINT_FLOW_CALIBRATE EXTRUDER=1
+SM_PRINT_EXTRUDER_PREHEAT EXTRUDER=3 TEMP=140
+SM_PRINT_AUTO_FEED EXTRUDER=2
+SM_PRINT_FLOW_CALIBRATE EXTRUDER=2
+SM_PRINT_AUTO_FEED EXTRUDER=3
+SM_PRINT_FLOW_CALIBRATE EXTRUDER=3
+M104 S0 T0 A0
+M104 S0 T1 A0
+M104 S0 T2 A0
+M104 S0 T3 A0
+M104 T0 S{nozzle_temp}
+T0
+M109 T0 S{nozzle_temp}
+SM_PRINT_PREEXTRUDE_FILAMENT INDEX=0
+M104 T0 S{nozzle_temp-90}
+; Rough homing and nozzle cleaning
+T0
+M106 S255
+M106 P2 S0
+MOVE_TO_DISCARD_FILAMENT_POSITION
+M109 T0 S{nozzle_temp-90}
+ROUGHLY_CLEAN_NOZZLE_WITH_DISCARD
+MOVE_TO_XY_IDLE_POSITION_EXTRUDER
+M107
+G28 Z I140 J140
+M107
+DETECT_BED_PLATE
+M106 S255
+G90
+G0 Z5 F10000
+MOVE_TO_DISCARD_FILAMENT_POSITION
+M109 S{nozzle_temp-50}
+ROUGHLY_CLEAN_NOZZLE
+MOVE_TO_XY_IDLE_POSITION_EXTRUDER
+FINELY_CLEAN_NOZZLE_STAGE_1
+M104 S{nozzle_temp-90}
+G0 Z5 F10000
+MOVE_TO_DISCARD_FILAMENT_POSITION
+ROUGHLY_CLEAN_NOZZLE
+MOVE_TO_XY_IDLE_POSITION_EXTRUDER
+FINELY_CLEAN_NOZZLE_STAGE_2
+; Final homing and bed levelling
+M106 S255
+M109 S{nozzle_temp-90}
+M190 S{bed_temp}
+M107 P2
+G90
+G0 Z5 F10000
+WAIT_CHAMBER_TEMP TIMEOUT=180
+M107
+G28 Z
+M107
+BED_MESH_CALIBRATE mesh_min=3,3 mesh_max=267,267 ADAPTIVE=0 ADAPTIVE_MARGIN=0
+; Prime line
+G90
+G1 Z1.5
+G0 X85 Y1 Z2 F18000
+M109 S{nozzle_temp}
+G1 Z0.2
+M83
+G1 X185 E15 F360
+G1 Z1.5
+G90
+M106 S0";
+pub const U1_END: &str = "PRINT_END
+TIMELAPSE_STOP";
+/// Lifts the nozzle before the printer swaps tool heads.
+pub const U1_TOOL_CHANGE: &str = "G91
+G1 Z1.5 F600
+G90
+M400";
 pub const DEFAULT_END: &str = "M104 S0\nM140 S0\nM107\nG91\nG1 E-1 F1800\nG1 Z5 F600\nG90\nG1 X5 Y{bed_y} F6000\nM84\nM300 S880 P200";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -826,6 +919,23 @@ impl Catalogue {
         let mut klip = fp("CoreXY Klipper 350", 350.0, 350.0, 340.0, Firmware::Klipper, 500.0, 10000.0, 0.5);
         klip.start_gcode = "PRINT_START BED={bed_temp} NOZZLE={nozzle_temp}".into();
         klip.end_gcode = "PRINT_END".into();
+        // Snapmaker U1: four tool heads on a CoreXY, running Klipper.
+        let u1 = |name: &str, nozzles: [f32; 4]| {
+            let mut p = fp(name, 270.0, 270.0, 270.0, Firmware::Klipper, 500.0, 20000.0, 1.5);
+            p.nozzle = nozzles[0];
+            p.extruders = 4;
+            if nozzles.iter().any(|n| (*n - nozzles[0]).abs() > 1e-4) {
+                p.tool_nozzles = nozzles.to_vec();
+            }
+            p.retract_speed = 30.0;
+            p.z_hop = 0.4;
+            p.wipe_on_retract = 2.0;
+            p.label_objects = true;
+            p.start_gcode = U1_START.into();
+            p.end_gcode = U1_END.into();
+            p.tool_change_gcode = U1_TOOL_CHANGE.into();
+            p
+        };
         let fdm_printers = vec![
             fp("Bed-slinger 220", 220.0, 220.0, 250.0, Firmware::Marlin, 200.0, 2000.0, 0.8),
             fp("High-speed CoreXY 256", 256.0, 256.0, 256.0, Firmware::Marlin, 500.0, 10000.0, 0.8),
@@ -836,6 +946,11 @@ impl Catalogue {
             dual,
             big_small,
             mm4,
+            u1("Snapmaker U1 (0.4 nozzle)", [0.4; 4]),
+            u1("Snapmaker U1 (0.2 nozzle)", [0.2; 4]),
+            u1("Snapmaker U1 (0.6 nozzle)", [0.6; 4]),
+            u1("Snapmaker U1 (0.8 nozzle)", [0.8; 4]),
+            u1("Snapmaker U1 (0.4 + 0.6 nozzle)", [0.4, 0.4, 0.6, 0.6]),
         ];
 
         let fl = |name: &str, kind: &str, n1: f32, n: f32, b1: f32, b: f32, fmin: f32, fmax: f32, d: f32, c: [u8; 3], vol: f32| Filament {
