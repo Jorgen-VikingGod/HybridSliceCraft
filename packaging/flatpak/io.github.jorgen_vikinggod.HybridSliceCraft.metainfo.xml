@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.5.1" date="2026-11-09">
+      <description>
+        <p>Fixes Auto-orient for filament printing, which could leave a model needing much more support.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.5.1</url>
+    </release>
     <release version="0.5.0" date="2026-11-09">
       <description>
         <p>Paint a model with several filaments, and presets for the Snapmaker U1.</p>
