@@ -126,6 +126,16 @@ pub fn opening(r: &Region, d: f64) -> Region {
     offset(&offset(r, -d), d)
 }
 
+/// Drop points that lie within `tolerance_mm` of the line between their
+/// neighbours. Outlines keep their shape to that tolerance but get far fewer
+/// points, which makes every later polygon operation cheaper.
+pub fn simplify_region(r: &Region, tolerance_mm: f64) -> Region {
+    if r.is_empty() || tolerance_mm <= 0.0 {
+        return r.clone();
+    }
+    clipper2_rust::simplify_paths(r, tolerance_mm * SCALE, true)
+}
+
 /// Remove loops whose absolute area is below `min_mm2`, and collinear clutter.
 pub fn remove_small(r: &Region, min_mm2: f64) -> Region {
     let k = min_mm2 * SCALE * SCALE;

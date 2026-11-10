@@ -50,6 +50,11 @@ pub struct Plan {
 
 /// The outline of a mesh on every layer, with size correction applied.
 /// The count is how many gaps in a damaged surface had to be bridged.
+/// How far (mm) an outline point may be moved to drop it. A sliced scan or sculpt
+/// has far more points than a nozzle can print; 10 microns is invisible, and it is
+/// OrcaSlicer's default "resolution".
+const OUTLINE_TOLERANCE_MM: f64 = 0.01;
+
 pub(super) fn object_slices(mesh: &crate::mesh::Mesh, zs_mid: &[f64], xy: f64, foot: f64) -> (Vec<Region>, usize) {
     let (loops, forced) = slice_mesh(mesh, zs_mid);
     let slices: Vec<Region> = loops
@@ -59,6 +64,7 @@ pub(super) fn object_slices(mesh: &crate::mesh::Mesh, zs_mid: &[f64], xy: f64, f
             let paths: Region = ls.iter().map(|l| geom::path_from(l)).collect();
             let mut r = geom::union(&paths);
             r = geom::remove_small(&r, 0.002);
+            r = geom::simplify_region(&r, OUTLINE_TOLERANCE_MM);
             let d = xy - if i == 0 { foot } else { 0.0 };
             if d != 0.0 {
                 r = geom::offset(&r, d);
