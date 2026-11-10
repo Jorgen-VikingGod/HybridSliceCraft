@@ -46,6 +46,6 @@ modules:
     sources:
       - type: git
         url: https://github.com/Jorgen-VikingGod/HybridSliceCraft.git
-        tag: v0.5.1
-        commit: ebf94ecfd112fc0774cf247d8ea5ab197a13b6b6
+        tag: v0.6.0
+        commit: 59e8817e52b1f24a9a187ba6082cacef7d8b83ff
       - cargo-sources.json
