@@ -496,6 +496,8 @@ fn support_paths(sup: &SupportLayer, job: &FdmJob, g: LayerGeom) -> Vec<ExPath> 
 }
 
 pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
+    let t0 = std::time::Instant::now();
+    let lap = |what: &str| super::lap(&t0, what);
     let p = &job.process;
     let mut warnings = Vec::new();
     progress.set(0.02, "Working out layer heights");
@@ -522,6 +524,11 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
         stitched += forced;
         all_slices.push(slices);
     }
+    if std::env::var_os("HSC_TIMING").is_some() {
+        let pts: usize = all_slices.iter().flat_map(|o| o.iter()).map(|r| r.iter().map(|p| p.len()).sum::<usize>()).sum();
+        eprintln!("    layer outlines hold {pts} points in total");
+    }
+    lap("model cut into layers");
     if stitched > 0 {
         warnings.push(format!(
             "The model has holes in its surface. {stitched} outline gaps were bridged; check the preview, or run Repair."
@@ -561,6 +568,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
         } else {
             support::generate(cover, &heights, p)
         };
+        lap("supports planned");
         if progress.cancelled() {
             return Err("Cancelled".into());
         }
@@ -588,7 +596,9 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
             .into_par_iter()
             .map(|i| {
                 let g = geom_of(i);
+                let _t = super::span("stage1 total (islands, walls)");
                 let below = if i > 0 {
+                    let _t = super::span("stage1 below edge index");
                     Some(EdgeIndex::new(&geom::offset(&cover[i - 1], g.w_out * 0.45)))
                 } else {
                     None
@@ -604,6 +614,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             geom::region_area(&bare) > 0.9 * geom::region_area(&reg)
                         });
                         let count = if open_top { wall_count.min(1) } else { wall_count };
+                        let _t = super::span("build_walls");
                         let wr = build_walls(&reg, g, job, count, below.as_ref(), k as u64 + 7);
                         (reg, wr)
                     })
@@ -611,6 +622,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                 Stage1 { islands }
             })
             .collect();
+        lap("walls built");
         if progress.cancelled() {
             return Err("Cancelled".into());
         }
@@ -652,6 +664,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
             .enumerate()
             .map(|(i, st)| {
                 let g = geom_of(i);
+                let _t_all = super::span("stage2 total (skins, infill)");
                 let (w, h, z) = (g.w, g.h, g.z);
                 let s = bead_spacing(w, h);
                 let slice_at = |k: isize| -> &Region {
@@ -661,6 +674,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                         &cover[k as usize]
                     }
                 };
+                let _t = super::span("stage2 covered/topmost/bare regions");
                 // Everything that stays covered for the next `top_n` layers isn't skin.
                 let mut covered_up = slices[i].clone();
                 for j in 1..=top_n {
@@ -692,15 +706,19 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                 } else {
                     Vec::new()
                 };
+                drop(_t);
                 let mut islands = Vec::with_capacity(st.islands.len());
                 for (reg, wr) in st.islands {
+                    let _t = super::span("stage2 comb index");
                     let comb = EdgeIndex::new(&geom::offset(&reg, -g.w_out * 0.3));
                     let center = geom::bbox(&reg).map(|(a, b)| (a + b) * 0.5).unwrap_or(DVec2::ZERO);
+                    drop(_t);
                     let inner = wr.inner;
                     let mut fill: Vec<ExPath> = Vec::new();
                     let mut ironing: Vec<ExPath> = Vec::new();
                     let mut other_tool_fill: Vec<ExPath> = Vec::new();
                     if !inner.is_empty() && !spiral(i) {
+                        let _t = super::span("stage2 skin region maths");
                         let grow = s * 0.25;
                         let tidy = |r: Region| geom::remove_small(&geom::opening(&r, s * 0.2), 0.02);
                         let top_skin = tidy(geom::inter(&inner, &geom::offset(&topmost, grow)));
@@ -722,6 +740,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                         let bound_solid = EdgeIndex::new(&geom::offset(&inner, s * 0.25));
                         let angle = base_angle + if i % 2 == 0 { 0.0 } else { PI / 2.0 };
 
+                        drop(_t);
                         let bridge_fill = geom::offset(&bridge_area, inset);
                         if !bridge_fill.is_empty() {
                             let a = best_bridge_angle(&bridge_area);
@@ -743,6 +762,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             fill.extend(bridge);
                         }
                         let solid_feature = if is_bottom { Feature::BottomSurface } else { Feature::SolidInfill };
+                        let _t = super::span("stage2 solid_fill (internal/bottom)");
                         solid_fill(
                             &geom::offset(&internal_solid, inset),
                             &bound_solid,
@@ -754,7 +774,9 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             center,
                             &mut fill,
                         );
+                        drop(_t);
                         // The sparse fill goes down before the skin above it.
+                        let _t = super::span("stage2 sparse area + infill");
                         let sparse_area = geom::diff(&inner, &solid_all);
                         let sparse_area = geom::remove_small(&sparse_area, 0.2);
                         if !sparse_area.is_empty() && density > 0.0 {
@@ -777,6 +799,8 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                                 }
                             }
                         }
+                        drop(_t);
+                        let _t = super::span("stage2 solid_fill (top skin)");
                         solid_fill(
                             &geom::offset(&top_skin, inset),
                             &bound_solid,
@@ -788,6 +812,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             center,
                             &mut fill,
                         );
+                        drop(_t);
                         if p.ironing && !top_skin.is_empty() {
                             let mut target = top_skin.clone();
                             match p.ironing_type {
@@ -835,6 +860,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                 }
             })
             .collect();
+        lap("skins, infill and supports pathed");
         objects.push(layer_plans);
         all_support.push(support_layers);
         if progress.cancelled() {
