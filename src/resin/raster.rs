@@ -295,6 +295,21 @@ pub fn blend_layers(imgs: &[LayerImage], width: u32, table: &[u8; 256]) -> Layer
 /// Software rasteriser: winding-number fill with exact horizontal coverage and
 /// `samples` scanlines per pixel. `neg` lists holes that always cut away.
 pub fn raster_cpu(segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> LayerImage {
+    raster_cpu_with(&mut Scratch::default(), segs, neg, spec)
+}
+
+/// Working memory for `raster_cpu_with`. Keep one per thread and reuse it
+/// across layers so the big buffers are allocated once, not once per layer.
+#[derive(Default)]
+pub struct Scratch {
+    crossings: Vec<(u32, f32, i8, bool)>,
+    ordered: Vec<(u32, f32, i8, bool)>,
+    start: Vec<u32>,
+    next: Vec<u32>,
+    events: Vec<(u32, f32)>,
+}
+
+pub fn raster_cpu_with(scratch: &mut Scratch, segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> LayerImage {
     let samples = spec.samples.max(1);
     let (w, h) = (spec.width as usize, spec.height as usize);
     let mut writer = RleWriter::new(spec.width);
@@ -303,8 +318,8 @@ pub fn raster_cpu(segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> Lay
         writer.push_run(0, total);
         return writer.finish();
     }
-    // Crossings packed for a cheap sort: row in the high bits.
-    let mut crossings: Vec<(u32, f32, i8, bool)> = Vec::with_capacity(segs.len() * 4);
+    let Scratch { crossings, ordered, start, next, events } = scratch;
+    crossings.clear();
     let collect = |list: &[[f32; 4]], is_neg: bool, out: &mut Vec<(u32, f32, i8, bool)>| {
         for s in list {
             let (x0, y0) = spec.to_px(s[0], s[1]);
@@ -330,27 +345,29 @@ pub fn raster_cpu(segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> Lay
             }
         }
     };
-    collect(segs, false, &mut crossings);
-    collect(neg, true, &mut crossings);
+    collect(segs, false, crossings);
+    collect(neg, true, crossings);
     // Counting sort by sub-row (every crossing already knows its row), then a
     // tiny sort by x inside each row. Far cheaper than comparing everything.
     let rows = h * samples as usize;
-    let mut start = vec![0u32; rows + 1];
-    for c in &crossings {
+    start.clear();
+    start.resize(rows + 1, 0);
+    for c in crossings.iter() {
         start[c.0 as usize + 1] += 1;
     }
     for r in 0..rows {
         start[r + 1] += start[r];
     }
-    let mut next: Vec<u32> = start[..rows].to_vec();
-    let mut ordered: Vec<(u32, f32, i8, bool)> = vec![(0, 0.0, 0, false); crossings.len()];
-    for c in &crossings {
+    next.clear();
+    next.extend_from_slice(&start[..rows]);
+    ordered.clear();
+    ordered.resize(crossings.len(), (0, 0.0, 0, false));
+    for c in crossings.iter() {
         let slot = &mut next[c.0 as usize];
         ordered[*slot as usize] = *c;
         *slot += 1;
     }
-    drop(crossings);
-    let crossings = &mut ordered;
+    let crossings = ordered;
     for r in 0..rows {
         let (a, b) = (start[r] as usize, start[r + 1] as usize);
         if b - a > 1 {
@@ -362,7 +379,6 @@ pub fn raster_cpu(segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> Lay
     // Coverage changes for the pixel row being built: (pixel index, change).
     // Only the places where coverage changes are visited, so a row costs
     // its number of edges, not the width of the shape.
-    let mut events: Vec<(u32, f32)> = Vec::with_capacity(64);
     let mut i = 0usize;
     let n = crossings.len();
     let mut cursor = 0u64;
@@ -393,7 +409,7 @@ pub fn raster_cpu(segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> Lay
                 match (filled, span_start) {
                     (true, None) => span_start = Some(x),
                     (false, Some(s)) => {
-                        add_span(&mut events, s, x, w, &mut lo, &mut hi);
+                        add_span(events, s, x, w, &mut lo, &mut hi);
                         span_start = None;
                     }
                     _ => {}
@@ -401,7 +417,7 @@ pub fn raster_cpu(segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> Lay
                 i += 1;
             }
             if let Some(s) = span_start {
-                add_span(&mut events, s, w as f32, w, &mut lo, &mut hi);
+                add_span(events, s, w as f32, w, &mut lo, &mut hi);
             }
         }
         if lo == usize::MAX {

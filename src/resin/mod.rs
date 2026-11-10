@@ -250,7 +250,6 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
             plane_segments(&job.solid, &buckets.by_plane[i], zs[i], &mut s);
             s
         };
-        pos.shrink_to_fit();
         let mut neg = Vec::new();
         plane_segments(&job.negative, &neg_buckets.by_plane[i], zs[i], &mut neg);
         (pos, neg)
@@ -275,7 +274,6 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
             plane_segments(&job.solid, &b.by_plane[s], zs_sub[s], &mut v);
             v
         };
-        pos.shrink_to_fit();
         let mut neg = Vec::new();
         plane_segments(&job.negative, &nb.by_plane[s], zs_sub[s], &mut neg);
         (pos, neg)
@@ -325,7 +323,7 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
         let cancel_seen = std::sync::atomic::AtomicBool::new(false);
         let result: Vec<LayerImage> = (0..n)
             .into_par_iter()
-            .map(|i| {
+            .map_init(raster::Scratch::default, |scratch, i| {
                 if progress.cancelled() {
                     cancel_seen.store(true, std::sync::atomic::Ordering::Relaxed);
                     return LayerImage::default();
@@ -334,13 +332,13 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
                     let pics: Vec<LayerImage> = (0..k)
                         .map(|j| {
                             let (pos, neg) = sub_segments(i, j);
-                            raster_cpu(&pos, &neg, &spec)
+                            raster::raster_cpu_with(scratch, &pos, &neg, &spec)
                         })
                         .collect();
                     raster::blend_layers(&pics, spec.width, &table)
                 } else {
                     let (pos, neg) = segments_of(i);
-                    raster_cpu(&pos, &neg, &spec)
+                    raster::raster_cpu_with(scratch, &pos, &neg, &spec)
                 };
                 let d = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 if d % 16 == 0 {
