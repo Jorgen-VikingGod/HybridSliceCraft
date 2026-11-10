@@ -112,6 +112,19 @@ pub fn run(o: &BenchOptions) -> Result<(), String> {
                 }
             }
             line.push_str(&format!(", checksum {h:016x}"));
+            // Floating parts and per-layer stats, so detection changes show up.
+            let mut g = 0xcbf29ce484222325u64;
+            let mut mix = |v: u64| g = (g ^ v).wrapping_mul(0x100000001b3);
+            for st in &r.stats {
+                mix(st.area_mm2.to_bits() as u64);
+                for i in &st.islands {
+                    for b in i.bbox {
+                        mix(b as u64);
+                    }
+                    mix(i.area_px);
+                }
+            }
+            line.push_str(&format!(", islands {} (hash {g:016x})", r.unsupported_islands));
         }
         println!("{line}");
         if let Some(path) = &o.export {

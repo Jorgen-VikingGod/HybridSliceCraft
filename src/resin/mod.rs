@@ -356,39 +356,58 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
     lap("layers drawn");
     progress.set(0.92, "Checking for floating parts");
     let pixel_area = spec.pixel_area_mm2();
-    let islands: Vec<Vec<IslandInfo>> = (0..n)
+    // Layers go in small chunks, one chunk per task. Inside a chunk the row
+    // spans of one layer are reused as "the layer below" of the next, so each
+    // layer is turned into spans once instead of two or three times.
+    const CHUNK: usize = 16;
+    let spans_of = |j: usize| layers[j].spans(spec.width, spec.height);
+    let islands: Vec<Vec<IslandInfo>> = (0..n.div_ceil(CHUNK))
         .into_par_iter()
-        .map(|i| {
-            if layers[i].lit <= 0.0 {
-                return Vec::new();
-            }
-            let cur = layers[i].spans(spec.width, spec.height);
-            if i == 0 {
-                return Vec::new();
-            }
-            let below = layers[i - 1].spans(spec.width, spec.height);
-            let mut found = find_islands(&cur, Some(&below));
-            if i + 1 < n && found.iter().any(|f| f.area_px < SPECK_PIXELS) {
-                let next = layers[i + 1].spans(spec.width, spec.height);
-                found.retain(|f| {
-                    if f.area_px >= SPECK_PIXELS {
-                        return true;
-                    }
-                    // Everything lit on this layer except the speck itself.
-                    let mut rest = cur.clone();
-                    for row in f.bbox[1]..f.bbox[3] {
-                        rest[row as usize].retain(|s| !(s.0 < f.bbox[2] && f.bbox[0] < s.1));
-                    }
-                    let still_cut_off = find_islands(&next, Some(&rest)).iter().any(|c| {
-                        c.bbox[0] < f.bbox[2] && f.bbox[0] < c.bbox[2] && c.bbox[1] < f.bbox[3] && f.bbox[1] < c.bbox[3]
+        .flat_map_iter(|c| {
+            let (lo, hi) = (c * CHUNK, ((c + 1) * CHUNK).min(n));
+            let mut out: Vec<Vec<IslandInfo>> = Vec::with_capacity(hi - lo);
+            // Spans of the layer just below the one being checked, and of the
+            // layer above when a speck check already needed them.
+            let mut below: Option<Vec<Vec<(u32, u32)>>> = None;
+            let mut ahead: Option<Vec<Vec<(u32, u32)>>> = None;
+            for i in lo..hi {
+                if layers[i].lit <= 0.0 {
+                    out.push(Vec::new());
+                    below = None;
+                    ahead = None;
+                    continue;
+                }
+                let cur = ahead.take().unwrap_or_else(|| spans_of(i));
+                if i == 0 {
+                    out.push(Vec::new());
+                    below = Some(cur);
+                    continue;
+                }
+                let lower = below.take().unwrap_or_else(|| spans_of(i - 1));
+                let mut found = find_islands(&cur, Some(&lower));
+                if i + 1 < n && found.iter().any(|f| f.area_px < SPECK_PIXELS) {
+                    let next = spans_of(i + 1);
+                    found.retain(|f| {
+                        if f.area_px >= SPECK_PIXELS {
+                            return true;
+                        }
+                        // Everything lit on this layer except the speck itself.
+                        let mut rest = cur.clone();
+                        for row in f.bbox[1]..f.bbox[3] {
+                            rest[row as usize].retain(|s| !(s.0 < f.bbox[2] && f.bbox[0] < s.1));
+                        }
+                        find_islands(&next, Some(&rest)).iter().any(|c| {
+                            c.bbox[0] < f.bbox[2] && f.bbox[0] < c.bbox[2] && c.bbox[1] < f.bbox[3] && f.bbox[1] < c.bbox[3]
+                        })
                     });
-                    still_cut_off
-                });
+                    ahead = Some(next);
+                }
+                out.push(found);
+                below = Some(cur);
             }
-            found
+            out
         })
         .collect();
-
     lap("islands checked");
     let mut stats = Vec::with_capacity(n);
     let mut total_time = 0.0f32;
