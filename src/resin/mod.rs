@@ -475,8 +475,10 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
         ));
     }
 
+    lap("stats done");
     progress.set(0.96, "Looking for trapped resin");
     let trapped_ml = trapped_volume(&layers, &spec, h);
+    lap("trapped resin checked");
     if trapped_ml > 0.02 {
         warnings.push(format!(
             "About {trapped_ml:.1} ml of resin would be sealed inside. Add a drain hole to let it out."
@@ -502,6 +504,28 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
         island_entries: entries,
         engine_note: note,
     })
+}
+
+/// Flood a grid from its first inner cell and count the empty cells it can't
+/// reach. `grid` is wrapped in a solid (1) shell, so every cell the flood can
+/// reach has all six neighbours inside the array.
+fn sealed_cells(grid: &mut [u8], px: usize, py: usize) -> usize {
+    let plane = px * py;
+    let seed = 1 + px + plane;
+    let mut stack = Vec::new();
+    if grid[seed] == 0 {
+        grid[seed] = 1;
+        stack.push(seed);
+    }
+    while let Some(i) = stack.pop() {
+        for n in [i - 1, i + 1, i - px, i + px, i - plane, i + plane] {
+            if grid[n] == 0 {
+                grid[n] = 1;
+                stack.push(n);
+            }
+        }
+    }
+    grid.par_iter().filter(|c| **c == 0).count()
 }
 
 /// Flood-fill from outside the print on a coarse grid. Empty cells the flood
@@ -534,74 +558,52 @@ fn trapped_volume(layers: &[LayerImage], spec: &RasterSpec, h: f64) -> f32 {
     if nx * ny * nz > 200_000_000 {
         return 0.0;
     }
-    let mut solid = vec![false; nx * ny * nz];
-    solid
-        .par_chunks_mut(nx * ny)
-        .enumerate()
-        .for_each(|(k, plane)| {
-            if k == 0 || k > picked.len() {
-                return;
-            }
-            let w = spec.width as u64;
-            let mut pos = 0u64;
-            for (v, count) in picked[k - 1].runs() {
-                if v >= 128 {
-                    let mut s = pos;
-                    let end = pos + count;
-                    while s < end {
-                        let row = (s / w) as usize;
-                        let col = (s % w) as usize;
-                        if row / cy + 1 >= ny + oy {
-                            break;
-                        }
-                        let take = (w - col as u64).min(end - s);
-                        let (c0, c1) = (col / cx + 1 - ox, (col + take as usize - 1) / cx + 1 - ox);
-                        for c in c0..=c1.min(nx - 1) {
-                            plane[c + nx * (row / cy + 1 - oy)] = true;
-                        }
-                        s += take;
+    // One byte per cell: 0 is empty and not yet reached, 1 is solid or reached.
+    // A solid shell is wrapped around the grid so the flood never needs bounds
+    // checks (and the shell itself never counts as sealed).
+    let (px, py, pz) = (nx + 2, ny + 2, nz + 2);
+    let mut grid = vec![0u8; px * py * pz];
+    grid.par_chunks_mut(px * py).enumerate().for_each(|(kp, plane)| {
+        if kp == 0 || kp == pz - 1 {
+            plane.fill(1);
+            return;
+        }
+        for x in 0..px {
+            plane[x] = 1;
+            plane[x + px * (py - 1)] = 1;
+        }
+        for y in 0..py {
+            plane[px * y] = 1;
+            plane[px - 1 + px * y] = 1;
+        }
+        // Planes 1 and nz are the empty border; the picked layers sit between.
+        if kp == 1 || kp > picked.len() + 1 {
+            return;
+        }
+        let w = spec.width as u64;
+        let mut pos = 0u64;
+        for (v, count) in picked[kp - 2].runs() {
+            if v >= 128 {
+                let mut s = pos;
+                let end = pos + count;
+                while s < end {
+                    let row = (s / w) as usize;
+                    let col = (s % w) as usize;
+                    if row / cy + 1 >= ny + oy {
+                        break;
                     }
+                    let take = (w - col as u64).min(end - s);
+                    let (c0, c1) = (col / cx + 1 - ox, (col + take as usize - 1) / cx + 1 - ox);
+                    for c in c0..=c1.min(nx - 1) {
+                        plane[c + 1 + px * (row / cy + 1 - oy + 1)] = 1;
+                    }
+                    s += take;
                 }
-                pos += count;
             }
-        });
-    let mut seen = vec![false; nx * ny * nz];
-    let mut stack = vec![0usize];
-    seen[0] = true;
-    while let Some(i) = stack.pop() {
-        let z = i / (nx * ny);
-        let y = (i / nx) % ny;
-        let x = i % nx;
-        let mut visit = |n: usize| {
-            if !seen[n] && !solid[n] {
-                seen[n] = true;
-                stack.push(n);
-            }
-        };
-        if x > 0 {
-            visit(i - 1);
+            pos += count;
         }
-        if x + 1 < nx {
-            visit(i + 1);
-        }
-        if y > 0 {
-            visit(i - nx);
-        }
-        if y + 1 < ny {
-            visit(i + nx);
-        }
-        if z > 0 {
-            visit(i - nx * ny);
-        }
-        if z + 1 < nz {
-            visit(i + nx * ny);
-        }
-    }
-    let sealed = seen
-        .par_iter()
-        .zip(solid.par_iter())
-        .filter(|(s, f)| !**s && !**f)
-        .count();
+    });
+    let sealed = sealed_cells(&mut grid, px, py);
     let cell_x = cx as f64 * spec.size_x as f64 / spec.width as f64;
     let cell_y = cy as f64 * spec.size_y as f64 / spec.height as f64;
     (sealed as f64 * cell_x * cell_y * step_z as f64 * h / 1000.0) as f32
@@ -610,6 +612,64 @@ fn trapped_volume(layers: &[LayerImage], spec: &RasterSpec, h: f64) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Slow reference: the original flood over separate solid/seen arrays with bounds checks.
+    fn sealed_reference(solid: &[bool], nx: usize, ny: usize, nz: usize) -> usize {
+        let mut seen = vec![false; nx * ny * nz];
+        let mut stack = vec![0usize];
+        seen[0] = true;
+        while let Some(i) = stack.pop() {
+            let (z, y, x) = (i / (nx * ny), (i / nx) % ny, i % nx);
+            let mut visit = |n: usize| {
+                if !seen[n] && !solid[n] {
+                    seen[n] = true;
+                    stack.push(n);
+                }
+            };
+            if x > 0 { visit(i - 1); }
+            if x + 1 < nx { visit(i + 1); }
+            if y > 0 { visit(i - nx); }
+            if y + 1 < ny { visit(i + nx); }
+            if z > 0 { visit(i - nx * ny); }
+            if z + 1 < nz { visit(i + nx * ny); }
+        }
+        (0..solid.len()).filter(|&i| !seen[i] && !solid[i]).count()
+    }
+
+    #[test]
+    fn sealed_cells_matches_reference_on_random_grids() {
+        let mut state = 0x2545F4914F6CDD1Du64;
+        let mut rnd = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for round in 0..200 {
+            let (nx, ny, nz) = (3 + (rnd() % 9) as usize, 3 + (rnd() % 9) as usize, 3 + (rnd() % 9) as usize);
+            let density = 20 + (round % 5) * 12; // percent solid
+            let mut solid = vec![false; nx * ny * nz];
+            for z in 1..nz - 1 {
+                for y in 1..ny - 1 {
+                    for x in 1..nx - 1 {
+                        solid[x + nx * (y + ny * z)] = rnd() % 100 < density as u64;
+                    }
+                }
+            }
+            let want = sealed_reference(&solid, nx, ny, nz);
+            let (px, py, pz) = (nx + 2, ny + 2, nz + 2);
+            let mut grid = vec![1u8; px * py * pz];
+            for z in 0..nz {
+                for y in 0..ny {
+                    for x in 0..nx {
+                        grid[x + 1 + px * (y + 1 + py * (z + 1))] = solid[x + nx * (y + ny * z)] as u8;
+                    }
+                }
+            }
+            assert_eq!(sealed_cells(&mut grid, px, py), want, "round {round}");
+        }
+    }
+
     use crate::mesh::make_box;
     use crate::profiles::Catalogue;
     use glam::{Mat4, Vec3};

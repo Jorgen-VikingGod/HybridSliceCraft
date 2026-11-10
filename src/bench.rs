@@ -124,7 +124,7 @@ pub fn run(o: &BenchOptions) -> Result<(), String> {
                     mix(i.area_px);
                 }
             }
-            line.push_str(&format!(", islands {} (hash {g:016x})", r.unsupported_islands));
+            line.push_str(&format!(", islands {} (hash {g:016x}), trapped {:.4} ml", r.unsupported_islands, r.trapped_ml));
         }
         println!("{line}");
         if let Some(path) = &o.export {
