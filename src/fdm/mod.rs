@@ -269,6 +269,56 @@ impl ExPath {
 }
 
 /// The main entry point: turn a job into G-code and preview data.
+/// With `HSC_TIMING` set, print how long a stage took since `since`.
+pub(crate) fn lap(since: &std::time::Instant, what: &str) {
+    if std::env::var_os("HSC_TIMING").is_some() {
+        eprintln!("  [{:>7.3}s] {what}", since.elapsed().as_secs_f32());
+    }
+}
+
+/// Adds up how long named code sections take (summed over threads). Only does
+/// anything when `HSC_TIMING` is set.
+pub(crate) struct Span(Option<(&'static str, std::time::Instant)>);
+
+static SPAN_TOTALS: std::sync::Mutex<Vec<(&'static str, u64, u64)>> = std::sync::Mutex::new(Vec::new());
+
+pub(crate) fn span(name: &'static str) -> Span {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *ON.get_or_init(|| std::env::var_os("HSC_TIMING").is_some()) {
+        Span(Some((name, std::time::Instant::now())))
+    } else {
+        Span(None)
+    }
+}
+
+impl Drop for Span {
+    fn drop(&mut self) {
+        if let Some((name, t)) = self.0 {
+            let ns = t.elapsed().as_nanos() as u64;
+            if let Ok(mut v) = SPAN_TOTALS.lock() {
+                match v.iter_mut().find(|e| e.0 == name) {
+                    Some(e) => {
+                        e.1 += ns;
+                        e.2 += 1;
+                    }
+                    None => v.push((name, ns, 1)),
+                }
+            }
+        }
+    }
+}
+
+/// Print and clear the section totals.
+pub(crate) fn report_spans() {
+    if let Ok(mut v) = SPAN_TOTALS.lock() {
+        v.sort_by(|a, b| b.1.cmp(&a.1));
+        for (name, ns, n) in v.iter() {
+            eprintln!("    {:>9.1} ms cpu  {:>9} calls  {}", *ns as f64 / 1e6, n, name);
+        }
+        v.clear();
+    }
+}
+
 pub fn slice(job: &FdmJob, progress: &Progress) -> Result<FdmResult, String> {
     let started = std::time::Instant::now();
     if job.objects.iter().all(|o| o.mesh.is_empty()) {
@@ -296,11 +346,14 @@ pub fn slice(job: &FdmJob, progress: &Progress) -> Result<FdmResult, String> {
         job
     };
     let plan = plan::build_plan(job, progress)?;
+    lap(&started, "plan built");
     if progress.cancelled() {
         return Err("Cancelled".into());
     }
     progress.set(0.86, "Writing printer instructions");
     let mut result = gcode::write(job, &plan, progress)?;
+    lap(&started, "printer instructions written");
+    report_spans();
     result.warnings.extend(plan.warnings.iter().cloned());
     result.slice_seconds = started.elapsed().as_secs_f32();
     Ok(result)

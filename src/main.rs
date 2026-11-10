@@ -48,6 +48,8 @@ Options:
     --screen <W>x<H>          Screen size in mm (default 218.88x122.88)
     --runs <n>                Repeat this many times (default 3)
     --export <file>           Also save the print (.goo, .ctb, .sl1, .zip, Anycubic types) and time it
+  --bench-fdm <model>       No window: slice the model for the first filament printer and print timings
+    (takes --layer-height, --runs, --export <file.gcode>, --scale <factor>, --supports and --tree for tree supports)
   --help                    Show this help
 ";
 
@@ -60,11 +62,13 @@ fn pair<T: std::str::FromStr>(s: &str) -> Option<(T, T)> {
 /// Headless benchmark mode. Returns `None` when `--bench-resin` isn't used.
 fn parse_bench() -> Option<Result<bench::BenchOptions, String>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let at = args.iter().position(|a| a == "--bench-resin")?;
+    let at = args.iter().position(|a| a == "--bench-resin" || a == "--bench-fdm")?;
+    let fdm = args[at] == "--bench-fdm";
     let Some(model) = args.get(at + 1) else {
-        return Some(Err("--bench-resin needs a model file".into()));
+        return Some(Err(format!("{} needs a model file", args[at])));
     };
     let mut o = bench::BenchOptions::new(PathBuf::from(model));
+    o.fdm = fdm;
     let mut it = args.iter().enumerate().filter(|(i, _)| *i != at && *i != at + 1).map(|(_, a)| a);
     while let Some(a) = it.next() {
         let mut value = |name: &str| it.next().ok_or(format!("{name} needs a value"));
@@ -72,7 +76,13 @@ fn parse_bench() -> Option<Result<bench::BenchOptions, String>> {
             match a.as_str() {
                 "--aa" => o.aa = value("--aa")?.parse().map_err(|_| "--aa needs a whole number")?,
                 "--z-samples" => o.z_samples = value("--z-samples")?.parse().map_err(|_| "--z-samples needs a whole number")?,
-                "--layer-height" => o.layer_height = value("--layer-height")?.parse().map_err(|_| "--layer-height needs a number")?,
+                "--layer-height" => {
+                    o.layer_height = value("--layer-height")?.parse().map_err(|_| "--layer-height needs a number")?;
+                    o.layer_height_set = true;
+                }
+                "--scale" => o.scale = value("--scale")?.parse().map_err(|_| "--scale needs a number")?,
+                "--supports" => o.supports = true,
+                "--tree" => o.tree = true,
                 "--export" => o.export = Some(PathBuf::from(value("--export")?)),
                 "--runs" => o.runs = value("--runs")?.parse().map_err(|_| "--runs needs a whole number")?,
                 "--res" => o.res = pair(value("--res")?).ok_or("--res needs WxH, like 15120x6230")?,
@@ -142,7 +152,7 @@ fn window_icon() -> egui::IconData {
 
 fn main() {
     if let Some(b) = parse_bench() {
-        let result = b.and_then(|o| bench::run(&o));
+        let result = b.and_then(|o| if o.fdm { bench::run_fdm(&o) } else { bench::run(&o) });
         if let Err(e) = result {
             eprintln!("{e}");
             std::process::exit(1);

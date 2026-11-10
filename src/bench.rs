@@ -23,6 +23,13 @@ pub struct BenchOptions {
     pub checksum: bool,
     /// Also write the sliced print to this file (type from the extension).
     pub export: Option<PathBuf>,
+    /// Slice for a filament printer instead of a resin one.
+    pub fdm: bool,
+    /// Extra size factor for the filament bench (it also shrinks to fit the bed).
+    pub scale: f32,
+    pub supports: bool,
+    pub tree: bool,
+    pub layer_height_set: bool,
 }
 
 impl BenchOptions {
@@ -38,6 +45,11 @@ impl BenchOptions {
             runs: 3,
             checksum: true,
             export: None,
+            fdm: false,
+            scale: 1.0,
+            supports: false,
+            tree: false,
+            layer_height_set: false,
         }
     }
 }
@@ -152,6 +164,97 @@ pub fn run(o: &BenchOptions) -> Result<(), String> {
         println!("best slice + export {best_total:.2}s");
     }
     // Peak memory of this process.
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        if let Some(l) = status.lines().find(|l| l.starts_with("VmHWM")) {
+            println!("peak memory: {}", l.trim_start_matches("VmHWM:").trim());
+        }
+    }
+    Ok(())
+}
+
+/// Filament slicing timing run: `--bench-fdm <model>`.
+pub fn run_fdm(o: &BenchOptions) -> Result<(), String> {
+    use crate::fdm::{self, FdmJob, JobObject};
+    use crate::profiles::{Catalogue, SupportKind};
+    let t = Instant::now();
+    let m = mesh::load(&o.model)?;
+    let load = t.elapsed();
+    let cat = Catalogue::builtin();
+    let printer = cat.fdm_printers[0].clone();
+    let (mn, mx) = m.bounds();
+    let size = mx - mn;
+    // Shrink to fit the bed and height, never enlarge unless asked.
+    let fit = ((printer.bed_x * 0.9) / size.x)
+        .min((printer.bed_y * 0.9) / size.y)
+        .min((printer.height * 0.95) / size.z)
+        .min(1.0);
+    let k = fit * o.scale;
+    let centre = (mn + mx) * 0.5;
+    let to_bed = Mat4::from_translation(Vec3::new(printer.bed_x * 0.5, printer.bed_y * 0.5, 0.0))
+        * Mat4::from_scale(Vec3::splat(k))
+        * Mat4::from_translation(Vec3::new(-centre.x, -centre.y, -mn.z));
+    let placed = m.transformed(&to_bed);
+    let mut process = cat.fdm_processes[0].clone();
+    if o.layer_height_set {
+        process.layer_height = o.layer_height;
+        process.first_layer_height = o.layer_height;
+    }
+    if o.supports {
+        process.support = if o.tree { SupportKind::Tree } else { SupportKind::Normal };
+    }
+    let job = FdmJob {
+        objects: vec![JobObject {
+            name: "bench".into(),
+            mesh: placed,
+            extruder: 0,
+            flow: 1.0,
+            ..Default::default()
+        }],
+        printer: printer.clone(),
+        filaments: vec![cat.filaments[0].clone()],
+        process,
+        z_changes: Vec::new(),
+        thumbnail: None,
+    };
+    println!(
+        "{}: {} triangles, loaded in {:.2}s, scaled x{:.3} to {:.0}x{:.0}x{:.0} mm, {:.2} mm layers, supports {}, {} threads",
+        o.model.display(),
+        job.objects[0].mesh.t.len(),
+        load.as_secs_f32(),
+        k,
+        size.x * k,
+        size.y * k,
+        size.z * k,
+        job.process.layer_height,
+        if !o.supports { "off" } else if o.tree { "tree" } else { "grid" },
+        rayon::current_num_threads()
+    );
+    let mut best = f32::MAX;
+    for i in 0..o.runs.max(1) {
+        let t = Instant::now();
+        let r = fdm::slice(&job, &Progress::default())?;
+        let secs = t.elapsed().as_secs_f32();
+        best = best.min(secs);
+        let mut h = 0xcbf29ce484222325u64;
+        for b in r.gcode.as_bytes() {
+            h = (h ^ *b as u64).wrapping_mul(0x100000001b3);
+        }
+        println!(
+            "run {}: {:.2}s, {} layers, {:.1} MB of G-code, {} preview segments, time {:.0}s, checksum {h:016x}",
+            i + 1,
+            secs,
+            r.layers.len(),
+            r.gcode.len() as f32 / 1e6,
+            r.segs.len(),
+            r.total_time
+        );
+        if let Some(path) = &o.export {
+            let t = Instant::now();
+            std::fs::write(path, r.gcode.as_bytes()).map_err(|e| e.to_string())?;
+            println!("       export: {:.2}s", t.elapsed().as_secs_f32());
+        }
+    }
+    println!("best slice {best:.2}s");
     if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
         if let Some(l) = status.lines().find(|l| l.starts_with("VmHWM")) {
             println!("peak memory: {}", l.trim_start_matches("VmHWM:").trim());
