@@ -228,9 +228,17 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
         return Err("The model sits below the build plate.".into());
     }
     let zs: Vec<f64> = (0..n).map(|i| (i as f64 + 0.5) * h).collect();
+    let timing = std::env::var_os("HSC_TIMING").is_some();
+    let lap = |what: &str| {
+        if timing {
+            eprintln!("  [{:>7.3}s] {what}", started.elapsed().as_secs_f32());
+        }
+    };
+    lap("checks done");
     progress.set(0.02, "Sorting triangles into layers");
     let buckets = PlaneBuckets::new(&job.solid, &zs);
     let neg_buckets = PlaneBuckets::new(&job.negative, &zs);
+    lap("triangles sorted into layers");
     let foot = p.elephant_foot as f64;
     let bottom = p.bottom_layers as usize;
 
@@ -347,6 +355,7 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
         result
     };
 
+    lap("layers drawn");
     progress.set(0.92, "Checking for floating parts");
     let pixel_area = spec.pixel_area_mm2();
     let islands: Vec<Vec<IslandInfo>> = (0..n)
@@ -382,6 +391,7 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
         })
         .collect();
 
+    lap("islands checked");
     let mut stats = Vec::with_capacity(n);
     let mut total_time = 0.0f32;
     let mut volume = 0.0f64;
@@ -484,9 +494,25 @@ fn trapped_volume(layers: &[LayerImage], spec: &RasterSpec, h: f64) -> f32 {
     let step_z = ((cell_mm / h).round() as usize).max(1);
     let cx = ((cell_mm * spec.width as f64 / spec.size_x as f64).round() as usize).max(1);
     let cy = ((cell_mm * spec.height as f64 / spec.size_y as f64).round() as usize).max(1);
-    let nx = spec.width as usize / cx + 2;
-    let ny = spec.height as usize / cy + 2;
     let picked: Vec<&LayerImage> = layers.iter().step_by(step_z).collect();
+    // Only the box around everything lit matters: empty cells outside it reach
+    // the outside trivially. Keep a one-cell empty border inside the grid.
+    let mut bb = [usize::MAX, usize::MAX, 0usize, 0usize];
+    for l in &picked {
+        let b = l.bbox;
+        if b[2] > b[0] && b[3] > b[1] {
+            bb[0] = bb[0].min(b[0] as usize / cx);
+            bb[1] = bb[1].min(b[1] as usize / cy);
+            bb[2] = bb[2].max((b[2] as usize - 1) / cx);
+            bb[3] = bb[3].max((b[3] as usize - 1) / cy);
+        }
+    }
+    if bb[0] == usize::MAX {
+        return 0.0;
+    }
+    let (ox, oy) = (bb[0], bb[1]);
+    let nx = bb[2] - ox + 3;
+    let ny = bb[3] - oy + 3;
     let nz = picked.len() + 2;
     if nx * ny * nz > 200_000_000 {
         return 0.0;
@@ -508,13 +534,13 @@ fn trapped_volume(layers: &[LayerImage], spec: &RasterSpec, h: f64) -> f32 {
                     while s < end {
                         let row = (s / w) as usize;
                         let col = (s % w) as usize;
-                        if row / cy + 1 >= ny {
+                        if row / cy + 1 >= ny + oy {
                             break;
                         }
                         let take = (w - col as u64).min(end - s);
-                        let (c0, c1) = (col / cx + 1, (col + take as usize - 1) / cx + 1);
+                        let (c0, c1) = (col / cx + 1 - ox, (col + take as usize - 1) / cx + 1 - ox);
                         for c in c0..=c1.min(nx - 1) {
-                            plane[c + nx * (row / cy + 1)] = true;
+                            plane[c + nx * (row / cy + 1 - oy)] = true;
                         }
                         s += take;
                     }

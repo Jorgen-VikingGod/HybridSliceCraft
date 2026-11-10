@@ -102,24 +102,36 @@ impl RleWriter {
         }
         if value != 0 {
             self.lit += value as f64 / 255.0 * count as f64;
-            // Runs of lit pixels are short enough to walk row by row.
             let w = self.width as u64;
-            let start = self.y as u64 * w + self.x as u64;
-            let end = start + count;
-            let (y0, y1) = ((start / w) as u32, ((end - 1) / w) as u32);
-            self.min_y = self.min_y.min(y0);
-            self.max_y = self.max_y.max(y1 + 1);
-            if y0 == y1 {
-                self.min_x = self.min_x.min((start % w) as u32);
-                self.max_x = self.max_x.max(((end - 1) % w) as u32 + 1);
+            if self.x as u64 + count <= w {
+                // Inside one row (nearly always): no division needed.
+                self.min_y = self.min_y.min(self.y);
+                self.max_y = self.max_y.max(self.y + 1);
+                self.min_x = self.min_x.min(self.x);
+                self.max_x = self.max_x.max(self.x + count as u32);
             } else {
-                self.min_x = 0;
-                self.max_x = self.width;
+                let start = self.y as u64 * w + self.x as u64;
+                let end = start + count;
+                let (y0, y1) = ((start / w) as u32, ((end - 1) / w) as u32);
+                self.min_y = self.min_y.min(y0);
+                self.max_y = self.max_y.max(y1 + 1);
+                if y0 == y1 {
+                    self.min_x = self.min_x.min((start % w) as u32);
+                    self.max_x = self.max_x.max(((end - 1) % w) as u32 + 1);
+                } else {
+                    self.min_x = 0;
+                    self.max_x = self.width;
+                }
             }
         }
-        let pos = self.y as u64 * self.width as u64 + self.x as u64 + count;
-        self.y = (pos / self.width as u64) as u32;
-        self.x = (pos % self.width as u64) as u32;
+        let nx = self.x as u64 + count;
+        if nx < self.width as u64 {
+            self.x = nx as u32;
+        } else {
+            let pos = self.y as u64 * self.width as u64 + nx;
+            self.y = (pos / self.width as u64) as u32;
+            self.x = (pos % self.width as u64) as u32;
+        }
         if value == self.value {
             self.run += count;
         } else {
@@ -320,10 +332,37 @@ pub fn raster_cpu(segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> Lay
     };
     collect(segs, false, &mut crossings);
     collect(neg, true, &mut crossings);
-    crossings.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)));
+    // Counting sort by sub-row (every crossing already knows its row), then a
+    // tiny sort by x inside each row. Far cheaper than comparing everything.
+    let rows = h * samples as usize;
+    let mut start = vec![0u32; rows + 1];
+    for c in &crossings {
+        start[c.0 as usize + 1] += 1;
+    }
+    for r in 0..rows {
+        start[r + 1] += start[r];
+    }
+    let mut next: Vec<u32> = start[..rows].to_vec();
+    let mut ordered: Vec<(u32, f32, i8, bool)> = vec![(0, 0.0, 0, false); crossings.len()];
+    for c in &crossings {
+        let slot = &mut next[c.0 as usize];
+        ordered[*slot as usize] = *c;
+        *slot += 1;
+    }
+    drop(crossings);
+    let crossings = &mut ordered;
+    for r in 0..rows {
+        let (a, b) = (start[r] as usize, start[r + 1] as usize);
+        if b - a > 1 {
+            crossings[a..b].sort_unstable_by(|p, q| p.1.total_cmp(&q.1));
+        }
+    }
 
     let scale = 255.0 / samples as f32;
-    let mut row_acc = vec![0f32; w + 2];
+    // Coverage changes for the pixel row being built: (pixel index, change).
+    // Only the places where coverage changes are visited, so a row costs
+    // its number of edges, not the width of the shape.
+    let mut events: Vec<(u32, f32)> = Vec::with_capacity(64);
     let mut i = 0usize;
     let n = crossings.len();
     let mut cursor = 0u64;
@@ -335,6 +374,7 @@ pub fn raster_cpu(segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> Lay
         if row_start > cursor {
             writer.push_run(0, row_start - cursor);
         }
+        events.clear();
         let mut lo = usize::MAX;
         let mut hi = 0usize;
         while i < n && crossings[i].0 < row_end {
@@ -353,7 +393,7 @@ pub fn raster_cpu(segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> Lay
                 match (filled, span_start) {
                     (true, None) => span_start = Some(x),
                     (false, Some(s)) => {
-                        add_span(&mut row_acc, s, x, w, &mut lo, &mut hi);
+                        add_span(&mut events, s, x, w, &mut lo, &mut hi);
                         span_start = None;
                     }
                     _ => {}
@@ -361,7 +401,7 @@ pub fn raster_cpu(segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> Lay
                 i += 1;
             }
             if let Some(s) = span_start {
-                add_span(&mut row_acc, s, w as f32, w, &mut lo, &mut hi);
+                add_span(&mut events, s, w as f32, w, &mut lo, &mut hi);
             }
         }
         if lo == usize::MAX {
@@ -370,29 +410,28 @@ pub fn raster_cpu(segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> Lay
             let lo = lo.min(w);
             let hi = hi.min(w);
             writer.push_run(0, lo as u64);
+            // Stable, so changes at one pixel add up in the order they were made.
+            events.sort_by_key(|e| e.0);
+            let threshold = spec.samples <= 1;
             let mut acc = 0.0f32;
             let mut x = lo;
-            let threshold = spec.samples <= 1;
+            let mut k = 0usize;
             while x < hi {
-                acc += row_acc[x];
-                row_acc[x] = 0.0;
+                let mut d = 0.0f32;
+                while k < events.len() && events[k].0 as usize == x {
+                    d += events[k].1;
+                    k += 1;
+                }
+                acc += d;
                 let v = if threshold {
                     if acc * scale >= 127.5 { 255u8 } else { 0u8 }
                 } else {
                     (acc * scale).round().clamp(0.0, 255.0) as u8
                 };
-                // Stretch fully covered interiors in one go.
-                let mut run = 1u64;
-                let mut y = x + 1;
-                while y < hi && row_acc[y] == 0.0 {
-                    run += 1;
-                    y += 1;
-                }
-                writer.push_run(v, run);
-                x = y;
+                let next = if k < events.len() { (events[k].0 as usize).min(hi) } else { hi };
+                writer.push_run(v, (next - x) as u64);
+                x = next;
             }
-            row_acc[hi] = 0.0;
-            row_acc[hi + 1] = 0.0;
             writer.push_run(0, (w - hi) as u64);
         }
         cursor = row_start + w as u64;
@@ -404,19 +443,19 @@ pub fn raster_cpu(segs: &[[f32; 4]], neg: &[[f32; 4]], spec: &RasterSpec) -> Lay
 }
 
 #[inline]
-fn add_span(acc: &mut [f32], x0: f32, x1: f32, w: usize, lo: &mut usize, hi: &mut usize) {
+fn add_span(ev: &mut Vec<(u32, f32)>, x0: f32, x1: f32, w: usize, lo: &mut usize, hi: &mut usize) {
     let (x0, x1) = (x0.clamp(0.0, w as f32), x1.clamp(0.0, w as f32));
     if x1 <= x0 {
         return;
     }
     let i0 = x0 as usize;
     let f0 = x0 - i0 as f32;
-    acc[i0] += 1.0 - f0;
-    acc[i0 + 1] += f0;
+    ev.push((i0 as u32, 1.0 - f0));
+    ev.push((i0 as u32 + 1, f0));
     let i1 = x1 as usize;
     let f1 = x1 - i1 as f32;
-    acc[i1] -= 1.0 - f1;
-    acc[i1 + 1] -= f1;
+    ev.push((i1 as u32, -(1.0 - f1)));
+    ev.push((i1 as u32 + 1, -f1));
     *lo = (*lo).min(i0);
     *hi = (*hi).max(i1 + 2);
 }
