@@ -28,12 +28,42 @@ fn overhangs(slices: &[Region], heights: &[f64], angle_deg: f64) -> Vec<Region> 
         .collect()
 }
 
-pub fn generate(slices: &[Region], heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
+/// The parallel groundwork for supports: what overhangs and what the model
+/// occupies, layer by layer. Done on its own so the slow step-by-step part that
+/// follows can run beside other work.
+pub struct Prepared {
+    over: Vec<Region>,
+    clear: Vec<Region>,
+    clear_idx: Vec<EdgeIndex>,
+}
+
+pub fn prepare(slices: &[Region], heights: &[f64], p: &FdmProcess) -> Prepared {
+    match p.support {
+        SupportKind::None => Prepared { over: Vec::new(), clear: Vec::new(), clear_idx: Vec::new() },
+        SupportKind::Normal => Prepared {
+            over: overhangs(slices, heights, p.support_angle as f64),
+            clear: clearance(slices, p.support_xy_gap as f64),
+            clear_idx: Vec::new(),
+        },
+        SupportKind::Tree => {
+            let clear = clearance(slices, p.support_xy_gap as f64 + 0.2);
+            let clear_idx = clear.par_iter().map(EdgeIndex::new).collect();
+            Prepared { over: overhangs(slices, heights, p.support_angle as f64), clear, clear_idx }
+        }
+    }
+}
+
+/// Supports from the groundwork `prepare` made.
+pub fn generate_from(prep: Prepared, slices: &[Region], heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
     match p.support {
         SupportKind::None => vec![SupportLayer::default(); slices.len()],
-        SupportKind::Normal => block_supports(slices, heights, p),
-        SupportKind::Tree => tree_supports(slices, heights, p),
+        SupportKind::Normal => block_supports(prep, slices, p),
+        SupportKind::Tree => tree_supports(prep, slices.len(), heights, p),
     }
+}
+
+pub fn generate(slices: &[Region], heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
+    generate_from(prepare(slices, heights, p), slices, heights, p)
 }
 
 fn clearance(slices: &[Region], xy: f64) -> Vec<Region> {
@@ -54,10 +84,12 @@ fn occupied_below(slices: &[Region]) -> Vec<Region> {
     out
 }
 
-fn block_supports(slices: &[Region], heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
+/// Support outlines are rough by nature; 20 microns is far below anything visible.
+const SUPPORT_TOLERANCE_MM: f64 = 0.02;
+
+fn block_supports(prep: Prepared, slices: &[Region], p: &FdmProcess) -> Vec<SupportLayer> {
     let n = slices.len();
-    let over = overhangs(slices, heights, p.support_angle as f64);
-    let clear = clearance(slices, p.support_xy_gap as f64);
+    let Prepared { over, clear, .. } = prep;
     let gap = p.support_z_gap as usize;
     let below = if p.support_plate_only {
         occupied_below(slices)
@@ -80,7 +112,11 @@ fn block_supports(slices: &[Region], heights: &[f64], p: &FdmProcess) -> Vec<Sup
         if p.support_plate_only {
             here = geom::diff(&here, &below[i]);
         }
+        here = geom::simplify_region(&here, SUPPORT_TOLERANCE_MM);
         here = geom::remove_small(&geom::opening(&here, 0.3), 1.0);
+        // Rounded offsets leave a lot of points; supports don't need them, and
+        // every later layer's work grows with them.
+        here = geom::simplify_region(&here, SUPPORT_TOLERANCE_MM);
         acc = here.clone();
         body[i] = here;
     }
@@ -119,11 +155,8 @@ struct Node {
 }
 
 /// Branches grow from the overhang tips down to the bed, merging as they go.
-fn tree_supports(slices: &[Region], heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
-    let n = slices.len();
-    let over = overhangs(slices, heights, p.support_angle as f64);
-    let clear: Vec<Region> = clearance(slices, p.support_xy_gap as f64 + 0.2);
-    let clear_idx: Vec<EdgeIndex> = clear.par_iter().map(EdgeIndex::new).collect();
+fn tree_supports(prep: Prepared, n: usize, heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
+    let Prepared { over, clear, clear_idx } = prep;
     let gap = p.support_z_gap as usize;
     let spacing = (p.support_spacing as f64 * 1.6).max(2.0);
     let tip = p.tree_tip_radius as f64;

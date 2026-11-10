@@ -569,12 +569,17 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
         let cover: &Vec<Region> = obj.cover.as_deref().unwrap_or(slices);
         let frac = |t: f32| 0.1 + 0.7 * (oi as f32 + t) / obj_count as f32;
         progress.set(frac(0.0), &format!("Planning supports for {}", obj.name));
-        let support_layers = if obj.no_support {
-            vec![SupportLayer::default(); n]
+        // Support planning walks the layers one after another, so it gets its own
+        // thread and runs alongside the walls, skins and infill, which use the rest.
+        let support_task = if obj.no_support || matches!(p.support, crate::profiles::SupportKind::None) {
+            None
         } else {
-            support::generate(cover, &heights, p)
+            // The groundwork is parallel, so it goes first with every core.
+            let prep = support::prepare(cover, &heights, p);
+            lap("support groundwork done");
+            let (cover_copy, heights_copy, process_copy) = (cover.to_vec(), heights.clone(), p.clone());
+            Some(std::thread::spawn(move || support::generate_from(prep, &cover_copy, &heights_copy, &process_copy)))
         };
-        lap("supports planned");
         if progress.cancelled() {
             return Err("Cancelled".into());
         }
@@ -857,15 +862,22 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                         other_tool_fill,
                     });
                 }
-                let sup = &support_layers[i];
-                let support = support_paths(sup, job, g);
                 ObjectLayer {
                     islands,
                     comb_support: None,
-                    support,
+                    support: Vec::new(),
                 }
             })
             .collect();
+        let support_layers = match support_task {
+            Some(task) => task.join().map_err(|_| "Planning the supports failed.".to_string())?,
+            None => vec![SupportLayer::default(); n],
+        };
+        lap("supports planned");
+        let mut layer_plans = layer_plans;
+        layer_plans.par_iter_mut().enumerate().for_each(|(i, ol)| {
+            ol.support = support_paths(&support_layers[i], job, geom_of(i));
+        });
         lap("skins, infill and supports pathed");
         objects.push(layer_plans);
         all_support.push(support_layers);

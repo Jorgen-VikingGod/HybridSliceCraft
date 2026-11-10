@@ -28,6 +28,7 @@ pub struct BenchOptions {
     /// Extra size factor for the filament bench (it also shrinks to fit the bed).
     pub scale: f32,
     pub supports: bool,
+    pub tree: bool,
     pub layer_height_set: bool,
 }
 
@@ -47,6 +48,7 @@ impl BenchOptions {
             fdm: false,
             scale: 1.0,
             supports: false,
+            tree: false,
             layer_height_set: false,
         }
     }
@@ -198,7 +200,7 @@ pub fn run_fdm(o: &BenchOptions) -> Result<(), String> {
         process.first_layer_height = o.layer_height;
     }
     if o.supports {
-        process.support = SupportKind::Normal;
+        process.support = if o.tree { SupportKind::Tree } else { SupportKind::Normal };
     }
     let job = FdmJob {
         objects: vec![JobObject {
@@ -224,7 +226,7 @@ pub fn run_fdm(o: &BenchOptions) -> Result<(), String> {
         size.y * k,
         size.z * k,
         job.process.layer_height,
-        if o.supports { "grid" } else { "off" },
+        if !o.supports { "off" } else if o.tree { "tree" } else { "grid" },
         rayon::current_num_threads()
     );
     let mut best = f32::MAX;

@@ -49,7 +49,7 @@ Options:
     --runs <n>                Repeat this many times (default 3)
     --export <file>           Also save the print (.goo, .ctb, .sl1, .zip, Anycubic types) and time it
   --bench-fdm <model>       No window: slice the model for the first filament printer and print timings
-    (takes --layer-height, --runs, --export <file.gcode>, --scale <factor> and --supports)
+    (takes --layer-height, --runs, --export <file.gcode>, --scale <factor>, --supports and --tree for tree supports)
   --help                    Show this help
 ";
 
@@ -82,6 +82,7 @@ fn parse_bench() -> Option<Result<bench::BenchOptions, String>> {
                 }
                 "--scale" => o.scale = value("--scale")?.parse().map_err(|_| "--scale needs a number")?,
                 "--supports" => o.supports = true,
+                "--tree" => o.tree = true,
                 "--export" => o.export = Some(PathBuf::from(value("--export")?)),
                 "--runs" => o.runs = value("--runs")?.parse().map_err(|_| "--runs needs a whole number")?,
                 "--res" => o.res = pair(value("--res")?).ok_or("--res needs WxH, like 15120x6230")?,
