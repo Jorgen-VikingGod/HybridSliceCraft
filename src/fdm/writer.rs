@@ -17,6 +17,57 @@ pub(super) enum Mv {
     Raw(String),
 }
 
+/// Writes `x` with `decimals` places, exactly as `write!(out, "{:.*}", decimals, x)`
+/// would, but much faster for ordinary numbers. G-code is mostly such numbers.
+#[inline]
+pub(super) fn push_fixed(out: &mut String, x: f64, decimals: usize) {
+    const POW: [f64; 6] = [1.0, 10.0, 100.0, 1e3, 1e4, 1e5];
+    const POW_INT: [u64; 6] = [1, 10, 100, 1_000, 10_000, 100_000];
+    if decimals < POW.len() && x.is_finite() {
+        let scaled = x.abs() * POW[decimals];
+        let floor = scaled.floor();
+        let frac = scaled - floor;
+        // Near a tie the exact decimal value decides which way it rounds, and
+        // the multiplication above can't tell. Leave those to the standard formatter.
+        if scaled < 1e15 && (frac - 0.5).abs() > scaled * 1e-15 + 1e-9 {
+            let n = floor as u64 + (frac > 0.5) as u64;
+            if x.is_sign_negative() {
+                out.push('-');
+            }
+            let (int, dec) = (n / POW_INT[decimals], n % POW_INT[decimals]);
+            push_u64(out, int);
+            if decimals > 0 {
+                out.push('.');
+                let mut digits = [b'0'; 5];
+                let mut d = dec;
+                for slot in digits[..decimals].iter_mut().rev() {
+                    *slot = b'0' + (d % 10) as u8;
+                    d /= 10;
+                }
+                // Digits are ASCII, so this is valid UTF-8.
+                out.push_str(std::str::from_utf8(&digits[..decimals]).unwrap_or("0"));
+            }
+            return;
+        }
+    }
+    let _ = write!(out, "{:.*}", decimals, x);
+}
+
+#[inline]
+fn push_u64(out: &mut String, mut v: u64) {
+    let mut buf = [0u8; 20];
+    let mut i = buf.len();
+    loop {
+        i -= 1;
+        buf[i] = b'0' + (v % 10) as u8;
+        v /= 10;
+        if v == 0 {
+            break;
+        }
+    }
+    out.push_str(std::str::from_utf8(&buf[i..]).unwrap_or("0"));
+}
+
 /// A tool position plus what the printer currently believes.
 pub(super) struct Writer<'a> {
     pub job: &'a FdmJob,
@@ -522,13 +573,18 @@ impl<'a> Writer<'a> {
                     let mut line = String::with_capacity(40);
                     line.push_str("G1");
                     if moved_xy {
-                        let _ = write!(line, " X{:.3} Y{:.3}", to.x + origin.x, to.y + origin.y);
+                        line.push_str(" X");
+                        push_fixed(&mut line, to.x + origin.x, 3);
+                        line.push_str(" Y");
+                        push_fixed(&mut line, to.y + origin.y, 3);
                     }
                     if moved_z {
-                        let _ = write!(line, " Z{:.3}", to.z);
+                        line.push_str(" Z");
+                        push_fixed(&mut line, to.z, 3);
                     }
                     if (*speed - self.feed).abs() > 1e-3 {
-                        let _ = write!(line, " F{:.0}", *speed * 60.0);
+                        line.push_str(" F");
+                        push_fixed(&mut line, *speed * 60.0, 0);
                         self.feed = *speed;
                     }
                     if moved_xy || moved_z {
@@ -595,18 +651,23 @@ impl<'a> Writer<'a> {
                             let de = d * area * e_factor;
                             self.e_abs += de;
                             let e = if relative { de } else { self.e_abs };
-                            let mut line = String::with_capacity(48);
-                            let _ = write!(line, "G1 X{:.3} Y{:.3}", to.x + origin.x, to.y + origin.y);
+                            let line = &mut self.chunk;
+                            line.push_str("G1 X");
+                            push_fixed(line, to.x + origin.x, 3);
+                            line.push_str(" Y");
+                            push_fixed(line, to.y + origin.y, 3);
                             if (to.z - prev_pos.z).abs() > 1e-6 {
-                                let _ = write!(line, " Z{:.3}", to.z);
+                                line.push_str(" Z");
+                                push_fixed(line, to.z, 3);
                             }
-                            let _ = write!(line, " E{e:.5}");
+                            line.push_str(" E");
+                            push_fixed(line, e, 5);
                             if (*speed - self.feed).abs() > 1e-3 {
-                                let _ = write!(line, " F{:.0}", *speed * 60.0);
+                                line.push_str(" F");
+                                push_fixed(line, *speed * 60.0, 0);
                                 self.feed = *speed;
                             }
-                            self.chunk.push_str(&line);
-                            self.chunk.push('\n');
+                            line.push('\n');
                             self.result.filament_by_feature[feature as usize] += (d * area) as f32;
                             self.result.segs.push(preview(prev_pos, *to, *width, *height, *speed, *area, fan, temp_now, layer_time, feature, print_tool, layer_i));
                             prev_pos = *to;
@@ -867,4 +928,48 @@ fn estimate(moves: &[Mv], w: &Writer, mut by_feature: Option<&mut [f32; Feature:
         }
     }
     total
+}
+
+#[cfg(test)]
+mod fixed_tests {
+    use super::push_fixed;
+
+    fn check(x: f64, decimals: usize) {
+        let mut got = String::new();
+        push_fixed(&mut got, x, decimals);
+        assert_eq!(got, format!("{:.*}", decimals, x), "{x:?} with {decimals} decimals");
+    }
+
+    #[test]
+    fn matches_the_standard_formatter() {
+        // Hand-picked awkward values: zeros, negatives that round to zero, ties, big numbers.
+        for &x in &[
+            0.0, -0.0, 0.0004, -0.0004, 0.0005, -0.0005, 0.0015, 0.0025, 1.0005, 2.5, 3.5, 0.5, 1e-9, -1e-9, 0.99949, 0.9995, 9.9995,
+            123456.789, -123456.789, 1e9 + 0.0005, 1e12, 4.0e14, 9.99e15, 1e20, f64::MIN_POSITIVE, f64::NAN, f64::INFINITY, f64::NEG_INFINITY,
+        ] {
+            for d in 0..=5 {
+                check(x, d);
+            }
+        }
+        // Many pseudo-random values at the magnitudes G-code uses, plus exact decimal ties.
+        let mut state = 0x9E3779B97F4A7C15u64;
+        let mut rnd = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for i in 0..400_000u64 {
+            let r = rnd();
+            let x = match i % 4 {
+                0 => (r % 4_000_000) as f64 / 10_000.0 - 200.0,
+                1 => (r % 2_000_000_000) as f64 / 1e5 - 10_000.0,
+                2 => ((r % 4_000_000) as f64 + 0.5) / 1000.0,
+                _ => f64::from_bits(r >> 2 | 0x3000_0000_0000_0000) % 500.0,
+            };
+            for d in [0usize, 3, 5] {
+                check(x, d);
+            }
+        }
+    }
 }

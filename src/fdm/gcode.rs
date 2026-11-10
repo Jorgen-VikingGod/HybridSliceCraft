@@ -428,6 +428,7 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
                 tools_this.push(w.tool);
             }
 
+            let _t_moves = super::span("writer plan moves (travel, seams, combing)");
             let mut tower_done = false;
             let spiral_active = plan.spiral_from.map(|s| li >= s).unwrap_or(false);
             let first_spiral = plan.spiral_from.map(|s| li == s).unwrap_or(false);
@@ -546,8 +547,11 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
                 tower.emit(&mut w, z, h, li, false);
             }
 
+            drop(_t_moves);
             let t_before = w.result.total_time;
+            let _t = super::span("writer finish_layer (estimate, text, preview)");
             w.finish_layer(display_layer, h);
+            drop(_t);
             chunks.push((std::mem::take(&mut w.chunk), w.result.total_time - t_before));
             finished += 1;
             if finished % 16 == 0 {
