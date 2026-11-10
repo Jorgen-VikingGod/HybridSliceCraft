@@ -47,6 +47,7 @@ Options:
     --res <W>x<H>             Screen resolution in pixels (default 15120x6230)
     --screen <W>x<H>          Screen size in mm (default 218.88x122.88)
     --runs <n>                Repeat this many times (default 3)
+    --export <file>           Also save the print (.goo, .ctb, .sl1, .zip, Anycubic types) and time it
   --help                    Show this help
 ";
 
@@ -72,6 +73,7 @@ fn parse_bench() -> Option<Result<bench::BenchOptions, String>> {
                 "--aa" => o.aa = value("--aa")?.parse().map_err(|_| "--aa needs a whole number")?,
                 "--z-samples" => o.z_samples = value("--z-samples")?.parse().map_err(|_| "--z-samples needs a whole number")?,
                 "--layer-height" => o.layer_height = value("--layer-height")?.parse().map_err(|_| "--layer-height needs a number")?,
+                "--export" => o.export = Some(PathBuf::from(value("--export")?)),
                 "--runs" => o.runs = value("--runs")?.parse().map_err(|_| "--runs needs a whole number")?,
                 "--res" => o.res = pair(value("--res")?).ok_or("--res needs WxH, like 15120x6230")?,
                 "--screen" => o.size = pair(value("--screen")?).ok_or("--screen needs WxH in mm")?,

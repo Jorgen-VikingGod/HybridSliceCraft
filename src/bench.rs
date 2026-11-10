@@ -3,6 +3,7 @@
 
 use crate::mesh;
 use crate::profiles::{LayerEngine, ResinMaterial, ResinPrinter, ResinProcess};
+use crate::resin::export::{self, ResinFormat};
 use crate::resin::{self, ResinJob};
 use crate::slicing::Progress;
 use glam::{Mat4, Vec3};
@@ -20,6 +21,8 @@ pub struct BenchOptions {
     pub runs: u32,
     /// Hash of every layer's runs, printed so before/after results can be compared.
     pub checksum: bool,
+    /// Also write the sliced print to this file (type from the extension).
+    pub export: Option<PathBuf>,
 }
 
 impl BenchOptions {
@@ -34,6 +37,7 @@ impl BenchOptions {
             size: (218.88, 122.88),
             runs: 3,
             checksum: true,
+            export: None,
         }
     }
 }
@@ -84,6 +88,7 @@ pub fn run(o: &BenchOptions) -> Result<(), String> {
         rayon::current_num_threads()
     );
     let mut best = f32::MAX;
+    let mut best_total = f32::MAX;
     for i in 0..o.runs.max(1) {
         let t = Instant::now();
         let r = resin::slice(&job, None, &Progress::default())?;
@@ -109,7 +114,35 @@ pub fn run(o: &BenchOptions) -> Result<(), String> {
             line.push_str(&format!(", checksum {h:016x}"));
         }
         println!("{line}");
+        if let Some(path) = &o.export {
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let format = match ext {
+                "ctb" => ResinFormat::Ctb,
+                "goo" => ResinFormat::Goo,
+                "zip" => ResinFormat::PngZip,
+                other => ResinFormat::from_extension(other).unwrap_or(ResinFormat::Sl1),
+            };
+            let mut j = job.clone();
+            if format == ResinFormat::Anycubic {
+                j.printer.format = ext.to_string();
+            }
+            let t = Instant::now();
+            export::export(path, format, &j, &r, None, &Progress::default())?;
+            let ex = t.elapsed().as_secs_f32();
+            let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+            println!("       export: {:.2}s, total {:.2}s, file {:.1} MB", ex, secs + ex, size as f32 / 1e6);
+            best_total = best_total.min(secs + ex);
+        }
     }
-    println!("best {best:.2}s");
+    println!("best slice {best:.2}s");
+    if o.export.is_some() {
+        println!("best slice + export {best_total:.2}s");
+    }
+    // Peak memory of this process.
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        if let Some(l) = status.lines().find(|l| l.starts_with("VmHWM")) {
+            println!("peak memory: {}", l.trim_start_matches("VmHWM:").trim());
+        }
+    }
     Ok(())
 }
