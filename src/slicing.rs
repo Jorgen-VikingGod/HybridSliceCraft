@@ -12,29 +12,92 @@ use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
-/// Which triangles cross which plane.
+/// Which triangles cross which plane: one flat list with an offset per plane.
+/// Indexing by plane gives that plane's triangles, in ascending order.
+pub struct Planes {
+    starts: Vec<usize>,
+    tris: Vec<u32>,
+}
+
+impl Planes {
+    pub fn len(&self) -> usize {
+        self.starts.len() - 1
+    }
+}
+
+impl std::ops::Index<usize> for Planes {
+    type Output = [u32];
+    #[inline]
+    fn index(&self, i: usize) -> &[u32] {
+        &self.tris[self.starts[i]..self.starts[i + 1]]
+    }
+}
+
 pub struct PlaneBuckets {
-    pub by_plane: Vec<Vec<u32>>,
+    pub by_plane: Planes,
 }
 
 impl PlaneBuckets {
     pub fn new(mesh: &Mesh, zs: &[f64]) -> Self {
-        let mut by_plane: Vec<Vec<u32>> = vec![Vec::new(); zs.len()];
-        for (ti, t) in mesh.t.iter().enumerate() {
-            let (a, b, c) = (
-                mesh.v[t[0] as usize].z as f64,
-                mesh.v[t[1] as usize].z as f64,
-                mesh.v[t[2] as usize].z as f64,
-            );
-            let lo = a.min(b).min(c);
-            let hi = a.max(b).max(c);
-            let first = zs.partition_point(|z| *z <= lo);
-            let last = zs.partition_point(|z| *z <= hi);
-            for bucket in by_plane.iter_mut().take(last).skip(first) {
-                bucket.push(ti as u32);
+        let np = zs.len();
+        // The planes each triangle spans, [first, last), found in parallel.
+        let ranges: Vec<(u32, u32)> = mesh
+            .t
+            .par_iter()
+            .map(|t| {
+                let (a, b, c) = (
+                    mesh.v[t[0] as usize].z as f64,
+                    mesh.v[t[1] as usize].z as f64,
+                    mesh.v[t[2] as usize].z as f64,
+                );
+                let lo = a.min(b).min(c);
+                let hi = a.max(b).max(c);
+                (zs.partition_point(|z| *z <= lo) as u32, zs.partition_point(|z| *z <= hi) as u32)
+            })
+            .collect();
+        // How many triangles each plane gets (difference array, then running sum).
+        let mut diff = vec![0i64; np + 1];
+        for &(f, l) in &ranges {
+            if f < l {
+                diff[f as usize] += 1;
+                diff[l as usize] -= 1;
             }
         }
-        Self { by_plane }
+        let mut starts = vec![0usize; np + 1];
+        let mut run = 0i64;
+        for p in 0..np {
+            run += diff[p];
+            starts[p + 1] = starts[p] + run as usize;
+        }
+        // Fill the lists. Planes are split into shards, each owning a
+        // separate piece of the output, so shards fill in parallel and every
+        // plane still sees its triangles in ascending order.
+        let mut tris = vec![0u32; starts[np]];
+        let shards = rayon::current_num_threads().min(np).max(1);
+        let per = np.div_ceil(shards).max(1);
+        let mut pieces: Vec<(usize, usize, &mut [u32])> = Vec::with_capacity(shards);
+        let mut rest: &mut [u32] = &mut tris;
+        let mut lo = 0usize;
+        while lo < np {
+            let hi = (lo + per).min(np);
+            let (piece, tail) = rest.split_at_mut(starts[hi] - starts[lo]);
+            pieces.push((lo, hi, piece));
+            rest = tail;
+            lo = hi;
+        }
+        pieces.par_iter_mut().for_each(|(lo, hi, piece)| {
+            let (lo, hi) = (*lo, *hi);
+            let base = starts[lo];
+            let mut next: Vec<usize> = starts[lo..hi].iter().map(|s| s - base).collect();
+            for (ti, &(f, l)) in ranges.iter().enumerate() {
+                let (f, l) = ((f as usize).max(lo), (l as usize).min(hi));
+                for p in f..l {
+                    piece[next[p - lo]] = ti as u32;
+                    next[p - lo] += 1;
+                }
+            }
+        });
+        Self { by_plane: Planes { starts, tris } }
     }
 }
 
@@ -278,11 +341,9 @@ impl Progress {
 /// Slice a mesh at many planes in parallel, returning loops per plane.
 pub fn slice_mesh(mesh: &Mesh, zs: &[f64]) -> (Vec<Vec<Vec<DVec2>>>, usize) {
     let buckets = PlaneBuckets::new(mesh, zs);
-    let results: Vec<(Vec<Vec<DVec2>>, usize)> = buckets
-        .by_plane
-        .par_iter()
-        .zip(zs.par_iter())
-        .map(|(tris, z)| plane_loops(mesh, tris, *z))
+    let results: Vec<(Vec<Vec<DVec2>>, usize)> = (0..zs.len())
+        .into_par_iter()
+        .map(|i| plane_loops(mesh, &buckets.by_plane[i], zs[i]))
         .collect();
     let forced = results.iter().map(|r| r.1).sum();
     (results.into_iter().map(|r| r.0).collect(), forced)
@@ -293,6 +354,38 @@ mod tests {
     use super::*;
     use crate::mesh::make_box;
     use glam::Vec3;
+
+    /// The plain serial way: each plane lists the triangles that cross it.
+    fn buckets_reference(mesh: &Mesh, zs: &[f64]) -> Vec<Vec<u32>> {
+        let mut out = vec![Vec::new(); zs.len()];
+        for (ti, t) in mesh.t.iter().enumerate() {
+            let z = [0, 1, 2].map(|k| mesh.v[t[k] as usize].z as f64);
+            let (lo, hi) = (z[0].min(z[1]).min(z[2]), z[0].max(z[1]).max(z[2]));
+            for (p, plane) in zs.iter().enumerate() {
+                if lo < *plane && *plane <= hi {
+                    out[p].push(ti as u32);
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn plane_buckets_match_the_serial_reference() {
+        // Many sizes and plane counts, including more shards than planes and no planes.
+        let mut m = make_box(Vec3::new(10.0, 7.0, 9.3));
+        let extra = make_box(Vec3::new(3.0, 3.0, 20.0)).transformed(&glam::Mat4::from_translation(Vec3::new(2.0, 1.0, -4.0)));
+        m.append(&extra);
+        for count in [0usize, 1, 2, 3, 7, 50, 333] {
+            let zs: Vec<f64> = (0..count).map(|i| -5.0 + (i as f64 + 0.5) * 30.0 / count.max(1) as f64).collect();
+            let got = PlaneBuckets::new(&m, &zs);
+            let want = buckets_reference(&m, &zs);
+            assert_eq!(got.by_plane.len(), zs.len());
+            for (p, w) in want.iter().enumerate() {
+                assert_eq!(&got.by_plane[p], w.as_slice(), "plane {p} of {count}");
+            }
+        }
+    }
 
     #[test]
     fn cube_slices_into_square() {

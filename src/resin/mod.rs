@@ -228,9 +228,17 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
         return Err("The model sits below the build plate.".into());
     }
     let zs: Vec<f64> = (0..n).map(|i| (i as f64 + 0.5) * h).collect();
+    let timing = std::env::var_os("HSC_TIMING").is_some();
+    let lap = |what: &str| {
+        if timing {
+            eprintln!("  [{:>7.3}s] {what}", started.elapsed().as_secs_f32());
+        }
+    };
+    lap("checks done");
     progress.set(0.02, "Sorting triangles into layers");
     let buckets = PlaneBuckets::new(&job.solid, &zs);
     let neg_buckets = PlaneBuckets::new(&job.negative, &zs);
+    lap("triangles sorted into layers");
     let foot = p.elephant_foot as f64;
     let bottom = p.bottom_layers as usize;
 
@@ -242,7 +250,6 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
             plane_segments(&job.solid, &buckets.by_plane[i], zs[i], &mut s);
             s
         };
-        pos.shrink_to_fit();
         let mut neg = Vec::new();
         plane_segments(&job.negative, &neg_buckets.by_plane[i], zs[i], &mut neg);
         (pos, neg)
@@ -267,7 +274,6 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
             plane_segments(&job.solid, &b.by_plane[s], zs_sub[s], &mut v);
             v
         };
-        pos.shrink_to_fit();
         let mut neg = Vec::new();
         plane_segments(&job.negative, &nb.by_plane[s], zs_sub[s], &mut neg);
         (pos, neg)
@@ -317,7 +323,7 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
         let cancel_seen = std::sync::atomic::AtomicBool::new(false);
         let result: Vec<LayerImage> = (0..n)
             .into_par_iter()
-            .map(|i| {
+            .map_init(raster::Scratch::default, |scratch, i| {
                 if progress.cancelled() {
                     cancel_seen.store(true, std::sync::atomic::Ordering::Relaxed);
                     return LayerImage::default();
@@ -326,13 +332,13 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
                     let pics: Vec<LayerImage> = (0..k)
                         .map(|j| {
                             let (pos, neg) = sub_segments(i, j);
-                            raster_cpu(&pos, &neg, &spec)
+                            raster::raster_cpu_with(scratch, &pos, &neg, &spec)
                         })
                         .collect();
                     raster::blend_layers(&pics, spec.width, &table)
                 } else {
                     let (pos, neg) = segments_of(i);
-                    raster_cpu(&pos, &neg, &spec)
+                    raster::raster_cpu_with(scratch, &pos, &neg, &spec)
                 };
                 let d = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 if d % 16 == 0 {
@@ -347,41 +353,62 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
         result
     };
 
+    lap("layers drawn");
     progress.set(0.92, "Checking for floating parts");
     let pixel_area = spec.pixel_area_mm2();
-    let islands: Vec<Vec<IslandInfo>> = (0..n)
+    // Layers go in small chunks, one chunk per task. Inside a chunk the row
+    // spans of one layer are reused as "the layer below" of the next, so each
+    // layer is turned into spans once instead of two or three times.
+    const CHUNK: usize = 16;
+    let spans_of = |j: usize| layers[j].spans(spec.width, spec.height);
+    let islands: Vec<Vec<IslandInfo>> = (0..n.div_ceil(CHUNK))
         .into_par_iter()
-        .map(|i| {
-            if layers[i].lit <= 0.0 {
-                return Vec::new();
-            }
-            let cur = layers[i].spans(spec.width, spec.height);
-            if i == 0 {
-                return Vec::new();
-            }
-            let below = layers[i - 1].spans(spec.width, spec.height);
-            let mut found = find_islands(&cur, Some(&below));
-            if i + 1 < n && found.iter().any(|f| f.area_px < SPECK_PIXELS) {
-                let next = layers[i + 1].spans(spec.width, spec.height);
-                found.retain(|f| {
-                    if f.area_px >= SPECK_PIXELS {
-                        return true;
-                    }
-                    // Everything lit on this layer except the speck itself.
-                    let mut rest = cur.clone();
-                    for row in f.bbox[1]..f.bbox[3] {
-                        rest[row as usize].retain(|s| !(s.0 < f.bbox[2] && f.bbox[0] < s.1));
-                    }
-                    let still_cut_off = find_islands(&next, Some(&rest)).iter().any(|c| {
-                        c.bbox[0] < f.bbox[2] && f.bbox[0] < c.bbox[2] && c.bbox[1] < f.bbox[3] && f.bbox[1] < c.bbox[3]
+        .flat_map_iter(|c| {
+            let (lo, hi) = (c * CHUNK, ((c + 1) * CHUNK).min(n));
+            let mut out: Vec<Vec<IslandInfo>> = Vec::with_capacity(hi - lo);
+            // Spans of the layer just below the one being checked, and of the
+            // layer above when a speck check already needed them.
+            let mut below: Option<Vec<Vec<(u32, u32)>>> = None;
+            let mut ahead: Option<Vec<Vec<(u32, u32)>>> = None;
+            for i in lo..hi {
+                if layers[i].lit <= 0.0 {
+                    out.push(Vec::new());
+                    below = None;
+                    ahead = None;
+                    continue;
+                }
+                let cur = ahead.take().unwrap_or_else(|| spans_of(i));
+                if i == 0 {
+                    out.push(Vec::new());
+                    below = Some(cur);
+                    continue;
+                }
+                let lower = below.take().unwrap_or_else(|| spans_of(i - 1));
+                let mut found = find_islands(&cur, Some(&lower));
+                if i + 1 < n && found.iter().any(|f| f.area_px < SPECK_PIXELS) {
+                    let next = spans_of(i + 1);
+                    found.retain(|f| {
+                        if f.area_px >= SPECK_PIXELS {
+                            return true;
+                        }
+                        // Everything lit on this layer except the speck itself.
+                        let mut rest = cur.clone();
+                        for row in f.bbox[1]..f.bbox[3] {
+                            rest[row as usize].retain(|s| !(s.0 < f.bbox[2] && f.bbox[0] < s.1));
+                        }
+                        find_islands(&next, Some(&rest)).iter().any(|c| {
+                            c.bbox[0] < f.bbox[2] && f.bbox[0] < c.bbox[2] && c.bbox[1] < f.bbox[3] && f.bbox[1] < c.bbox[3]
+                        })
                     });
-                    still_cut_off
-                });
+                    ahead = Some(next);
+                }
+                out.push(found);
+                below = Some(cur);
             }
-            found
+            out
         })
         .collect();
-
+    lap("islands checked");
     let mut stats = Vec::with_capacity(n);
     let mut total_time = 0.0f32;
     let mut volume = 0.0f64;
@@ -448,8 +475,10 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
         ));
     }
 
+    lap("stats done");
     progress.set(0.96, "Looking for trapped resin");
     let trapped_ml = trapped_volume(&layers, &spec, h);
+    lap("trapped resin checked");
     if trapped_ml > 0.02 {
         warnings.push(format!(
             "About {trapped_ml:.1} ml of resin would be sealed inside. Add a drain hole to let it out."
@@ -477,6 +506,28 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
     })
 }
 
+/// Flood a grid from its first inner cell and count the empty cells it can't
+/// reach. `grid` is wrapped in a solid (1) shell, so every cell the flood can
+/// reach has all six neighbours inside the array.
+fn sealed_cells(grid: &mut [u8], px: usize, py: usize) -> usize {
+    let plane = px * py;
+    let seed = 1 + px + plane;
+    let mut stack = Vec::new();
+    if grid[seed] == 0 {
+        grid[seed] = 1;
+        stack.push(seed);
+    }
+    while let Some(i) = stack.pop() {
+        for n in [i - 1, i + 1, i - px, i + px, i - plane, i + plane] {
+            if grid[n] == 0 {
+                grid[n] = 1;
+                stack.push(n);
+            }
+        }
+    }
+    grid.par_iter().filter(|c| **c == 0).count()
+}
+
 /// Flood-fill from outside the print on a coarse grid. Empty cells the flood
 /// can't reach are sealed in, and would hold liquid resin.
 fn trapped_volume(layers: &[LayerImage], spec: &RasterSpec, h: f64) -> f32 {
@@ -484,81 +535,75 @@ fn trapped_volume(layers: &[LayerImage], spec: &RasterSpec, h: f64) -> f32 {
     let step_z = ((cell_mm / h).round() as usize).max(1);
     let cx = ((cell_mm * spec.width as f64 / spec.size_x as f64).round() as usize).max(1);
     let cy = ((cell_mm * spec.height as f64 / spec.size_y as f64).round() as usize).max(1);
-    let nx = spec.width as usize / cx + 2;
-    let ny = spec.height as usize / cy + 2;
     let picked: Vec<&LayerImage> = layers.iter().step_by(step_z).collect();
+    // Only the box around everything lit matters: empty cells outside it reach
+    // the outside trivially. Keep a one-cell empty border inside the grid.
+    let mut bb = [usize::MAX, usize::MAX, 0usize, 0usize];
+    for l in &picked {
+        let b = l.bbox;
+        if b[2] > b[0] && b[3] > b[1] {
+            bb[0] = bb[0].min(b[0] as usize / cx);
+            bb[1] = bb[1].min(b[1] as usize / cy);
+            bb[2] = bb[2].max((b[2] as usize - 1) / cx);
+            bb[3] = bb[3].max((b[3] as usize - 1) / cy);
+        }
+    }
+    if bb[0] == usize::MAX {
+        return 0.0;
+    }
+    let (ox, oy) = (bb[0], bb[1]);
+    let nx = bb[2] - ox + 3;
+    let ny = bb[3] - oy + 3;
     let nz = picked.len() + 2;
     if nx * ny * nz > 200_000_000 {
         return 0.0;
     }
-    let mut solid = vec![false; nx * ny * nz];
-    solid
-        .par_chunks_mut(nx * ny)
-        .enumerate()
-        .for_each(|(k, plane)| {
-            if k == 0 || k > picked.len() {
-                return;
-            }
-            let w = spec.width as u64;
-            let mut pos = 0u64;
-            for (v, count) in picked[k - 1].runs() {
-                if v >= 128 {
-                    let mut s = pos;
-                    let end = pos + count;
-                    while s < end {
-                        let row = (s / w) as usize;
-                        let col = (s % w) as usize;
-                        if row / cy + 1 >= ny {
-                            break;
-                        }
-                        let take = (w - col as u64).min(end - s);
-                        let (c0, c1) = (col / cx + 1, (col + take as usize - 1) / cx + 1);
-                        for c in c0..=c1.min(nx - 1) {
-                            plane[c + nx * (row / cy + 1)] = true;
-                        }
-                        s += take;
+    // One byte per cell: 0 is empty and not yet reached, 1 is solid or reached.
+    // A solid shell is wrapped around the grid so the flood never needs bounds
+    // checks (and the shell itself never counts as sealed).
+    let (px, py, pz) = (nx + 2, ny + 2, nz + 2);
+    let mut grid = vec![0u8; px * py * pz];
+    grid.par_chunks_mut(px * py).enumerate().for_each(|(kp, plane)| {
+        if kp == 0 || kp == pz - 1 {
+            plane.fill(1);
+            return;
+        }
+        for x in 0..px {
+            plane[x] = 1;
+            plane[x + px * (py - 1)] = 1;
+        }
+        for y in 0..py {
+            plane[px * y] = 1;
+            plane[px - 1 + px * y] = 1;
+        }
+        // Planes 1 and nz are the empty border; the picked layers sit between.
+        if kp == 1 || kp > picked.len() + 1 {
+            return;
+        }
+        let w = spec.width as u64;
+        let mut pos = 0u64;
+        for (v, count) in picked[kp - 2].runs() {
+            if v >= 128 {
+                let mut s = pos;
+                let end = pos + count;
+                while s < end {
+                    let row = (s / w) as usize;
+                    let col = (s % w) as usize;
+                    if row / cy + 1 >= ny + oy {
+                        break;
                     }
+                    let take = (w - col as u64).min(end - s);
+                    let (c0, c1) = (col / cx + 1 - ox, (col + take as usize - 1) / cx + 1 - ox);
+                    for c in c0..=c1.min(nx - 1) {
+                        plane[c + 1 + px * (row / cy + 1 - oy + 1)] = 1;
+                    }
+                    s += take;
                 }
-                pos += count;
             }
-        });
-    let mut seen = vec![false; nx * ny * nz];
-    let mut stack = vec![0usize];
-    seen[0] = true;
-    while let Some(i) = stack.pop() {
-        let z = i / (nx * ny);
-        let y = (i / nx) % ny;
-        let x = i % nx;
-        let mut visit = |n: usize| {
-            if !seen[n] && !solid[n] {
-                seen[n] = true;
-                stack.push(n);
-            }
-        };
-        if x > 0 {
-            visit(i - 1);
+            pos += count;
         }
-        if x + 1 < nx {
-            visit(i + 1);
-        }
-        if y > 0 {
-            visit(i - nx);
-        }
-        if y + 1 < ny {
-            visit(i + nx);
-        }
-        if z > 0 {
-            visit(i - nx * ny);
-        }
-        if z + 1 < nz {
-            visit(i + nx * ny);
-        }
-    }
-    let sealed = seen
-        .par_iter()
-        .zip(solid.par_iter())
-        .filter(|(s, f)| !**s && !**f)
-        .count();
+    });
+    let sealed = sealed_cells(&mut grid, px, py);
     let cell_x = cx as f64 * spec.size_x as f64 / spec.width as f64;
     let cell_y = cy as f64 * spec.size_y as f64 / spec.height as f64;
     (sealed as f64 * cell_x * cell_y * step_z as f64 * h / 1000.0) as f32
@@ -567,6 +612,64 @@ fn trapped_volume(layers: &[LayerImage], spec: &RasterSpec, h: f64) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Slow reference: the original flood over separate solid/seen arrays with bounds checks.
+    fn sealed_reference(solid: &[bool], nx: usize, ny: usize, nz: usize) -> usize {
+        let mut seen = vec![false; nx * ny * nz];
+        let mut stack = vec![0usize];
+        seen[0] = true;
+        while let Some(i) = stack.pop() {
+            let (z, y, x) = (i / (nx * ny), (i / nx) % ny, i % nx);
+            let mut visit = |n: usize| {
+                if !seen[n] && !solid[n] {
+                    seen[n] = true;
+                    stack.push(n);
+                }
+            };
+            if x > 0 { visit(i - 1); }
+            if x + 1 < nx { visit(i + 1); }
+            if y > 0 { visit(i - nx); }
+            if y + 1 < ny { visit(i + nx); }
+            if z > 0 { visit(i - nx * ny); }
+            if z + 1 < nz { visit(i + nx * ny); }
+        }
+        (0..solid.len()).filter(|&i| !seen[i] && !solid[i]).count()
+    }
+
+    #[test]
+    fn sealed_cells_matches_reference_on_random_grids() {
+        let mut state = 0x2545F4914F6CDD1Du64;
+        let mut rnd = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for round in 0..200 {
+            let (nx, ny, nz) = (3 + (rnd() % 9) as usize, 3 + (rnd() % 9) as usize, 3 + (rnd() % 9) as usize);
+            let density = 20 + (round % 5) * 12; // percent solid
+            let mut solid = vec![false; nx * ny * nz];
+            for z in 1..nz - 1 {
+                for y in 1..ny - 1 {
+                    for x in 1..nx - 1 {
+                        solid[x + nx * (y + ny * z)] = rnd() % 100 < density as u64;
+                    }
+                }
+            }
+            let want = sealed_reference(&solid, nx, ny, nz);
+            let (px, py, pz) = (nx + 2, ny + 2, nz + 2);
+            let mut grid = vec![1u8; px * py * pz];
+            for z in 0..nz {
+                for y in 0..ny {
+                    for x in 0..nx {
+                        grid[x + 1 + px * (y + 1 + py * (z + 1))] = solid[x + nx * (y + ny * z)] as u8;
+                    }
+                }
+            }
+            assert_eq!(sealed_cells(&mut grid, px, py), want, "round {round}");
+        }
+    }
+
     use crate::mesh::make_box;
     use crate::profiles::Catalogue;
     use glam::{Mat4, Vec3};

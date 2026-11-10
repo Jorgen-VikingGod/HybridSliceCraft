@@ -2,6 +2,7 @@
 //! Author: Jürgen Könnemann
 
 mod app;
+mod bench;
 mod fdm;
 mod geom;
 mod keys;
@@ -39,8 +40,53 @@ Options:
                             (.gcode, or .sl1, .zip, .ctb, .goo, .pwmx and other Anycubic types in resin mode)
   --printer <name>          Start with this printer chosen (as named in the list)
   --empty                   Start with an empty plate
+  --bench-resin <model>     No window: slice the model for a resin printer and print timings
+    --aa <n>                  Anti-aliasing samples, 1 to 8 (default 4)
+    --z-samples <n>           Z smoothing samples (default 1)
+    --layer-height <mm>       Layer height (default 0.05)
+    --res <W>x<H>             Screen resolution in pixels (default 15120x6230)
+    --screen <W>x<H>          Screen size in mm (default 218.88x122.88)
+    --runs <n>                Repeat this many times (default 3)
+    --export <file>           Also save the print (.goo, .ctb, .sl1, .zip, Anycubic types) and time it
   --help                    Show this help
 ";
+
+/// Parse `1234x567` style pairs.
+fn pair<T: std::str::FromStr>(s: &str) -> Option<(T, T)> {
+    let (a, b) = s.split_once(['x', 'X'])?;
+    Some((a.parse().ok()?, b.parse().ok()?))
+}
+
+/// Headless benchmark mode. Returns `None` when `--bench-resin` isn't used.
+fn parse_bench() -> Option<Result<bench::BenchOptions, String>> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let at = args.iter().position(|a| a == "--bench-resin")?;
+    let Some(model) = args.get(at + 1) else {
+        return Some(Err("--bench-resin needs a model file".into()));
+    };
+    let mut o = bench::BenchOptions::new(PathBuf::from(model));
+    let mut it = args.iter().enumerate().filter(|(i, _)| *i != at && *i != at + 1).map(|(_, a)| a);
+    while let Some(a) = it.next() {
+        let mut value = |name: &str| it.next().ok_or(format!("{name} needs a value"));
+        let r: Result<(), String> = (|| {
+            match a.as_str() {
+                "--aa" => o.aa = value("--aa")?.parse().map_err(|_| "--aa needs a whole number")?,
+                "--z-samples" => o.z_samples = value("--z-samples")?.parse().map_err(|_| "--z-samples needs a whole number")?,
+                "--layer-height" => o.layer_height = value("--layer-height")?.parse().map_err(|_| "--layer-height needs a number")?,
+                "--export" => o.export = Some(PathBuf::from(value("--export")?)),
+                "--runs" => o.runs = value("--runs")?.parse().map_err(|_| "--runs needs a whole number")?,
+                "--res" => o.res = pair(value("--res")?).ok_or("--res needs WxH, like 15120x6230")?,
+                "--screen" => o.size = pair(value("--screen")?).ok_or("--screen needs WxH in mm")?,
+                other => return Err(format!("Unknown option {other} with --bench-resin. Try --help.")),
+            }
+            Ok(())
+        })();
+        if let Err(e) = r {
+            return Some(Err(e));
+        }
+    }
+    Some(Ok(o))
+}
 
 fn parse_args() -> Result<StartOptions, String> {
     let mut o = StartOptions::default();
@@ -95,6 +141,14 @@ fn window_icon() -> egui::IconData {
 }
 
 fn main() {
+    if let Some(b) = parse_bench() {
+        let result = b.and_then(|o| bench::run(&o));
+        if let Err(e) = result {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let opts = match parse_args() {
         Ok(o) => o,
         Err(e) => {
