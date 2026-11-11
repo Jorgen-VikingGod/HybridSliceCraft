@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.7.0" date="2026-11-11">
+      <description>
+        <p>Choose a different filament for inner walls, solid infill, support and support interface.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.7.0</url>
+    </release>
     <release version="0.6.2" date="2026-11-11">
       <description>
         <p>Much faster filament slicing of models with many separate parts per layer, and faster automatic supports.</p>
