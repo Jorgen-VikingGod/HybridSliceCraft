@@ -72,7 +72,7 @@ On Debian and Ubuntu you can also install from the apt repository, which keeps t
 
 There is also a Flatpak file (`HybridSliceCraft-<version>-x86_64.flatpak`) on each release:
 
-    flatpak install --user HybridSliceCraft-0.6.1-x86_64.flatpak
+    flatpak install --user HybridSliceCraft-0.6.2-x86_64.flatpak
 
 The installers aren't code-signed yet. Windows SmartScreen and macOS Gatekeeper will warn on first launch; on macOS, right-click the app and choose Open.
 

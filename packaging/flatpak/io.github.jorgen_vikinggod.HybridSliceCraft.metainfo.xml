@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.6.2" date="2026-11-11">
+      <description>
+        <p>Much faster filament slicing of models with many separate parts per layer, and faster automatic supports.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.6.2</url>
+    </release>
     <release version="0.6.1" date="2026-11-10">
       <description>
         <p>About twice as fast slicing for filament printers, plus a benchmark mode for it.</p>
