@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.8.0" date="2026-11-11">
+      <description>
+        <p>Separate filaments for top and bottom surfaces, pause or filament change at a layer, machine limits, acceleration, flow and fan for each kind of line, more Z-hop types and overhang speed steps.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.8.0</url>
+    </release>
     <release version="0.7.1" date="2026-11-12">
       <description>
         <p>Every kind of line now follows the nozzle of the tool that prints it, so different nozzle sizes work for walls, infill and support.</p>
