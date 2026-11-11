@@ -443,3 +443,9 @@ Lift only below	Nur anheben unter	Lever seulement en dessous de	Elevar solo por 
 Zero lifts at every height.	Null hebt auf jeder Höhe an.	Zéro lève à toutes les hauteurs.	Cero eleva a cualquier altura.
 Retract at layer change	Beim Schichtwechsel zurückziehen	Rétracter au changement de couche	Retraer al cambiar de capa
 Always pull the filament back when moving up to the next layer, even when the move is short.	Zieht das Filament beim Wechsel zur nächsten Schicht immer zurück, auch bei kurzen Wegen.	Retire toujours le filament en passant à la couche suivante, même pour un déplacement court.	Retrae siempre el filamento al pasar a la siguiente capa, aunque el movimiento sea corto.
+Slow down by overhang	Nach Überhang verlangsamen	Ralentir selon le surplomb	Frenar según el voladizo
+Slows walls by how much of the line hangs in the air, in four steps. Zero leaves a step at the usual speed.	Verlangsamt Wände danach, wie viel der Linie in der Luft hängt, in vier Stufen. Null lässt eine Stufe bei der üblichen Geschwindigkeit.	Ralentit les parois selon la part de la ligne en l'air, en quatre paliers. Zéro laisse un palier à la vitesse habituelle.	Frena las paredes según cuánto de la línea cuelga en el aire, en cuatro pasos. Cero deja un paso a la velocidad habitual.
+Speed, overhang up to 25%	Geschwindigkeit, Überhang bis 25 %	Vitesse, surplomb jusqu'à 25 %	Velocidad, voladizo hasta 25 %
+Speed, overhang up to 50%	Geschwindigkeit, Überhang bis 50 %	Vitesse, surplomb jusqu'à 50 %	Velocidad, voladizo hasta 50 %
+Speed, overhang up to 75%	Geschwindigkeit, Überhang bis 75 %	Vitesse, surplomb jusqu'à 75 %	Velocidad, voladizo hasta 75 %
+Speed, overhang up to 100%	Geschwindigkeit, Überhang bis 100 %	Vitesse, surplomb jusqu'à 100 %	Velocidad, voladizo hasta 100 %

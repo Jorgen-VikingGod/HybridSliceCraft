@@ -555,6 +555,13 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.num(ui, "Support speed", "", &mut p.speed_support, b.speed_support, 1.0..=1000.0, "mm/s", 0, true);
             r.num(ui, "Bridge", "", &mut p.speed_bridge, b.speed_bridge, 1.0..=500.0, "mm/s", 0, true);
             r.num(ui, "Overhang", "", &mut p.speed_overhang, b.speed_overhang, 1.0..=500.0, "mm/s", 0, true);
+            r.flag(ui, "Slow down by overhang", "Slows walls by how much of the line hangs in the air, in four steps. Zero leaves a step at the usual speed.", &mut p.overhang_tiers, b.overhang_tiers, true);
+            if p.overhang_tiers || !r.filter.is_empty() {
+                r.num(ui, "Speed, overhang up to 25%", "", &mut p.speed_overhang_1, b.speed_overhang_1, 0.0..=500.0, "mm/s", 0, true);
+                r.num(ui, "Speed, overhang up to 50%", "", &mut p.speed_overhang_2, b.speed_overhang_2, 0.0..=500.0, "mm/s", 0, true);
+                r.num(ui, "Speed, overhang up to 75%", "", &mut p.speed_overhang_3, b.speed_overhang_3, 0.0..=500.0, "mm/s", 0, true);
+                r.num(ui, "Speed, overhang up to 100%", "", &mut p.speed_overhang_4, b.speed_overhang_4, 0.0..=500.0, "mm/s", 0, true);
+            }
             r.num(ui, "Ironing speed", "", &mut p.ironing_speed, b.ironing_speed, 1.0..=300.0, "mm/s", 0, true);
             r.num(ui, "Travel", "How fast the head moves without printing.", &mut p.speed_travel, b.speed_travel, 1.0..=1500.0, "mm/s", 0, false);
             group(ui, r, "ACCELERATION");

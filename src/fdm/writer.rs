@@ -98,6 +98,8 @@ pub(super) struct Writer<'a> {
     pub seam_anchor: Option<DVec2>,
     pub seam_loop_counter: u64,
     pub last_written: Option<DVec3>,
+    /// Overhang tier of the segment being written, when speeds follow it.
+    pub tier_speed: Option<u8>,
 }
 
 impl<'a> Writer<'a> {
@@ -280,6 +282,13 @@ impl<'a> Writer<'a> {
         self.unretract();
         let area = bead_area(width, height) * flow * self.flow_ratio(feature);
         let mut speed = self.feature_speed(feature);
+        if let Some(tier @ 1..=4) = self.tier_speed {
+            let p = &self.job.process;
+            let own = [p.speed_overhang_1, p.speed_overhang_2, p.speed_overhang_3, p.speed_overhang_4][tier as usize - 1] as f64;
+            if own > 0.0 {
+                speed = speed.min(own);
+            }
+        }
         let cap = self.filament().max_volumetric as f64 / area.max(1e-4);
         if let (Some(v), true) = (self.volumetric_override, feature != Feature::Ironing) {
             speed = v / area.max(1e-4);
@@ -358,6 +367,7 @@ impl<'a> Writer<'a> {
     }
 
     pub fn emit_path(&mut self, path: &ExPath, z: f64, h: f64, flow: f64, comb: Option<&EdgeIndex>) {
+        self.tier_speed = None;
         if path.pts.len() < 2 {
             return;
         }
@@ -378,6 +388,7 @@ impl<'a> Writer<'a> {
                 let j = (i + 1) % n;
                 let hang = path.overhang.get(i).copied().unwrap_or(false);
                 let f = if hang { Feature::OverhangWall } else { path.feature };
+                self.tier_speed = self.job.process.overhang_tiers.then(|| path.tier.get(i).copied().unwrap_or(0));
                 let seg = path.pts[i].distance(path.pts[j]);
                 if seg >= left {
                     let end = path.pts[i].lerp(path.pts[j], (left / seg.max(1e-9)).min(1.0));
@@ -457,6 +468,7 @@ impl<'a> Writer<'a> {
     }
 
     pub fn emit_spiral(&mut self, island: &IslandPlan, z_top: f64, h: f64, flow: f64, first_spiral: bool) {
+        self.tier_speed = None;
         let Some(outer) = island
             .walls
             .first()

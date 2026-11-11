@@ -979,3 +979,38 @@ fn retracting_at_layer_change_can_be_forced() {
     let after = retracts(&j);
     assert!(after >= before + 15, "{before} then {after}");
 }
+
+#[test]
+fn walls_slow_down_in_steps_by_how_much_they_hang() {
+    let mut j = job(centered(crate::mesh::make_sphere(Vec3::new(0.0, 0.0, 12.0), 12.0, 64, 48)), FdmProcess::default());
+    // Short layers would otherwise be slowed down to cool, which rescales every speed.
+    j.filaments[0].min_layer_time = 0.0;
+    let plain = slice(&j, &Progress::default()).unwrap();
+    let wall_speeds = |r: &FdmResult| -> Vec<u32> {
+        let mut v: Vec<u32> = r
+            .segs
+            .iter()
+            .filter(|s| s.feature == Feature::OuterWall as u32 || s.feature == Feature::InnerWall as u32 || s.feature == Feature::OverhangWall as u32)
+            .map(|s| s.speed.round() as u32)
+            .collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    };
+    for s in [22, 17, 12] {
+        assert!(!wall_speeds(&plain).contains(&s), "{s} appears without tiers");
+    }
+    j.process.overhang_tiers = true;
+    j.process.speed_overhang_2 = 22.0;
+    j.process.speed_overhang_3 = 17.0;
+    j.process.speed_overhang_4 = 12.0;
+    let tiered = slice(&j, &Progress::default()).unwrap();
+    let speeds = wall_speeds(&tiered);
+    for s in [22, 17, 12] {
+        assert!(speeds.contains(&s), "{s} missing from {speeds:?}");
+    }
+    // Only the speed changes, not how much plastic goes down.
+    let (a, b) = (plain.filament_g.iter().sum::<f32>(), tiered.filament_g.iter().sum::<f32>());
+    assert!((a - b).abs() / a < 0.005, "{a} against {b}");
+    assert!(tiered.total_time > plain.total_time);
+}

@@ -311,6 +311,10 @@ pub struct ExPath {
     pub flow_mult: f64,
     /// Per segment: true where the wall hangs over air.
     pub overhang: Vec<bool>,
+    /// Per segment, when speeds follow the overhang: 0 for fully supported,
+    /// then 1 to 4 for up to a quarter, half, three quarters and all of the line
+    /// hanging in the air. Empty when that is off.
+    pub tier: Vec<u8>,
 }
 
 impl ExPath {
@@ -322,6 +326,7 @@ impl ExPath {
             feature,
             flow_mult: 1.0,
             overhang: Vec::new(),
+            tier: Vec::new(),
         }
     }
     pub fn closed(pts: Vec<DVec2>, width: f64, feature: Feature) -> Self {
@@ -332,6 +337,7 @@ impl ExPath {
             feature,
             flow_mult: 1.0,
             overhang: Vec::new(),
+            tier: Vec::new(),
         }
     }
     pub fn length(&self) -> f64 {

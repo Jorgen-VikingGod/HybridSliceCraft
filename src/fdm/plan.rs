@@ -193,38 +193,78 @@ fn fuzzy(points: &[DVec2], amount: f64, seed: u64) -> Polyline {
     out
 }
 
+/// How much of a line hangs in the air, for the speed tiers: one index of the
+/// layer below at each quarter of a line width.
+struct Tiers {
+    quarters: [EdgeIndex; 4],
+}
+
+impl Tiers {
+    fn new(below: &Region, w: f64) -> Self {
+        let at = |q: f64| EdgeIndex::new(&geom::offset(below, (q - 0.5) * w));
+        Self { quarters: [at(0.0), at(0.25), at(0.5), at(0.75)] }
+    }
+
+    fn of(&self, p: DVec2) -> u8 {
+        self.quarters.iter().filter(|q| !q.inside(p)).count() as u8
+    }
+}
+
+/// What the layer below says about a wall loop: where it hangs over air, and
+/// when speeds follow the overhang, by how much.
+struct Below {
+    hang: EdgeIndex,
+    tiers: Option<Tiers>,
+}
+
 /// Mark which parts of a wall loop hang over air, subdividing only where the
-/// answer changes along an edge.
-fn mark_overhang(pts: Vec<DVec2>, below: &EdgeIndex) -> (Vec<DVec2>, Vec<bool>) {
+/// answer changes along an edge. Also gives the tier of each piece when asked.
+fn mark_overhang(pts: Vec<DVec2>, below: &Below) -> (Vec<DVec2>, Vec<bool>, Vec<u8>) {
+    // The class of a point: whether it hangs, and its tier.
+    let class = |p: DVec2| -> u8 {
+        let hang = !below.hang.inside(p) as u8;
+        match &below.tiers {
+            Some(t) => hang | (t.of(p) << 1),
+            None => hang,
+        }
+    };
     let n = pts.len();
     let mut out = Vec::with_capacity(n);
     let mut flags = Vec::with_capacity(n);
+    let mut tiers = Vec::new();
+    let with_tiers = below.tiers.is_some();
+    let mut push = |flags: &mut Vec<bool>, tiers: &mut Vec<u8>, c: u8| {
+        flags.push(c & 1 == 1);
+        if with_tiers {
+            tiers.push(c >> 1);
+        }
+    };
     for i in 0..n {
         let a = pts[i];
         let b = pts[(i + 1) % n];
-        let ia = !below.inside(a);
-        let ib = !below.inside(b);
-        let im = !below.inside(a.lerp(b, 0.5));
+        let ia = class(a);
+        let ib = class(b);
+        let im = class(a.lerp(b, 0.5));
         out.push(a);
         if ia == ib && ib == im {
-            flags.push(im);
+            push(&mut flags, &mut tiers, im);
             continue;
         }
         let len = a.distance(b);
         let steps = ((len / 0.5).ceil() as usize).clamp(2, 400);
-        let mut prev = !below.inside(a.lerp(b, 0.5 / steps as f64));
-        flags.push(prev);
+        let mut prev = class(a.lerp(b, 0.5 / steps as f64));
+        push(&mut flags, &mut tiers, prev);
         for k in 1..steps {
             let t = (k as f64 + 0.5) / steps as f64;
-            let cur = !below.inside(a.lerp(b, t));
+            let cur = class(a.lerp(b, t));
             if cur != prev {
                 out.push(a.lerp(b, k as f64 / steps as f64));
-                flags.push(cur);
+                push(&mut flags, &mut tiers, cur);
                 prev = cur;
             }
         }
     }
-    (out, flags)
+    (out, flags, tiers)
 }
 
 /// Variable-width centre lines for narrow slivers walls can't reach.
@@ -313,7 +353,7 @@ fn build_walls(
     g: LayerGeom,
     job: &FdmJob,
     wall_count: usize,
-    below: Option<&EdgeIndex>,
+    below: Option<&Below>,
     seed: u64,
 ) -> WallResult {
     let p = &job.process;
@@ -384,9 +424,10 @@ fn build_walls(
             }
             let mut ex = ExPath::closed(Vec::new(), width, feature);
             if let Some(b) = below {
-                let (q, flags) = mark_overhang(pts, b);
+                let (q, flags, tiers) = mark_overhang(pts, b);
                 ex.pts = q;
                 ex.overhang = flags;
+                ex.tier = tiers;
             } else {
                 ex.pts = pts;
             }
@@ -633,7 +674,10 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                 let _t = super::span("stage1 total (islands, walls)");
                 let below = if i > 0 {
                     let _t = super::span("stage1 below edge index");
-                    Some(EdgeIndex::new(&geom::offset(&cover[i - 1], g.w_out * 0.45)))
+                    Some(Below {
+                        hang: EdgeIndex::new(&geom::offset(&cover[i - 1], g.w_out * 0.45)),
+                        tiers: p.overhang_tiers.then(|| Tiers::new(&cover[i - 1], g.w_out)),
+                    })
                 } else {
                     None
                 };

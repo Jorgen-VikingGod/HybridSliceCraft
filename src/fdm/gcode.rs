@@ -296,6 +296,7 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
         seam_anchor: None,
         seam_loop_counter: 88172645463393265,
         last_written: None,
+        tier_speed: None,
     };
 
     let tools_used: Vec<usize> = {
