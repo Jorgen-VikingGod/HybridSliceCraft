@@ -4,7 +4,7 @@
 use super::plan::IslandPlan;
 use super::{bead_area, ExPath, Feature, FdmJob, FdmResult, LayerInfo, PreviewSeg};
 use crate::geom::EdgeIndex;
-use crate::profiles::{Firmware, SeamMode};
+use crate::profiles::{Firmware, SeamMode, ZHopType};
 use glam::{DVec2, DVec3};
 use std::fmt::Write as _;
 
@@ -188,16 +188,56 @@ impl<'a> Writer<'a> {
             return;
         }
         let need_retract = !inside && dist >= min_travel;
-        if need_retract || (z_changes && dist >= min_travel) {
+        if need_retract || (z_changes && (dist >= min_travel || self.job.printer.retract_layer_change)) {
             self.retract();
         }
-        let hop = if need_retract { self.job.printer.z_hop as f64 } else { 0.0 };
+        let pr = &self.job.printer;
+        let allowed = z >= pr.z_hop_above as f64 && (pr.z_hop_below <= 0.0 || z <= pr.z_hop_below as f64);
+        let hop = if need_retract && allowed { pr.z_hop as f64 } else { 0.0 };
         let lift = if hop > 0.0 { (self.pos.z.max(z)) + hop } else { z };
         if hop > 0.0 {
-            let top = DVec3::new(from.x, from.y, lift);
-            self.moves.push(Mv::Travel { to: top, speed: 50f64.max(speed * 0.25) });
-            self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, lift), speed });
-            self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, z), speed: 50f64.max(speed * 0.25) });
+            let slow = 50f64.max(speed * 0.25);
+            match pr.z_hop_type {
+                ZHopType::Slope if dist > 1e-3 => {
+                    // Ramps at the chosen angle; a short move gets a lower peak.
+                    let tan = (pr.z_hop_slope_angle as f64).to_radians().tan().clamp(0.01, 5.0);
+                    let z0 = self.pos.z;
+                    let (up, down) = ((lift - z0).max(1e-6) / tan, (lift - z).max(1e-6) / tan);
+                    let dir = (p - from) / dist;
+                    if dist >= up + down {
+                        let a = from + dir * up;
+                        let b = p - dir * down;
+                        self.moves.push(Mv::Travel { to: DVec3::new(a.x, a.y, lift), speed });
+                        self.moves.push(Mv::Travel { to: DVec3::new(b.x, b.y, lift), speed });
+                    } else {
+                        let k = dist / (up + down);
+                        let m = from + dir * (up * k);
+                        self.moves.push(Mv::Travel { to: DVec3::new(m.x, m.y, z0 + (lift - z0) * k), speed });
+                    }
+                    self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, z), speed });
+                }
+                ZHopType::Spiral => {
+                    // One turn of a helix on the spot, in short straight steps.
+                    const STEPS: usize = 12;
+                    let r = hop.max(0.4);
+                    let centre = from + DVec2::new(r, 0.0);
+                    let z0 = self.pos.z;
+                    for k in 1..=STEPS {
+                        let t = k as f64 / STEPS as f64;
+                        let ang = std::f64::consts::PI + t * std::f64::consts::TAU;
+                        let q = centre + DVec2::new(ang.cos(), ang.sin()) * r;
+                        self.moves.push(Mv::Travel { to: DVec3::new(q.x, q.y, z0 + (lift - z0) * t), speed: slow });
+                    }
+                    self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, lift), speed });
+                    self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, z), speed: slow });
+                }
+                _ => {
+                    let top = DVec3::new(from.x, from.y, lift);
+                    self.moves.push(Mv::Travel { to: top, speed: slow });
+                    self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, lift), speed });
+                    self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, z), speed: slow });
+                }
+            }
         } else {
             if z_changes {
                 let top = DVec3::new(from.x, from.y, z);

@@ -785,6 +785,27 @@ fn fdm_printer_editor(ui: &mut egui::Ui, p: &mut FdmPrinter) {
         line(ui, "Lift during travel", |ui| {
             ui.add(num(&mut p.z_hop, 0.0, 5.0, "mm"));
         });
+        line(ui, "Lift type", |ui| {
+            egui::ComboBox::from_id_salt("z_hop_type").selected_text(crate::i18n::tr(p.z_hop_type.label())).show_ui(ui, |ui| {
+                for t in ZHopType::ALL {
+                    ui.selectable_value(&mut p.z_hop_type, t, crate::i18n::tr(t.label()));
+                }
+            });
+        });
+        if p.z_hop_type == ZHopType::Slope {
+            line(ui, "Slope angle", |ui| {
+                ui.add(num(&mut p.z_hop_slope_angle, 1.0, 60.0, "°"));
+            });
+        }
+        line(ui, "Lift only above", |ui| {
+            ui.add(num(&mut p.z_hop_above, 0.0, 500.0, "mm"));
+        });
+        line(ui, "Lift only below", |ui| {
+            ui.add(num(&mut p.z_hop_below, 0.0, 500.0, "mm")).on_hover_text(crate::i18n::tr("Zero lifts at every height."));
+        });
+        line(ui, "Retract at layer change", |ui| {
+            ui.checkbox(&mut p.retract_layer_change, "").on_hover_text(crate::i18n::tr("Always pull the filament back when moving up to the next layer, even when the move is short."));
+        });
         line(ui, "Wipe distance", |ui| {
             ui.add(num(&mut p.wipe_on_retract, 0.0, 10.0, "mm"));
         });

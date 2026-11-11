@@ -433,3 +433,13 @@ Fan, bridges and overhangs	Lüfter, Brücken und Überhänge	Ventilateur, ponts 
 Fan, support interface	Lüfter, Stützen-Kontaktschicht	Ventilateur, interface du support	Ventilador, interfaz del soporte
 Fan, ironing	Lüfter, Glätten	Ventilateur, lissage	Ventilador, planchado
 Below zero keeps the layer's fan speed.	Unter null bleibt die Lüfterstufe der Schicht.	En dessous de zéro, la vitesse du ventilateur de la couche est conservée.	Por debajo de cero se mantiene la velocidad del ventilador de la capa.
+Lift type	Hubart	Type de levage	Tipo de elevación
+Normal	Normal	Normal	Normal
+Slope	Schräg	En pente	En pendiente
+Spiral	Spirale	En spirale	En espiral
+Slope angle	Neigungswinkel	Angle de la pente	Ángulo de la pendiente
+Lift only above	Nur anheben über	Lever seulement au-dessus de	Elevar solo por encima de
+Lift only below	Nur anheben unter	Lever seulement en dessous de	Elevar solo por debajo de
+Zero lifts at every height.	Null hebt auf jeder Höhe an.	Zéro lève à toutes les hauteurs.	Cero eleva a cualquier altura.
+Retract at layer change	Beim Schichtwechsel zurückziehen	Rétracter au changement de couche	Retraer al cambiar de capa
+Always pull the filament back when moving up to the next layer, even when the move is short.	Zieht das Filament beim Wechsel zur nächsten Schicht immer zurück, auch bei kurzen Wegen.	Retire toujours le filament en passant à la couche suivante, même pour un déplacement court.	Retrae siempre el filamento al pasar a la siguiente capa, aunque el movimiento sea corto.

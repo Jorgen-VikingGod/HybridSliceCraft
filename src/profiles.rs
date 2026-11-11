@@ -12,6 +12,29 @@ pub enum Firmware {
     RepRap,
 }
 
+/// How the nozzle lifts over a long travel move.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ZHopType {
+    /// Straight up, across, straight down.
+    #[default]
+    Normal,
+    /// Rises along the way and comes down the same way, at a gentle angle.
+    Slope,
+    /// Rises in a small circle, which leaves no mark when the nozzle lifts.
+    Spiral,
+}
+
+impl ZHopType {
+    pub const ALL: [ZHopType; 3] = [ZHopType::Normal, ZHopType::Slope, ZHopType::Spiral];
+    pub fn label(self) -> &'static str {
+        match self {
+            ZHopType::Normal => "Normal",
+            ZHopType::Slope => "Slope",
+            ZHopType::Spiral => "Spiral",
+        }
+    }
+}
+
 impl Firmware {
     pub const ALL: [Firmware; 3] = [Firmware::Marlin, Firmware::Klipper, Firmware::RepRap];
     pub fn label(self) -> &'static str {
@@ -67,6 +90,14 @@ pub struct FdmPrinter {
     pub retract_speed: f32,
     pub deretract_speed: f32,
     pub z_hop: f32,
+    pub z_hop_type: ZHopType,
+    /// Angle of the ramps for a slope lift, in degrees.
+    pub z_hop_slope_angle: f32,
+    /// Only lift above this height, and below the other one (zero means no limit).
+    pub z_hop_above: f32,
+    pub z_hop_below: f32,
+    /// Always retract when moving up to the next layer, however short the move.
+    pub retract_layer_change: bool,
     pub wipe_on_retract: f32,
     pub relative_e: bool,
     pub arc_fitting: bool,
@@ -112,6 +143,11 @@ impl Default for FdmPrinter {
             retract_speed: 40.0,
             deretract_speed: 30.0,
             z_hop: 0.2,
+            z_hop_type: ZHopType::Normal,
+            z_hop_slope_angle: 10.0,
+            z_hop_above: 0.0,
+            z_hop_below: 0.0,
+            retract_layer_change: false,
             wipe_on_retract: 0.0,
             relative_e: true,
             arc_fitting: false,

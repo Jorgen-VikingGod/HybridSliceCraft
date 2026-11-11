@@ -920,3 +920,62 @@ fn support_interface_and_ironing_can_have_their_own_fan_speed() {
     let back = after.find("M106 S102").unwrap();
     assert!(after[back..].contains("M106 S"), "fan restored");
 }
+
+fn two_blocks() -> FdmJob {
+    let mut a = make_box(Vec3::new(10.0, 10.0, 6.0));
+    let b = make_box(Vec3::new(10.0, 10.0, 6.0)).transformed(&Mat4::from_translation(Vec3::new(30.0, 0.0, 0.0)));
+    a.append(&b);
+    let mut j = job(centered(a), FdmProcess::default());
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    j.printer.z_hop = 0.4;
+    j
+}
+
+/// Moves that go sideways and up or down in one line.
+fn slanted_moves(g: &str) -> usize {
+    g.lines().filter(|l| l.starts_with("G1 X") && l.contains(" Z") && l.contains(" Y")).count()
+}
+
+#[test]
+fn z_hop_can_lift_along_a_slope_or_in_a_spiral() {
+    let mut j = two_blocks();
+    let normal = slice(&j, &Progress::default()).unwrap().gcode;
+    assert_eq!(slanted_moves(&normal), 0, "a normal lift only goes straight up and down");
+    j.printer.z_hop_type = ZHopType::Slope;
+    let slope = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(slanted_moves(&slope) > 20, "{}", slanted_moves(&slope));
+    j.printer.z_hop_type = ZHopType::Spiral;
+    let spiral = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(slanted_moves(&spiral) > 100, "{}", slanted_moves(&spiral));
+    // The printing itself is the same however the nozzle lifts.
+    let printed = |g: &str| g.lines().filter(|l| l.contains(" E") && l.starts_with("G1 X")).count();
+    assert_eq!(printed(&normal), printed(&slope));
+    assert_eq!(printed(&normal), printed(&spiral));
+}
+
+#[test]
+fn z_hop_can_be_limited_to_a_range_of_heights() {
+    let mut j = two_blocks();
+    let lifts = |g: &str| g.lines().filter(|l| l.starts_with("G1 Z")).count();
+    let all = lifts(&slice(&j, &Progress::default()).unwrap().gcode);
+    j.printer.z_hop_above = 100.0;
+    let none = lifts(&slice(&j, &Progress::default()).unwrap().gcode);
+    assert!(none < all / 2, "{none} against {all}");
+    j.printer.z_hop_above = 0.0;
+    j.printer.z_hop_below = 3.0;
+    let low = lifts(&slice(&j, &Progress::default()).unwrap().gcode);
+    assert!(low < all && low > none, "{none} < {low} < {all}");
+}
+
+#[test]
+fn retracting_at_layer_change_can_be_forced() {
+    let mut j = job(centered(make_box(Vec3::new(20.0, 20.0, 6.0))), FdmProcess::default());
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    let retracts = |j: &FdmJob| slice(j, &Progress::default()).unwrap().gcode.lines().filter(|l| l.starts_with("G1 E-")).count();
+    let before = retracts(&j);
+    j.printer.retract_layer_change = true;
+    let after = retracts(&j);
+    assert!(after >= before + 15, "{before} then {after}");
+}
