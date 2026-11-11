@@ -327,6 +327,9 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
     if w.tool != 0 {
         let _ = writeln!(start, "T{}", w.tool);
     }
+    if printer.emit_limits {
+        limit_lines(&mut start, printer);
+    }
     shaper_lines(&mut start, printer.firmware, printer.shaper_freq_x, printer.shaper_freq_y);
     if printer.label_objects && printer.firmware == Firmware::Klipper {
         for (oi, o) in job.objects.iter().enumerate() {
@@ -689,6 +692,38 @@ fn object_marker(out: &mut String, fw: Firmware, index: usize, name: &str, start
 }
 
 /// Input shaper frequencies, when the printer has them set.
+/// The printer's speed, acceleration and corner limits as commands.
+fn limit_lines(out: &mut String, p: &crate::profiles::FdmPrinter) {
+    let (speed, accel, corner) = (p.max_speed as f64, p.max_accel as f64, p.corner_speed as f64);
+    let extra = |z: f32, e: f32, scale: f64| {
+        let mut s = String::new();
+        if z > 0.0 {
+            let _ = write!(s, " Z{:.0}", z as f64 * scale);
+        }
+        if e > 0.0 {
+            let _ = write!(s, " E{:.0}", e as f64 * scale);
+        }
+        s
+    };
+    match p.firmware {
+        Firmware::Marlin => {
+            let _ = writeln!(out, "M203 X{speed:.0} Y{speed:.0}{} ; speed limits", extra(p.max_speed_z, p.max_speed_e, 1.0));
+            let _ = writeln!(out, "M201 X{accel:.0} Y{accel:.0}{} ; acceleration limits", extra(p.max_accel_z, p.max_accel_e, 1.0));
+            let _ = writeln!(out, "M204 P{accel:.0} T{accel:.0} ; print and travel acceleration");
+            let _ = writeln!(out, "M205 X{corner:.1} Y{corner:.1} ; jerk");
+        }
+        Firmware::Klipper => {
+            let _ = writeln!(out, "SET_VELOCITY_LIMIT VELOCITY={speed:.0} ACCEL={accel:.0} SQUARE_CORNER_VELOCITY={corner:.1}");
+        }
+        Firmware::RepRap => {
+            let _ = writeln!(out, "M203 X{:.0} Y{:.0}{} ; speed limits, mm/min", speed * 60.0, speed * 60.0, extra(p.max_speed_z, p.max_speed_e, 60.0));
+            let _ = writeln!(out, "M201 X{accel:.0} Y{accel:.0}{} ; acceleration limits", extra(p.max_accel_z, p.max_accel_e, 1.0));
+            let _ = writeln!(out, "M204 P{accel:.0} T{accel:.0} ; print and travel acceleration");
+            let _ = writeln!(out, "M566 X{:.0} Y{:.0} ; jerk, mm/min", corner * 60.0, corner * 60.0);
+        }
+    }
+}
+
 fn shaper_lines(out: &mut String, fw: Firmware, fx: f32, fy: f32) {
     if fx <= 0.0 && fy <= 0.0 {
         return;

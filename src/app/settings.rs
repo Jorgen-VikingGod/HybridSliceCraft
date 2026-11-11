@@ -736,6 +736,23 @@ fn fdm_printer_editor(ui: &mut egui::Ui, p: &mut FdmPrinter) {
         line(ui, "Cornering speed", |ui| {
             ui.add(num(&mut p.corner_speed, 1.0, 50.0, "mm/s"));
         });
+        line(ui, "Send limits to the printer", |ui| {
+            ui.checkbox(&mut p.emit_limits, "").on_hover_text(crate::i18n::tr("Sends the top speed, top acceleration and cornering speed (and the Z and extruder limits below, when set) at the start of the print. Klipper only takes the first three."));
+        });
+        if p.emit_limits {
+            line(ui, "Top speed, Z", |ui| {
+                ui.add(num(&mut p.max_speed_z, 0.0, 200.0, "mm/s"));
+            });
+            line(ui, "Top acceleration, Z", |ui| {
+                ui.add(num(&mut p.max_accel_z, 0.0, 10000.0, "mm/s²"));
+            });
+            line(ui, "Top speed, extruder", |ui| {
+                ui.add(num(&mut p.max_speed_e, 0.0, 200.0, "mm/s"));
+            });
+            line(ui, "Top acceleration, extruder", |ui| {
+                ui.add(num(&mut p.max_accel_e, 0.0, 50000.0, "mm/s²"));
+            });
+        }
         line(ui, "Retraction length", |ui| {
             ui.add(num(&mut p.retract_length, 0.0, 20.0, "mm"));
         });

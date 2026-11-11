@@ -830,3 +830,36 @@ fn pauses_filament_changes_and_gcode_go_in_front_of_their_layer() {
     let r = slice(&j, &Progress::default()).unwrap();
     assert!(r.gcode.contains("\nPAUSE\n"));
 }
+
+#[test]
+fn machine_limits_go_into_the_start_only_when_asked_for() {
+    let mut j = job(centered(make_box(Vec3::splat(10.0))), FdmProcess::default());
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    j.printer.max_speed = 250.0;
+    j.printer.max_accel = 5000.0;
+    j.printer.corner_speed = 8.0;
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(!r.gcode.contains("M203") && !r.gcode.contains("M201") && !r.gcode.contains("SET_VELOCITY_LIMIT"));
+
+    j.printer.emit_limits = true;
+    j.printer.max_speed_z = 20.0;
+    j.printer.max_accel_e = 6000.0;
+    j.printer.firmware = Firmware::Marlin;
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(g.contains("M203 X250 Y250 Z20 ;"), "{}", &g[..400]);
+    assert!(g.contains("M201 X5000 Y5000 E6000 ;"));
+    assert!(g.contains("M204 P5000 T5000") && g.contains("M205 X8.0 Y8.0"));
+    // The limits come after the printer's own start script.
+    assert!(g.find("G28").unwrap() < g.find("M203").unwrap());
+
+    j.printer.firmware = Firmware::Klipper;
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(g.contains("SET_VELOCITY_LIMIT VELOCITY=250 ACCEL=5000 SQUARE_CORNER_VELOCITY=8.0"));
+    assert!(!g.contains("M203"));
+
+    j.printer.firmware = Firmware::RepRap;
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(g.contains("M203 X15000 Y15000 Z1200 ;"), "RepRapFirmware speeds are in mm/min");
+    assert!(g.contains("M566 X480 Y480"));
+}
