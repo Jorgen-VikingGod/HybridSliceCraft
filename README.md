@@ -13,6 +13,7 @@ A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast des
 - Seam placement, ironing (all top surfaces, topmost only, or all solid layers), fuzzy skin (outline, holes or both), spiral vase, adaptive layer heights
 - Several filaments in one print, with a prime tower
 - **Paint with filaments**: brush, fill and erase tools colour the model's surface; each colour prints with its own filament and reaches a chosen depth into the part
+- **A filament for each feature**: pick a different filament for a model's walls, inner walls, sparse infill, solid infill (top, bottom and bridge skins), support and support interface, for example a flexible or soluble support interface, or a different colour for the inner walls
 - **Several nozzle sizes in one print**: each tool can have its own nozzle (for example 0.4 mm and 0.8 mm). Each model's lines follow the size of the nozzle that prints it. A model can also print its walls with the fine nozzle and its infill with the big one, for speed without losing surface detail.
 - Cooling, time and filament estimates that account for acceleration
 - Wall order options (inner-outer-inner, reversed direction)

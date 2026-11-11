@@ -313,7 +313,7 @@ impl App {
         let mut changed = false;
         if slots > 1 {
             ui.horizontal(|ui| {
-                ui.label(crate::i18n::tr("Filament"));
+                ui.label(crate::i18n::tr("Filament")).on_hover_text(crate::i18n::tr("The filament for the outer walls, and for everything you don't choose another one for below."));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     egui::ComboBox::from_id_salt("obj_filament")
                         .selected_text(format!("{}: {} ({:.1} mm)", o.extruder + 1, self.filaments[o.extruder.min(slots - 1)].name, self.fdm_printer.nozzle_for(o.extruder)))
@@ -329,28 +329,46 @@ impl App {
             });
         }
         if slots > 1 {
-            ui.horizontal(|ui| {
-                ui.label(crate::i18n::tr("Infill with")).on_hover_text(crate::i18n::tr("Print the inside fill with another tool, such as a bigger nozzle, while the walls keep the fine one."));
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let name = |t: usize| {
-                        format!("{}: {} ({:.1} mm)", t + 1, self.filaments[t].name, self.fdm_printer.nozzle_for(t))
-                    };
-                    let shown = match o.infill_extruder {
-                        None => "Same as walls".to_string(),
-                        Some(t) => name(t.min(slots - 1)),
-                    };
-                    egui::ComboBox::from_id_salt("obj_infill_tool").selected_text(shown).width(150.0).show_ui(ui, |ui| {
-                        if ui.selectable_value(&mut o.infill_extruder, None, "Same as walls").changed() {
-                            changed = true;
-                        }
-                        for t in 0..slots {
-                            if ui.selectable_value(&mut o.infill_extruder, Some(t), name(t)).changed() {
+            let name = |t: usize| format!("{}: {} ({:.1} mm)", t + 1, self.filaments[t].name, self.fdm_printer.nozzle_for(t));
+            let walls = crate::i18n::tr("Same as walls");
+            let support = crate::i18n::tr("Same as support");
+            let rows: [(&str, &str, &str, usize, &mut Option<usize>); 5] = [
+                ("Inner walls", walls, "", 0, &mut o.inner_wall_extruder),
+                (
+                    "Infill with",
+                    walls,
+                    "Print the inside fill with another tool, such as a bigger nozzle, while the walls keep the fine one.",
+                    1,
+                    &mut o.infill_extruder,
+                ),
+                ("Solid infill", walls, "The top, bottom and bridge skins, and ironing.", 2, &mut o.solid_infill_extruder),
+                ("Support", walls, "", 3, &mut o.support_extruder),
+                ("Support interface", support, "", 4, &mut o.support_interface_extruder),
+            ];
+            for (label, same, hover, id, field) in rows {
+                ui.horizontal(|ui| {
+                    let l = ui.label(crate::i18n::tr(label));
+                    if !hover.is_empty() {
+                        l.on_hover_text(crate::i18n::tr(hover));
+                    }
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let shown = match *field {
+                            None => same.to_string(),
+                            Some(t) => name(t.min(slots - 1)),
+                        };
+                        egui::ComboBox::from_id_salt(("obj_feature_tool", id)).selected_text(shown).width(150.0).show_ui(ui, |ui| {
+                            if ui.selectable_value(field, None, same).changed() {
                                 changed = true;
                             }
-                        }
+                            for t in 0..slots {
+                                if ui.selectable_value(field, Some(t), name(t)).changed() {
+                                    changed = true;
+                                }
+                            }
+                        });
                     });
                 });
-            });
+            }
         }
         ui.horizontal(|ui| {
             let mut on = o.infill.is_some();

@@ -131,6 +131,13 @@ pub struct JobObject {
     pub extruder: usize,
     /// Print the sparse infill with another tool, e.g. a bigger nozzle.
     pub infill_extruder: Option<usize>,
+    /// Inner walls, solid infill (skins, bridges, ironing), support and its
+    /// interface layers each have their own tool too. `None` follows `extruder`
+    /// (the interface follows the support).
+    pub inner_wall_extruder: Option<usize>,
+    pub solid_infill_extruder: Option<usize>,
+    pub support_extruder: Option<usize>,
+    pub support_interface_extruder: Option<usize>,
     pub flow: f32,
     pub infill: Option<f32>,
     pub walls: Option<u32>,
@@ -224,6 +231,45 @@ pub fn bead_area(w: f64, h: f64) -> f64 {
 /// Centre-to-centre distance between neighbouring beads of this size.
 pub fn bead_spacing(w: f64, h: f64) -> f64 {
     (w - h * (1.0 - std::f64::consts::FRAC_PI_4)).max(w * 0.6)
+}
+
+impl JobObject {
+    /// The tool that prints this kind of extrusion, as an index into the filaments.
+    pub fn tool_for(&self, feature: Feature, last_tool: usize) -> usize {
+        let t = match feature {
+            Feature::InnerWall | Feature::GapFill => self.inner_wall_extruder.unwrap_or(self.extruder),
+            Feature::SparseInfill => self.infill_extruder.unwrap_or(self.extruder),
+            Feature::SolidInfill | Feature::TopSurface | Feature::BottomSurface | Feature::Bridge | Feature::Ironing => {
+                self.solid_infill_extruder.unwrap_or(self.extruder)
+            }
+            Feature::Support => self.support_extruder.unwrap_or(self.extruder),
+            Feature::SupportInterface => self
+                .support_interface_extruder
+                .or(self.support_extruder)
+                .unwrap_or(self.extruder),
+            _ => self.extruder,
+        };
+        t.min(last_tool)
+    }
+
+    /// Every tool any part of this object may be printed with.
+    pub fn tools_used(&self) -> Vec<usize> {
+        let mut v = vec![self.extruder];
+        v.extend(
+            [
+                self.inner_wall_extruder,
+                self.infill_extruder,
+                self.solid_infill_extruder,
+                self.support_extruder,
+                self.support_interface_extruder,
+            ]
+            .into_iter()
+            .flatten(),
+        );
+        v.sort_unstable();
+        v.dedup();
+        v
+    }
 }
 
 /// An extrusion ready for ordering.

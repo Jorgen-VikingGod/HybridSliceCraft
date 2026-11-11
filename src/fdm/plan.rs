@@ -20,8 +20,6 @@ pub struct IslandPlan {
     pub fill: Vec<ExPath>,
     /// Ironing passes run last, after everything else on this island.
     pub ironing: Vec<ExPath>,
-    /// Sparse infill printed by a different tool than the walls.
-    pub other_tool_fill: Vec<ExPath>,
 }
 
 #[derive(Default)]
@@ -547,7 +545,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
     let smallest = job
         .objects
         .iter()
-        .flat_map(|o| [o.extruder, o.infill_extruder.unwrap_or(o.extruder)])
+        .flat_map(|o| o.tools_used())
         .map(|t| job.printer.nozzle_for(t))
         .fold(f32::MAX, f32::min);
     if smallest < f32::MAX && p.layer_height > smallest * 0.8 {
@@ -727,7 +725,6 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                     let inner = wr.inner;
                     let mut fill: Vec<ExPath> = Vec::new();
                     let mut ironing: Vec<ExPath> = Vec::new();
-                    let mut other_tool_fill: Vec<ExPath> = Vec::new();
                     if !inner.is_empty() && !spiral(i) {
                         let _t = super::span("stage2 skin region maths");
                         let grow = s * 0.25;
@@ -807,16 +804,10 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                                 sparse_clip
                             };
                             // The first layer is solid, so a second tool only ever fills above it.
-                            let other = infill_tool != tool && i > 0;
-                            let wi = if other { p.line_width as f64 * infill_scale } else { w };
+                            let wi = if i > 0 { p.line_width as f64 * infill_scale } else { w };
                             let lines = infill::sparse(p.infill_pattern, &target, density, wi, z, i, base_angle, p.infill_anchor as f64);
                             for l in lines {
-                                let path = ExPath::open(l, wi, Feature::SparseInfill);
-                                if other {
-                                    other_tool_fill.push(path);
-                                } else {
-                                    fill.push(path);
-                                }
+                                fill.push(ExPath::open(l, wi, Feature::SparseInfill));
                             }
                         }
                         drop(_t);
@@ -868,7 +859,6 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                         thin: wr.thin,
                         fill,
                         ironing,
-                        other_tool_fill,
                     });
                 }
                 ObjectLayer {

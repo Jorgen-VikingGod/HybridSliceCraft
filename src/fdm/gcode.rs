@@ -78,17 +78,24 @@ impl Tower {
     }
 }
 
-/// Every tool an object needs on one layer: its own, plus its infill tool.
+/// Every tool an object needs on one layer, from the extrusions it has there.
 fn tools_at(job: &FdmJob, plan: &Plan, oi: usize, li: usize) -> Vec<usize> {
     let last = job.filaments.len().saturating_sub(1);
+    let obj = &job.objects[oi];
     let ol = &plan.objects[oi][li];
-    let mut out = Vec::new();
-    if !ol.islands.is_empty() || !ol.support.is_empty() {
-        out.push(job.objects[oi].extruder.min(last));
+    let mut out: Vec<usize> = Vec::new();
+    let mut add = |f: Feature| {
+        let t = obj.tool_for(f, last);
+        if !out.contains(&t) {
+            out.push(t);
+        }
+    };
+    for p in &ol.support {
+        add(p.feature);
     }
-    if ol.islands.iter().any(|i| !i.other_tool_fill.is_empty()) {
-        if let Some(t) = job.objects[oi].infill_extruder {
-            out.push(t.min(last));
+    for isl in &ol.islands {
+        for p in isl.walls.iter().flatten().chain(&isl.thin).chain(&isl.fill).chain(&isl.ironing) {
+            add(p.feature);
         }
     }
     out
@@ -275,7 +282,7 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
 
     let tools_used: Vec<usize> = {
         let mut t: Vec<usize> = (0..job.objects.len())
-            .flat_map(|oi| [tool_of(oi), job.objects[oi].infill_extruder.unwrap_or(tool_of(oi)).min(last_tool)])
+            .flat_map(|oi| job.objects[oi].tools_used().into_iter().map(|t| t.min(last_tool)))
             .collect();
         t.sort_unstable();
         t.dedup();
@@ -465,21 +472,32 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
                 // Supports first, so the model lands on something.
                 for oi in objs {
                     let ol = &plan.objects[*oi][li];
-                    if tool_of(*oi) != *tool {
-                        continue;
-                    }
                     for path in &ol.support {
-                        w.emit_path(path, z, h, 1.0, ol.comb_support.as_ref());
+                        if job.objects[*oi].tool_for(path.feature, last_tool) == *tool {
+                            w.emit_path(path, z, h, 1.0, ol.comb_support.as_ref());
+                        }
                     }
                 }
-                // Visit objects and their islands, nearest first.
+                // Visit objects and their islands, nearest first. Each pass only
+                // prints what this tool is set to print.
                 let mut todo: Vec<(usize, usize)> = Vec::new();
                 for oi in objs {
-                    if tool_of(*oi) != *tool {
-                        continue;
-                    }
-                    for k in 0..plan.objects[*oi][li].islands.len() {
-                        todo.push((*oi, k));
+                    let obj = &job.objects[*oi];
+                    for (k, isl) in plan.objects[*oi][li].islands.iter().enumerate() {
+                        let wanted = if spiral_active {
+                            obj.tool_for(Feature::OuterWall, last_tool) == *tool
+                        } else {
+                            isl.walls
+                                .iter()
+                                .flatten()
+                                .chain(&isl.thin)
+                                .chain(&isl.fill)
+                                .chain(&isl.ironing)
+                                .any(|p| obj.tool_for(p.feature, last_tool) == *tool)
+                        };
+                        if wanted {
+                            todo.push((*oi, k));
+                        }
                     }
                 }
                 while !todo.is_empty() {
@@ -503,41 +521,11 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
                         if labelled {
                             object_marker(&mut w.chunk, printer.firmware, oi, &job.objects[oi].name, true);
                         }
-                        w.emit_island(island, z, h, flow);
+                        let obj = &job.objects[oi];
+                        w.emit_island(island, z, h, flow, &|f| obj.tool_for(f, last_tool) == *tool);
                         if labelled {
                             object_marker(&mut w.chunk, printer.firmware, oi, &job.objects[oi].name, false);
                         }
-                    }
-                }
-                // Infill that another tool prints, e.g. a bigger nozzle.
-                let mut fills: Vec<(usize, usize)> = Vec::new();
-                for oi in objs {
-                    let infill_tool = job.objects[*oi].infill_extruder.map(|t| t.min(last_tool));
-                    if infill_tool != Some(*tool) {
-                        continue;
-                    }
-                    for (k, isl) in plan.objects[*oi][li].islands.iter().enumerate() {
-                        if !isl.other_tool_fill.is_empty() {
-                            fills.push((*oi, k));
-                        }
-                    }
-                }
-                while !fills.is_empty() {
-                    let here = DVec2::new(w.pos.x, w.pos.y);
-                    let mut bi = 0;
-                    let mut bd = f64::MAX;
-                    for (i, (oi, k)) in fills.iter().enumerate() {
-                        let d = plan.objects[*oi][li].islands[*k].center.distance_squared(here);
-                        if d < bd {
-                            bd = d;
-                            bi = i;
-                        }
-                    }
-                    let (oi, k) = fills.swap_remove(bi);
-                    let island = &plan.objects[oi][li].islands[k];
-                    let flow = job.objects[oi].flow as f64;
-                    for path in &island.other_tool_fill {
-                        w.emit_path(path, z, h, flow, Some(&island.comb));
                     }
                 }
             }
