@@ -775,3 +775,23 @@ fn every_kind_of_line_follows_the_nozzle_that_prints_it() {
     assert!((support / iface - 2.0).abs() < 0.2, "interface {iface}, support {support}");
     assert!(outer < 0.6 && sparse < 0.6 && iface < 0.6);
 }
+
+#[test]
+fn top_and_bottom_skins_can_split_off_from_the_solid_infill() {
+    let mut j = two_nozzle_job();
+    j.process.infill_density = 20.0;
+    j.objects.push(JobObject {
+        name: "cube".into(),
+        mesh: centered(make_box(Vec3::new(30.0, 30.0, 10.0))),
+        extruder: 0,
+        solid_infill_extruder: Some(1),
+        top_surface_extruder: Some(0),
+        flow: 1.0,
+        ..Default::default()
+    });
+    let r = slice(&j, &Progress::default()).unwrap();
+    // The top follows its own choice, the bottom the solid infill's.
+    assert_eq!(tools_of(&r, Feature::TopSurface), vec![0]);
+    assert_eq!(tools_of(&r, Feature::BottomSurface), vec![1]);
+    assert_eq!(tools_of(&r, Feature::SolidInfill), vec![1]);
+}

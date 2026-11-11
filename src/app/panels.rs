@@ -332,7 +332,8 @@ impl App {
             let name = |t: usize| format!("{}: {} ({:.1} mm)", t + 1, self.filaments[t].name, self.fdm_printer.nozzle_for(t));
             let walls = crate::i18n::tr("Same as walls");
             let support = crate::i18n::tr("Same as support");
-            let rows: [(&str, &str, &str, usize, &mut Option<usize>); 5] = [
+            let solid = crate::i18n::tr("Same as solid infill");
+            let rows: [(&str, &str, &str, usize, &mut Option<usize>); 7] = [
                 ("Inner walls", walls, "", 0, &mut o.inner_wall_extruder),
                 (
                     "Infill with",
@@ -341,7 +342,9 @@ impl App {
                     1,
                     &mut o.infill_extruder,
                 ),
-                ("Solid infill", walls, "The top, bottom and bridge skins, and ironing.", 2, &mut o.solid_infill_extruder),
+                ("Solid infill", walls, "The solid layers inside the part, and the top and bottom skins unless you choose another filament for them below.", 2, &mut o.solid_infill_extruder),
+                ("Top surface", solid, "The top skins and ironing.", 5, &mut o.top_surface_extruder),
+                ("Bottom surface", solid, "The bottom skins and bridges.", 6, &mut o.bottom_surface_extruder),
                 ("Support", walls, "", 3, &mut o.support_extruder),
                 ("Support interface", support, "", 4, &mut o.support_interface_extruder),
             ];

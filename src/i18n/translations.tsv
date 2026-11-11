@@ -384,5 +384,9 @@ Inner walls	Innenwände	Parois intérieures	Paredes interiores
 Support interface	Stützen-Kontaktschicht	Interface du support	Interfaz del soporte
 Same as walls	Wie die Wände	Comme les parois	Igual que las paredes
 Same as support	Wie die Stütze	Comme le support	Igual que el soporte
-The top, bottom and bridge skins, and ironing.	Die Deck-, Boden- und Brückenhaut sowie das Glätten.	Les peaux du dessus, du dessous et des ponts, et le lissage.	Las pieles superior, inferior y de puentes, y el planchado.
 The filament for the outer walls, and for everything you don't choose another one for below.	Das Filament für die Außenwände und für alles, wofür unten kein anderes gewählt ist.	Le filament des parois extérieures et de tout ce qu'on ne règle pas ci-dessous.	El filamento de las paredes exteriores y de todo lo que no se elija abajo.
+The solid layers inside the part, and the top and bottom skins unless you choose another filament for them below.	Die massiven Schichten im Teil sowie die Deck- und Bodenhaut, sofern unten kein anderes Filament dafür gewählt ist.	Les couches pleines à l'intérieur de la pièce, et les peaux du dessus et du dessous sauf si vous choisissez un autre filament ci-dessous.	Las capas sólidas dentro de la pieza, y las pieles superior e inferior salvo que elijas otro filamento abajo.
+Bottom surface	Unterseite	Surface inférieure	Superficie inferior
+Same as solid infill	Wie die massive Füllung	Comme le remplissage plein	Igual que el relleno sólido
+The top skins and ironing.	Die Deckhaut und das Glätten.	Les peaux du dessus et le lissage.	Las pieles superiores y el planchado.
+The bottom skins and bridges.	Die Bodenhaut und Brücken.	Les peaux du dessous et les ponts.	Las pieles inferiores y los puentes.

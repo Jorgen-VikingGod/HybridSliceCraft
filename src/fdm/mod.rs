@@ -136,6 +136,10 @@ pub struct JobObject {
     /// (the interface follows the support).
     pub inner_wall_extruder: Option<usize>,
     pub solid_infill_extruder: Option<usize>,
+    /// Top and bottom skins (and ironing, bridges) can be split off from the
+    /// solid infill; `None` follows `solid_infill_extruder`.
+    pub top_surface_extruder: Option<usize>,
+    pub bottom_surface_extruder: Option<usize>,
     pub support_extruder: Option<usize>,
     pub support_interface_extruder: Option<usize>,
     pub flow: f32,
@@ -239,9 +243,15 @@ impl JobObject {
         let t = match feature {
             Feature::InnerWall | Feature::GapFill => self.inner_wall_extruder.unwrap_or(self.extruder),
             Feature::SparseInfill => self.infill_extruder.unwrap_or(self.extruder),
-            Feature::SolidInfill | Feature::TopSurface | Feature::BottomSurface | Feature::Bridge | Feature::Ironing => {
-                self.solid_infill_extruder.unwrap_or(self.extruder)
-            }
+            Feature::SolidInfill => self.solid_infill_extruder.unwrap_or(self.extruder),
+            Feature::TopSurface | Feature::Ironing => self
+                .top_surface_extruder
+                .or(self.solid_infill_extruder)
+                .unwrap_or(self.extruder),
+            Feature::BottomSurface | Feature::Bridge => self
+                .bottom_surface_extruder
+                .or(self.solid_infill_extruder)
+                .unwrap_or(self.extruder),
             Feature::Support => self.support_extruder.unwrap_or(self.extruder),
             Feature::SupportInterface => self
                 .support_interface_extruder
@@ -260,6 +270,8 @@ impl JobObject {
                 self.inner_wall_extruder,
                 self.infill_extruder,
                 self.solid_infill_extruder,
+                self.top_surface_extruder,
+                self.bottom_surface_extruder,
                 self.support_extruder,
                 self.support_interface_extruder,
             ]

@@ -26,6 +26,8 @@ struct SavedObject {
     infill_extruder: Option<usize>,
     inner_wall_extruder: Option<usize>,
     solid_infill_extruder: Option<usize>,
+    top_surface_extruder: Option<usize>,
+    bottom_surface_extruder: Option<usize>,
     support_extruder: Option<usize>,
     support_interface_extruder: Option<usize>,
     flow: f32,
@@ -108,6 +110,8 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
                 infill_extruder: o.infill_extruder,
                 inner_wall_extruder: o.inner_wall_extruder,
                 solid_infill_extruder: o.solid_infill_extruder,
+                top_surface_extruder: o.top_surface_extruder,
+                bottom_surface_extruder: o.bottom_surface_extruder,
                 support_extruder: o.support_extruder,
                 support_interface_extruder: o.support_interface_extruder,
                 flow: o.flow,
@@ -180,6 +184,8 @@ pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
             o.infill_extruder = s.infill_extruder;
             o.inner_wall_extruder = s.inner_wall_extruder;
             o.solid_infill_extruder = s.solid_infill_extruder;
+            o.top_surface_extruder = s.top_surface_extruder;
+            o.bottom_surface_extruder = s.bottom_surface_extruder;
             o.support_extruder = s.support_extruder;
             o.support_interface_extruder = s.support_interface_extruder;
             o.flow = s.flow;
@@ -396,6 +402,8 @@ mod tests {
         o.extruder = 1;
         o.inner_wall_extruder = Some(2);
         o.solid_infill_extruder = Some(3);
+        o.top_surface_extruder = Some(1);
+        o.bottom_surface_extruder = Some(2);
         o.support_extruder = Some(0);
         o.support_interface_extruder = Some(1);
         o.infill = Some(33.0);
@@ -423,6 +431,7 @@ mod tests {
             (back.inner_wall_extruder, back.solid_infill_extruder, back.support_extruder, back.support_interface_extruder),
             (Some(2), Some(3), Some(0), Some(1))
         );
+        assert_eq!((back.top_surface_extruder, back.bottom_surface_extruder), (Some(1), Some(2)));
         assert_eq!(back.infill, Some(33.0));
         assert_eq!(back.holes.len(), 1);
         assert_eq!(back.mesh.t.len(), tris_before);

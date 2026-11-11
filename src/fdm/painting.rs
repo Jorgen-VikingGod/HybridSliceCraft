@@ -47,6 +47,8 @@ pub fn split_painted(job: &FdmJob) -> FdmJob {
                 infill_extruder: if *v == 0 { o.infill_extruder } else { None },
                 inner_wall_extruder: if *v == 0 { o.inner_wall_extruder } else { None },
                 solid_infill_extruder: if *v == 0 { o.solid_infill_extruder } else { None },
+                top_surface_extruder: if *v == 0 { o.top_surface_extruder } else { None },
+                bottom_surface_extruder: if *v == 0 { o.bottom_surface_extruder } else { None },
                 support_extruder: if *v == 0 { o.support_extruder } else { None },
                 support_interface_extruder: if *v == 0 { o.support_interface_extruder } else { None },
                 paint: None,
