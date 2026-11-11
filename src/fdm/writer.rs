@@ -456,10 +456,13 @@ impl<'a> Writer<'a> {
     pub fn finish_layer(&mut self, layer_i: u32, height: f64) {
         let fil = self.filament().clone();
         let job = self.job;
-        let first_estimate = estimate(&self.moves, self, None);
+        // One pass gives the time and its split; it is only repeated when the
+        // layer has to be slowed down.
+        let mut by_feature = [0f32; Feature::COUNT];
+        let mut layer_time = estimate(&self.moves, self, Some(&mut by_feature));
         let min_time = fil.min_layer_time as f64;
-        if first_estimate > 0.0 && first_estimate < min_time {
-            let scale = (first_estimate / min_time).max(0.05);
+        if layer_time > 0.0 && layer_time < min_time {
+            let scale = (layer_time / min_time).max(0.05);
             let min_speed = fil.min_speed as f64;
             for m in self.moves.iter_mut() {
                 if let Mv::Ext { speed, feature, .. } = m {
@@ -468,9 +471,9 @@ impl<'a> Writer<'a> {
                     }
                 }
             }
+            by_feature = [0f32; Feature::COUNT];
+            layer_time = estimate(&self.moves, self, Some(&mut by_feature));
         }
-        let mut by_feature = [0f32; Feature::COUNT];
-        let layer_time = estimate(&self.moves, self, Some(&mut by_feature));
         for (a, b) in self.result.time_by_feature.iter_mut().zip(by_feature) {
             *a += b;
         }
