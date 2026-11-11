@@ -736,3 +736,42 @@ fn unset_features_print_exactly_as_before() {
     assert!(r.segs.iter().filter(|s| s.feature != Feature::Travel as u32).all(|s| s.tool == 1));
     assert!(!r.gcode.contains("\nT0\n"));
 }
+
+/// Widths of one kind of extrusion in a sliced job.
+fn widths_of(r: &FdmResult, f: Feature) -> Vec<f32> {
+    r.segs.iter().filter(|s| s.feature == f as u32).map(|s| s.width).collect()
+}
+
+#[test]
+fn every_kind_of_line_follows_the_nozzle_that_prints_it() {
+    // Tool 1's nozzle is twice as wide as tool 0's.
+    let mut j = two_nozzle_job();
+    j.process.infill_density = 20.0;
+    j.process.walls = 3;
+    j.process.support = SupportKind::Normal;
+    j.process.support_interface_layers = 2;
+    j.objects.push(JobObject {
+        name: "table".into(),
+        mesh: centered(table()),
+        extruder: 0,
+        inner_wall_extruder: Some(1),
+        solid_infill_extruder: Some(1),
+        support_extruder: Some(1),
+        support_interface_extruder: Some(0),
+        flow: 1.0,
+        ..Default::default()
+    });
+    let r = slice(&j, &Progress::default()).unwrap();
+    let mean = |v: Vec<f32>| v.iter().sum::<f32>() / v.len().max(1) as f32;
+    let outer = mean(widths_of(&r, Feature::OuterWall));
+    let inner = mean(widths_of(&r, Feature::InnerWall));
+    let top = mean(widths_of(&r, Feature::TopSurface));
+    let sparse = mean(widths_of(&r, Feature::SparseInfill));
+    let support = mean(widths_of(&r, Feature::Support));
+    let iface = mean(widths_of(&r, Feature::SupportInterface));
+    // Fine nozzle: outer wall, sparse infill and interface; big nozzle: the rest.
+    assert!((inner / outer - 2.0).abs() < 0.2, "outer {outer}, inner {inner}");
+    assert!((top / sparse - 2.0).abs() < 0.2, "sparse {sparse}, top {top}");
+    assert!((support / iface - 2.0).abs() < 0.2, "interface {iface}, support {support}");
+    assert!(outer < 0.6 && sparse < 0.6 && iface < 0.6);
+}
