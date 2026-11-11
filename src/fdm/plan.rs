@@ -731,6 +731,15 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                     if !inner.is_empty() && !spiral(i) {
                         let _t = super::span("stage2 skin region maths");
                         let grow = s * 0.25;
+                        // Only the part of the layer next to this island matters here.
+                        let (lo, hi) = geom::bbox(&inner).unwrap_or((DVec2::ZERO, DVec2::ZERO));
+                        let pad = DVec2::splat(s + w + 0.5);
+                        let (topmost, bare_below, covered_up, covered_down) = (
+                            geom::crop(&topmost, lo - pad, hi + pad),
+                            geom::crop(&bare_below, lo - pad, hi + pad),
+                            geom::crop(&covered_up, lo - pad, hi + pad),
+                            geom::crop(&covered_down, lo - pad, hi + pad),
+                        );
                         let tidy = |r: Region| geom::remove_small(&geom::opening(&r, s * 0.2), 0.02);
                         let top_skin = tidy(geom::inter(&inner, &geom::offset(&topmost, grow)));
                         let bridge_area = if bottom_n > 0 {

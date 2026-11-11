@@ -217,6 +217,26 @@ pub fn bbox(r: &Region) -> Option<(DVec2, DVec2)> {
     any.then_some((mn, mx))
 }
 
+/// The paths of `r` whose bounding box touches the box `mn`..`mx`. Whatever is
+/// left out lies wholly outside the box, so anything computed inside the box
+/// from the result is the same as from `r`. No polygon clipping is done.
+pub fn crop(r: &Region, mn: DVec2, mx: DVec2) -> Region {
+    let (lo, hi) = (pt(mn), pt(mx));
+    r.iter()
+        .filter(|p| {
+            let (mut x0, mut y0, mut x1, mut y1) = (i64::MAX, i64::MAX, i64::MIN, i64::MIN);
+            for q in p.iter() {
+                x0 = x0.min(q.x);
+                y0 = y0.min(q.y);
+                x1 = x1.max(q.x);
+                y1 = y1.max(q.y);
+            }
+            x1 >= lo.x && x0 <= hi.x && y1 >= lo.y && y0 <= hi.y
+        })
+        .cloned()
+        .collect()
+}
+
 pub fn rect(mn: DVec2, mx: DVec2) -> Path64 {
     path_from(&[
         mn,
