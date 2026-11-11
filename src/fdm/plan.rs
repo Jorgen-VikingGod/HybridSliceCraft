@@ -288,10 +288,17 @@ struct LayerGeom {
     z: f64,
     h: f64,
     index: usize,
+    /// Inner walls (and gap fill).
     w: f64,
     w_out: f64,
-    /// Nozzle of the tool printing the walls.
+    /// Top, bottom, bridge and internal solid lines, and ironing.
+    w_solid: f64,
+    w_sparse: f64,
+    w_support: f64,
+    w_iface: f64,
+    /// Nozzle of the tool printing the outer wall, and the inner walls.
     nozzle: f64,
+    nozzle_in: f64,
 }
 
 struct WallResult {
@@ -353,7 +360,7 @@ fn build_walls(
                     &gap,
                     Feature::GapFill,
                     w,
-                    g.nozzle * 0.3,
+                    g.nozzle_in * 0.3,
                     w * 1.5,
                 ));
             }
@@ -470,7 +477,7 @@ fn best_bridge_angle(region: &Region) -> f64 {
 fn support_paths(sup: &SupportLayer, job: &FdmJob, g: LayerGeom) -> Vec<ExPath> {
     let p = &job.process;
     let mut out = Vec::new();
-    let w = g.w;
+    let w = g.w_support;
     let body = geom::offset(&sup.body, -w * 0.5);
     let bound = EdgeIndex::new(&body);
     if !body.is_empty() {
@@ -486,14 +493,15 @@ fn support_paths(sup: &SupportLayer, job: &FdmJob, g: LayerGeom) -> Vec<ExPath> 
             out.push(ExPath::open(l, w, Feature::Support));
         }
     }
-    let iface = geom::offset(&sup.interface, -w * 0.5);
+    let iface = geom::offset(&sup.interface, -g.w_iface * 0.5);
     if !iface.is_empty() {
         let bound = EdgeIndex::new(&iface);
         let angle = if g.index % 2 == 0 { PI / 4.0 } else { -PI / 4.0 };
-        let spacing = (p.support_interface_spacing as f64).max(w);
+        let wi = g.w_iface;
+        let spacing = (p.support_interface_spacing as f64).max(wi);
         let rows = infill::lines(&iface, angle, spacing, 0.0);
         for l in infill::zigzag(rows, &bound, spacing * 2.5, DVec2::ZERO) {
-            out.push(ExPath::open(l, w, Feature::SupportInterface));
+            out.push(ExPath::open(l, wi, Feature::SupportInterface));
         }
     }
     out
@@ -584,19 +592,36 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
 
         progress.set(frac(0.2), &format!("Building walls for {}", obj.name));
         let wall_count = obj.walls.map(|w| w as usize).unwrap_or(walls_default);
-        // Line widths in the settings are for the main nozzle; other nozzles
-        // get lines in proportion to their size.
-        let tool = obj.extruder.min(job.filaments.len().saturating_sub(1));
-        let scale = job.printer.width_scale(tool);
-        let infill_tool = obj.infill_extruder.unwrap_or(tool).min(job.filaments.len().saturating_sub(1));
-        let infill_scale = job.printer.width_scale(infill_tool);
-        let geom_of = |i: usize| LayerGeom {
-            z: layers[i].z,
-            h: layers[i].height,
-            index: i,
-            w: scale * if i == 0 { p.first_layer_line_width as f64 } else { p.line_width as f64 },
-            w_out: scale * if i == 0 { p.first_layer_line_width as f64 } else { p.outer_line_width as f64 },
-            nozzle: job.printer.nozzle_for(tool) as f64,
+        // Line widths in the settings are for the main nozzle; every kind of line
+        // gets a width in proportion to the nozzle of the tool that prints it,
+        // so a fine nozzle can do the outer wall and a big one the rest.
+        let last_tool = job.filaments.len().saturating_sub(1);
+        let scale_of = |f: Feature| job.printer.width_scale(obj.tool_for(f, last_tool));
+        let nozzle_of = |f: Feature| job.printer.nozzle_for(obj.tool_for(f, last_tool)) as f64;
+        let (k_out, k_in, k_solid, k_sparse, k_support, k_iface) = (
+            scale_of(Feature::OuterWall),
+            scale_of(Feature::InnerWall),
+            scale_of(Feature::SolidInfill),
+            scale_of(Feature::SparseInfill),
+            scale_of(Feature::Support),
+            scale_of(Feature::SupportInterface),
+        );
+        let (nozzle_out, nozzle_in) = (nozzle_of(Feature::OuterWall), nozzle_of(Feature::InnerWall));
+        let geom_of = |i: usize| {
+            let base = if i == 0 { p.first_layer_line_width as f64 } else { p.line_width as f64 };
+            LayerGeom {
+                z: layers[i].z,
+                h: layers[i].height,
+                index: i,
+                w: k_in * base,
+                w_out: k_out * if i == 0 { p.first_layer_line_width as f64 } else { p.outer_line_width as f64 },
+                w_solid: k_solid * base,
+                w_sparse: k_sparse * base,
+                w_support: k_support * base,
+                w_iface: k_iface * base,
+                nozzle: nozzle_out,
+                nozzle_in,
+            }
         };
         struct Stage1 {
             islands: Vec<(Region, WallResult)>,
@@ -674,7 +699,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
             .map(|(i, st)| {
                 let g = geom_of(i);
                 let _t_all = super::span("stage2 total (skins, infill)");
-                let (w, h, z) = (g.w, g.h, g.z);
+                let (w, h, z) = (g.w_solid, g.h, g.z);
                 let s = bead_spacing(w, h);
                 let slice_at = |k: isize| -> &Region {
                     if k < 0 || k as usize >= n {
@@ -797,14 +822,14 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                         let sparse_area = geom::diff(&inner, &solid_all);
                         let sparse_area = geom::remove_small(&sparse_area, 0.2);
                         if !sparse_area.is_empty() && density > 0.0 {
-                            let sparse_clip = geom::offset(&sparse_area, w * overlap);
+                            let sparse_clip = geom::offset(&sparse_area, g.w_sparse * overlap);
                             let target = if lightning {
                                 geom::inter(&sparse_clip, &geom::offset(&lightning_need[i], 1.0))
                             } else {
                                 sparse_clip
                             };
                             // The first layer is solid, so a second tool only ever fills above it.
-                            let wi = if i > 0 { p.line_width as f64 * infill_scale } else { w };
+                            let wi = g.w_sparse;
                             let lines = infill::sparse(p.infill_pattern, &target, density, wi, z, i, base_angle, p.infill_anchor as f64);
                             for l in lines {
                                 fill.push(ExPath::open(l, wi, Feature::SparseInfill));
