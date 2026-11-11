@@ -409,3 +409,27 @@ Top acceleration, Z	Höchstbeschleunigung, Z	Accélération maximale, Z	Acelerac
 Top speed, extruder	Höchstgeschwindigkeit, Extruder	Vitesse maximale, extrudeur	Velocidad máxima, extrusor
 Top acceleration, extruder	Höchstbeschleunigung, Extruder	Accélération maximale, extrudeur	Aceleración máxima, extrusor
 Sends the top speed, top acceleration and cornering speed (and the Z and extruder limits below, when set) at the start of the print. Klipper only takes the first three.	Sendet Höchstgeschwindigkeit, Höchstbeschleunigung und Kurvengeschwindigkeit (und die Z- und Extruder-Grenzen unten, wenn gesetzt) zu Druckbeginn. Klipper übernimmt nur die ersten drei.	Envoie la vitesse maximale, l'accélération maximale et la vitesse en virage (et les limites Z et extrudeur ci-dessous, si définies) au début de l'impression. Klipper ne prend que les trois premières.	Envía la velocidad máxima, la aceleración máxima y la velocidad en curvas (y los límites de Z y del extrusor de abajo, si se definen) al empezar la impresión. Klipper solo toma las tres primeras.
+Inner wall acceleration	Beschleunigung der Innenwand	Accélération de la paroi intérieure	Aceleración de la pared interior
+Sparse infill acceleration	Beschleunigung der lockeren Füllung	Accélération du remplissage clairsemé	Aceleración del relleno disperso
+Solid infill acceleration	Beschleunigung der massiven Füllung	Accélération du remplissage plein	Aceleración del relleno sólido
+Top surface acceleration	Beschleunigung der Oberseite	Accélération de la surface supérieure	Aceleración de la superficie superior
+Bridge acceleration	Beschleunigung der Brücken	Accélération des ponts	Aceleración de los puentes
+First layer acceleration	Beschleunigung der ersten Schicht	Accélération de la première couche	Aceleración de la primera capa
+Zero uses the default acceleration.	Null nutzt die Standardbeschleunigung.	Zéro utilise l'accélération par défaut.	Cero usa la aceleración predeterminada.
+FLOW RATIOS	FLUSSVERHÄLTNISSE	RAPPORTS DE DÉBIT	PROPORCIONES DE FLUJO
+Outer wall flow	Fluss der Außenwand	Débit de la paroi extérieure	Flujo de la pared exterior
+Inner wall flow	Fluss der Innenwand	Débit de la paroi intérieure	Flujo de la pared interior
+Overhang flow	Fluss der Überhänge	Débit des surplombs	Flujo de los voladizos
+Gap fill flow	Fluss der Lückenfüllung	Débit du remplissage des vides	Flujo del relleno de huecos
+Sparse infill flow	Fluss der lockeren Füllung	Débit du remplissage clairsemé	Flujo del relleno disperso
+Solid infill flow	Fluss der massiven Füllung	Débit du remplissage plein	Flujo del relleno sólido
+Top surface flow	Fluss der Oberseite	Débit de la surface supérieure	Flujo de la superficie superior
+Bottom surface flow	Fluss der Unterseite	Débit de la surface inférieure	Flujo de la superficie inferior
+Support flow	Fluss der Stützen	Débit du support	Flujo del soporte
+Support interface flow	Fluss der Stützen-Kontaktschicht	Débit de l'interface du support	Flujo de la interfaz del soporte
+First layer flow	Fluss der ersten Schicht	Débit de la première couche	Flujo de la primera capa
+Multiplies the extrusion of this kind of line, on top of the filament's flow. Use it to tune one kind of line without touching the others.	Vervielfacht die Extrusion dieser Linienart zusätzlich zum Fluss des Filaments. So lässt sich eine Linienart abstimmen, ohne die anderen zu ändern.	Multiplie l'extrusion de ce type de ligne, en plus du débit du filament. Permet de régler un type de ligne sans toucher aux autres.	Multiplica la extrusión de este tipo de línea, además del flujo del filamento. Sirve para ajustar un tipo de línea sin tocar las demás.
+Fan, bridges and overhangs	Lüfter, Brücken und Überhänge	Ventilateur, ponts et surplombs	Ventilador, puentes y voladizos
+Fan, support interface	Lüfter, Stützen-Kontaktschicht	Ventilateur, interface du support	Ventilador, interfaz del soporte
+Fan, ironing	Lüfter, Glätten	Ventilateur, lissage	Ventilador, planchado
+Below zero keeps the layer's fan speed.	Unter null bleibt die Lüfterstufe der Schicht.	En dessous de zéro, la vitesse du ventilateur de la couche est conservée.	Por debajo de cero se mantiene la velocidad del ventilador de la capa.

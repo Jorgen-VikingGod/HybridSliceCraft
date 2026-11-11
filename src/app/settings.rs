@@ -561,6 +561,13 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.num(ui, "Outer wall acceleration", "", &mut p.accel_outer, b.accel_outer, 100.0..=30000.0, "mm/s²", 0, true);
             r.num(ui, "Default acceleration", "", &mut p.accel_default, b.accel_default, 100.0..=30000.0, "mm/s²", 0, true);
             r.num(ui, "Travel acceleration", "", &mut p.accel_travel, b.accel_travel, 100.0..=30000.0, "mm/s²", 0, true);
+            let same = "Zero uses the default acceleration.";
+            r.num(ui, "Inner wall acceleration", same, &mut p.accel_inner, b.accel_inner, 0.0..=30000.0, "mm/s²", 0, true);
+            r.num(ui, "Sparse infill acceleration", same, &mut p.accel_infill, b.accel_infill, 0.0..=30000.0, "mm/s²", 0, true);
+            r.num(ui, "Solid infill acceleration", same, &mut p.accel_solid, b.accel_solid, 0.0..=30000.0, "mm/s²", 0, true);
+            r.num(ui, "Top surface acceleration", same, &mut p.accel_top, b.accel_top, 0.0..=30000.0, "mm/s²", 0, true);
+            r.num(ui, "Bridge acceleration", same, &mut p.accel_bridge, b.accel_bridge, 0.0..=30000.0, "mm/s²", 0, true);
+            r.num(ui, "First layer acceleration", same, &mut p.accel_first_layer, b.accel_first_layer, 0.0..=30000.0, "mm/s²", 0, true);
             group(ui, r, "TRAVEL");
             r.flag(ui, "Avoid crossing walls", "Skip retraction when a move stays inside the part.", &mut p.avoid_crossing_walls, b.avoid_crossing_walls, true);
             r.num(ui, "Shortest retract distance", "Moves shorter than this don't retract.", &mut p.retract_min_travel, b.retract_min_travel, 0.0..=20.0, "mm", 1, true);
@@ -594,6 +601,19 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.num(ui, "Purge per change", "", &mut p.purge_volume, b.purge_volume, 0.0..=500.0, "mm³", 0, true);
             r.num(ui, "Tower X", "", &mut p.tower_x, b.tower_x, 0.0..=1000.0, "mm", 0, true);
             r.num(ui, "Tower Y", "", &mut p.tower_y, b.tower_y, 0.0..=1000.0, "mm", 0, true);
+            group(ui, r, "FLOW RATIOS");
+            let tip = "Multiplies the extrusion of this kind of line, on top of the filament's flow. Use it to tune one kind of line without touching the others.";
+            r.num(ui, "Outer wall flow", tip, &mut p.flow_outer, b.flow_outer, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Inner wall flow", tip, &mut p.flow_inner, b.flow_inner, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Overhang flow", tip, &mut p.flow_overhang, b.flow_overhang, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Gap fill flow", tip, &mut p.flow_gap, b.flow_gap, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Sparse infill flow", tip, &mut p.flow_sparse, b.flow_sparse, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Solid infill flow", tip, &mut p.flow_solid, b.flow_solid, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Top surface flow", tip, &mut p.flow_top, b.flow_top, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Bottom surface flow", tip, &mut p.flow_bottom, b.flow_bottom, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Support flow", tip, &mut p.flow_support, b.flow_support, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Support interface flow", tip, &mut p.flow_interface, b.flow_interface, 0.5..=1.5, "", 3, true);
+            r.num(ui, "First layer flow", tip, &mut p.flow_first_layer, b.flow_first_layer, 0.5..=1.5, "", 3, true);
             group(ui, r, "PRINT ORDER");
             const ORDER: [Sequence; 2] = [Sequence::ByLayer, Sequence::ByObject];
             r.pick(ui, "Print order", "One object at a time needs room for the print head to pass.", &mut p.sequence, b.sequence, &ORDER, |s| match s {
@@ -882,6 +902,15 @@ fn filament_editor(ui: &mut egui::Ui, f: &mut Filament, slot: usize) {
         });
         line(ui, "Fan off for layers", |ui| {
             ui.add(egui::DragValue::new(&mut f.fan_off_layers).range(0..=20));
+        });
+        line(ui, "Fan, bridges and overhangs", |ui| {
+            ui.add(num(&mut f.fan_bridge, 0.0, 100.0, "%"));
+        });
+        line(ui, "Fan, support interface", |ui| {
+            ui.add(num(&mut f.fan_interface, -1.0, 100.0, "%")).on_hover_text(crate::i18n::tr("Below zero keeps the layer's fan speed."));
+        });
+        line(ui, "Fan, ironing", |ui| {
+            ui.add(num(&mut f.fan_ironing, -1.0, 100.0, "%")).on_hover_text(crate::i18n::tr("Below zero keeps the layer's fan speed."));
         });
         line(ui, "Shortest layer time", |ui| {
             ui.add(num(&mut f.min_layer_time, 0.0, 60.0, "s"));

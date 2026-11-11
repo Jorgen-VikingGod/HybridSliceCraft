@@ -210,6 +210,26 @@ impl<'a> Writer<'a> {
         self.pos = DVec3::new(p.x, p.y, z);
     }
 
+    /// The process's extrusion multiplier for this kind of line.
+    fn flow_ratio(&self, f: Feature) -> f64 {
+        let p = &self.job.process;
+        let r = match f {
+            Feature::OuterWall => p.flow_outer,
+            Feature::InnerWall => p.flow_inner,
+            Feature::OverhangWall => p.flow_overhang,
+            Feature::GapFill => p.flow_gap,
+            Feature::SparseInfill => p.flow_sparse,
+            Feature::SolidInfill => p.flow_solid,
+            Feature::TopSurface => p.flow_top,
+            Feature::BottomSurface => p.flow_bottom,
+            Feature::Support => p.flow_support,
+            Feature::SupportInterface => p.flow_interface,
+            _ => 1.0,
+        };
+        let first = if self.layer_index == 0 { p.flow_first_layer } else { 1.0 };
+        r as f64 * first as f64
+    }
+
     fn ext_seg(&mut self, to: DVec2, z: f64, width: f64, height: f64, flow: f64, feature: Feature) {
         let from = DVec2::new(self.pos.x, self.pos.y);
         let d = from.distance(to);
@@ -218,7 +238,7 @@ impl<'a> Writer<'a> {
             return;
         }
         self.unretract();
-        let area = bead_area(width, height) * flow;
+        let area = bead_area(width, height) * flow * self.flow_ratio(feature);
         let mut speed = self.feature_speed(feature);
         let cap = self.filament().max_volumetric as f64 / area.max(1e-4);
         if let (Some(v), true) = (self.volumetric_override, feature != Feature::Ironing) {
@@ -427,12 +447,21 @@ impl<'a> Writer<'a> {
 
     fn accel_for(&self, f: Feature) -> f64 {
         let p = &self.job.process;
-        let a = match f {
+        let own = |v: f32| if v > 0.0 { v } else { p.accel_default };
+        let mut a = match f {
             Feature::OuterWall | Feature::OverhangWall => p.accel_outer,
+            Feature::InnerWall | Feature::GapFill => own(p.accel_inner),
+            Feature::SparseInfill => own(p.accel_infill),
+            Feature::SolidInfill | Feature::BottomSurface => own(p.accel_solid),
+            Feature::TopSurface | Feature::Ironing => own(p.accel_top),
+            Feature::Bridge => own(p.accel_bridge),
             Feature::Travel => p.accel_travel,
             _ => p.accel_default,
-        } as f64;
-        a.min(self.job.printer.max_accel as f64).max(100.0)
+        };
+        if self.layer_index == 0 && p.accel_first_layer > 0.0 && f != Feature::Travel {
+            a = p.accel_first_layer;
+        }
+        (a as f64).min(self.job.printer.max_accel as f64).max(100.0)
     }
 
     fn write_accel(&mut self, a: f64) {
@@ -515,7 +544,7 @@ impl<'a> Writer<'a> {
                 .unwrap_or(self.pos)
         });
         let mut i = 0usize;
-        let mut boosted = false;
+        let mut boosted: Option<f64> = None;
         let mut print_tool = self.tool_before;
         while i < moves.len() {
             match &moves[i] {
@@ -615,11 +644,21 @@ impl<'a> Writer<'a> {
                     let feature = *feature;
                     if self.current_feature != Some(feature) {
                         let _ = writeln!(self.chunk, ";TYPE:{}", feature.gcode_type());
-                        // Overhangs and bridges cool hard while they print.
-                        let boost = matches!(feature, Feature::Bridge | Feature::OverhangWall) && fan > 0.0;
-                        if boost != boosted {
-                            self.chunk.push_str(&fan_cmd(if boost { 100.0 } else { fan }));
-                            boosted = boost;
+                        // Overhangs and bridges cool hard while they print; support
+                        // interface and ironing can have their own fan speed too.
+                        let want: Option<f64> = if fan > 0.0 {
+                            match feature {
+                                Feature::Bridge | Feature::OverhangWall => Some(fil.fan_bridge as f64),
+                                Feature::SupportInterface if fil.fan_interface >= 0.0 => Some(fil.fan_interface as f64),
+                                Feature::Ironing if fil.fan_ironing >= 0.0 => Some(fil.fan_ironing as f64),
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
+                        if want != boosted {
+                            self.chunk.push_str(&fan_cmd(want.unwrap_or(fan)));
+                            boosted = want;
                         }
                         self.current_feature = Some(feature);
                     }
@@ -684,7 +723,7 @@ impl<'a> Writer<'a> {
             }
             i += 1;
         }
-        if boosted {
+        if boosted.is_some() {
             self.chunk.push_str(&fan_cmd(fan));
         }
         self.last_written = Some(prev_pos);

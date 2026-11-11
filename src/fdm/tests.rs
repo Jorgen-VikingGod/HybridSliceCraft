@@ -863,3 +863,60 @@ fn machine_limits_go_into_the_start_only_when_asked_for() {
     assert!(g.contains("M203 X15000 Y15000 Z1200 ;"), "RepRapFirmware speeds are in mm/min");
     assert!(g.contains("M566 X480 Y480"));
 }
+
+#[test]
+fn accelerations_follow_the_kind_of_line_and_the_first_layer() {
+    let mut j = job(centered(make_box(Vec3::new(20.0, 20.0, 6.0))), FdmProcess::default());
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    j.printer.max_accel = 20000.0;
+    j.printer.firmware = Firmware::Marlin;
+    let plain = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(!plain.contains("M204 S1234") && !plain.contains("M204 S777"));
+    j.process.accel_inner = 1234.0;
+    j.process.accel_first_layer = 777.0;
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(g.contains("M204 S1234"), "inner walls");
+    // The first layer uses its own acceleration, and only the first.
+    let first_layer_end = g.find(";LAYER_CHANGE").and_then(|a| g[a + 1..].find(";LAYER_CHANGE").map(|b| a + 1 + b)).unwrap();
+    assert!(g[..first_layer_end].contains("M204 S777"));
+    assert!(!g[first_layer_end..].contains("M204 S777"));
+    assert!(!g[..first_layer_end].contains("M204 S1234"));
+}
+
+#[test]
+fn each_kind_of_line_has_its_own_flow_ratio() {
+    let mut j = job(centered(make_box(Vec3::new(20.0, 20.0, 6.0))), FdmProcess::default());
+    let base = slice(&j, &Progress::default()).unwrap();
+    j.process.flow_outer = 1.2;
+    j.process.flow_sparse = 0.8;
+    let r = slice(&j, &Progress::default()).unwrap();
+    let by = |res: &FdmResult, f: Feature| res.filament_by_feature[f as usize];
+    assert!((by(&r, Feature::OuterWall) / by(&base, Feature::OuterWall) - 1.2).abs() < 0.01);
+    assert!((by(&r, Feature::SparseInfill) / by(&base, Feature::SparseInfill) - 0.8).abs() < 0.01);
+    // Kinds that weren't touched print the same amount.
+    assert!((by(&r, Feature::InnerWall) / by(&base, Feature::InnerWall) - 1.0).abs() < 1e-4);
+    // The first layer has its own ratio on top.
+    j.process.flow_first_layer = 1.3;
+    let r2 = slice(&j, &Progress::default()).unwrap();
+    assert!(by(&r2, Feature::OuterWall) > by(&r, Feature::OuterWall));
+}
+
+#[test]
+fn support_interface_and_ironing_can_have_their_own_fan_speed() {
+    let mut j = job(centered(table()), FdmProcess::default());
+    j.process.support = SupportKind::Normal;
+    j.process.support_interface_layers = 2;
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    let plain = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(!plain.contains("M106 S102"));
+    j.filaments[0].fan_interface = 40.0;
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(g.contains("M106 S102"), "40% is S102");
+    // It goes back to the layer's speed when the interface is done.
+    let at = g.find(";TYPE:Support interface").unwrap();
+    let after = &g[at..];
+    let back = after.find("M106 S102").unwrap();
+    assert!(after[back..].contains("M106 S"), "fan restored");
+}
