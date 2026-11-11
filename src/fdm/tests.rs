@@ -666,3 +666,73 @@ fn auto_orient_rescues_a_bear_that_starts_upside_down_or_tilted() {
         assert!(after <= good * 1.3 + 1.0, "{name}: {start} -> {after}, upright needs {good}");
     }
 }
+
+/// Tools used by one kind of extrusion in a sliced job.
+fn tools_of(r: &FdmResult, f: Feature) -> Vec<u32> {
+    let mut t: Vec<u32> = r.segs.iter().filter(|s| s.feature == f as u32).map(|s| s.tool).collect();
+    t.sort_unstable();
+    t.dedup();
+    t
+}
+
+#[test]
+fn walls_skins_and_infill_each_take_their_own_filament() {
+    let mut j = two_nozzle_job();
+    j.process.infill_density = 20.0;
+    j.process.walls = 3;
+    j.objects.push(JobObject {
+        name: "cube".into(),
+        mesh: centered(make_box(Vec3::new(30.0, 30.0, 10.0))),
+        extruder: 0,
+        inner_wall_extruder: Some(1),
+        solid_infill_extruder: Some(1),
+        flow: 1.0,
+        ..Default::default()
+    });
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert_eq!(tools_of(&r, Feature::OuterWall), vec![0]);
+    assert_eq!(tools_of(&r, Feature::InnerWall), vec![1]);
+    assert_eq!(tools_of(&r, Feature::TopSurface), vec![1]);
+    assert_eq!(tools_of(&r, Feature::BottomSurface), vec![1]);
+    assert_eq!(tools_of(&r, Feature::SparseInfill), vec![0]);
+    assert!(r.filament_g[0] > 0.0 && r.filament_g[1] > 0.0);
+}
+
+#[test]
+fn support_and_its_interface_can_use_other_filaments() {
+    let mut j = two_nozzle_job();
+    j.process.support = SupportKind::Normal;
+    j.process.support_interface_layers = 2;
+    j.objects.push(JobObject {
+        name: "table".into(),
+        mesh: centered(table()),
+        extruder: 0,
+        support_extruder: Some(1),
+        flow: 1.0,
+        ..Default::default()
+    });
+    // The interface follows the support unless it is set on its own.
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert_eq!(tools_of(&r, Feature::Support), vec![1]);
+    assert_eq!(tools_of(&r, Feature::SupportInterface), vec![1]);
+    assert_eq!(tools_of(&r, Feature::OuterWall), vec![0]);
+    j.objects.last_mut().unwrap().support_interface_extruder = Some(0);
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert_eq!(tools_of(&r, Feature::Support), vec![1]);
+    assert_eq!(tools_of(&r, Feature::SupportInterface), vec![0]);
+}
+
+#[test]
+fn unset_features_print_exactly_as_before() {
+    let mut j = two_nozzle_job();
+    j.objects.push(JobObject {
+        name: "cube".into(),
+        mesh: centered(make_box(Vec3::splat(12.0))),
+        extruder: 1,
+        flow: 1.0,
+        ..Default::default()
+    });
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.segs.iter().filter(|s| s.feature != Feature::Travel as u32).all(|s| s.tool == 1));
+    assert!(!r.gcode.contains("\nT0\n"));
+}

@@ -24,6 +24,10 @@ struct SavedObject {
     scale: [f32; 3],
     extruder: usize,
     infill_extruder: Option<usize>,
+    inner_wall_extruder: Option<usize>,
+    solid_infill_extruder: Option<usize>,
+    support_extruder: Option<usize>,
+    support_interface_extruder: Option<usize>,
     flow: f32,
     infill: Option<f32>,
     walls: Option<u32>,
@@ -102,6 +106,10 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
                 scale: o.scale.to_array(),
                 extruder: o.extruder,
                 infill_extruder: o.infill_extruder,
+                inner_wall_extruder: o.inner_wall_extruder,
+                solid_infill_extruder: o.solid_infill_extruder,
+                support_extruder: o.support_extruder,
+                support_interface_extruder: o.support_interface_extruder,
                 flow: o.flow,
                 infill: o.infill,
                 walls: o.walls,
@@ -170,6 +178,10 @@ pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
             o.scale = Vec3::from(s.scale);
             o.extruder = s.extruder;
             o.infill_extruder = s.infill_extruder;
+            o.inner_wall_extruder = s.inner_wall_extruder;
+            o.solid_infill_extruder = s.solid_infill_extruder;
+            o.support_extruder = s.support_extruder;
+            o.support_interface_extruder = s.support_interface_extruder;
             o.flow = s.flow;
             o.infill = s.infill;
             o.walls = s.walls;
@@ -382,6 +394,10 @@ mod tests {
         o.rot = Quat::from_rotation_z(0.5);
         o.scale = Vec3::splat(2.0);
         o.extruder = 1;
+        o.inner_wall_extruder = Some(2);
+        o.solid_infill_extruder = Some(3);
+        o.support_extruder = Some(0);
+        o.support_interface_extruder = Some(1);
         o.infill = Some(33.0);
         o.holes.push(DrainHole { pos: [1.0, 2.0, 3.0], normal: [0.0, 0.0, -1.0], diameter: 3.0 });
         let mut plate = Plate::default();
@@ -403,6 +419,10 @@ mod tests {
         let back = &plates[0].objects[0];
         assert_eq!(back.name, "Thing");
         assert_eq!(back.extruder, 1);
+        assert_eq!(
+            (back.inner_wall_extruder, back.solid_infill_extruder, back.support_extruder, back.support_interface_extruder),
+            (Some(2), Some(3), Some(0), Some(1))
+        );
         assert_eq!(back.infill, Some(33.0));
         assert_eq!(back.holes.len(), 1);
         assert_eq!(back.mesh.t.len(), tris_before);

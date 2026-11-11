@@ -349,7 +349,8 @@ impl<'a> Writer<'a> {
         }
     }
 
-    pub fn emit_island(&mut self, island: &IslandPlan, z: f64, h: f64, flow: f64) {
+    /// Print the parts of an island whose feature `keep` accepts.
+    pub fn emit_island(&mut self, island: &IslandPlan, z: f64, h: f64, flow: f64, keep: &dyn Fn(Feature) -> bool) {
         let comb = Some(&island.comb);
         let outer_first = self.job.process.outer_wall_first;
         let n = island.walls.len();
@@ -363,7 +364,7 @@ impl<'a> Writer<'a> {
             (0..island.walls.len()).rev().collect()
         };
         for d in depths {
-            let mut remaining: Vec<&ExPath> = island.walls[d].iter().collect();
+            let mut remaining: Vec<&ExPath> = island.walls[d].iter().filter(|p| keep(p.feature)).collect();
             while !remaining.is_empty() {
                 let here = DVec2::new(self.pos.x, self.pos.y);
                 let mut bi = 0;
@@ -384,13 +385,13 @@ impl<'a> Writer<'a> {
                 self.emit_path(path, z, h, flow, comb);
             }
         }
-        for t in &island.thin {
+        for t in island.thin.iter().filter(|p| keep(p.feature)) {
             self.emit_path(t, z, h, flow, comb);
         }
-        for f in &island.fill {
+        for f in island.fill.iter().filter(|p| keep(p.feature)) {
             self.emit_path(f, z, h, flow, comb);
         }
-        for f in &island.ironing {
+        for f in island.ironing.iter().filter(|p| keep(p.feature)) {
             self.emit_path(f, z, 0.05f64.max(h * 0.25), 1.0, comb);
         }
     }
