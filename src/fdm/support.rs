@@ -97,28 +97,115 @@ fn block_supports(prep: Prepared, slices: &[Region], p: &FdmProcess) -> Vec<Supp
         Vec::new()
     };
     let mut body: Vec<Region> = vec![Vec::new(); n];
-    let mut acc: Region = Vec::new();
-    for i in (0..n).rev() {
-        // Overhangs at layer i + gap + 1 start support at layer i.
-        if let Some(o) = over.get(i + gap + 1) {
-            if !o.is_empty() {
-                acc = geom::union2(&acc, &geom::offset_round(o, 0.6));
+
+    // Supports from overhangs that never touch each other, on any layer, can't
+    // affect one another on the way down, so each such group is worked out on
+    // its own thread.
+    struct Seed {
+        layer: usize,
+        region: Region,
+        lo: DVec2,
+        hi: DVec2,
+    }
+    let mut seeds: Vec<Seed> = (0..n)
+        .into_par_iter()
+        .flat_map_iter(|k| {
+            // Overhangs at layer k start support at layer k - gap - 1.
+            let grown = if over[k].is_empty() || k < gap + 1 { Vec::new() } else { geom::offset_round(&over[k], 0.6) };
+            geom::islands(&grown)
+                .into_iter()
+                .filter_map(|isl| {
+                    let region = isl.region();
+                    let (lo, hi) = geom::bbox(&region)?;
+                    Some(Seed { layer: k - gap - 1, region, lo, hi })
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    // Union-find over seeds that overlap.
+    seeds.sort_by(|a, b| a.lo.x.total_cmp(&b.lo.x));
+    let mut parent: Vec<usize> = (0..seeds.len()).collect();
+    fn find(parent: &mut [usize], mut x: usize) -> usize {
+        while parent[x] != x {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        x
+    }
+    for a in 0..seeds.len() {
+        for b in a + 1..seeds.len() {
+            if seeds[b].lo.x > seeds[a].hi.x {
+                break;
+            }
+            if seeds[b].lo.y > seeds[a].hi.y || seeds[b].hi.y < seeds[a].lo.y {
+                continue;
+            }
+            let (ra, rb) = (find(&mut parent, a), find(&mut parent, b));
+            if ra != rb && !geom::inter(&seeds[a].region, &seeds[b].region).is_empty() {
+                parent[ra] = rb;
             }
         }
-        if acc.is_empty() {
-            continue;
+    }
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    let mut slot = vec![usize::MAX; seeds.len()];
+    for k in 0..seeds.len() {
+        let r = find(&mut parent, k);
+        if slot[r] == usize::MAX {
+            slot[r] = groups.len();
+            groups.push(Vec::new());
         }
-        let mut here = geom::diff(&acc, &clear[i]);
-        if p.support_plate_only {
-            here = geom::diff(&here, &below[i]);
+        groups[slot[r]].push(k);
+    }
+    let per_group: Vec<Vec<(usize, Region)>> = groups
+        .par_iter()
+        .map(|members| {
+            let top = members.iter().map(|&m| seeds[m].layer).max().unwrap_or(0);
+            let mut added: Vec<Region> = vec![Vec::new(); top + 1];
+            for &m in members {
+                let l = seeds[m].layer;
+                added[l] = geom::union2(&added[l], &seeds[m].region);
+            }
+            let mut out: Vec<(usize, Region)> = Vec::new();
+            let mut acc: Region = Vec::new();
+            for i in (0..=top).rev() {
+                if !added[i].is_empty() {
+                    acc = geom::union2(&acc, &added[i]);
+                }
+                if acc.is_empty() {
+                    continue;
+                }
+                // Separate pieces don't affect each other here, so a big group
+                // spreads them over threads, each looking only at the model and
+                // plate next to it.
+                let shape = |piece: Region| -> Region {
+                    let (lo, hi) = geom::bbox(&piece).unwrap_or((DVec2::ZERO, DVec2::ZERO));
+                    let pad = DVec2::splat(1.0);
+                    let mut here = geom::diff(&piece, &geom::crop(&clear[i], lo - pad, hi + pad));
+                    if p.support_plate_only {
+                        here = geom::diff(&here, &geom::crop(&below[i], lo - pad, hi + pad));
+                    }
+                    here = geom::simplify_region(&here, SUPPORT_TOLERANCE_MM);
+                    here = geom::remove_small(&geom::opening(&here, 0.3), 1.0);
+                    // Rounded offsets leave a lot of points; supports don't need them, and
+                    // every later layer's work grows with them.
+                    geom::simplify_region(&here, SUPPORT_TOLERANCE_MM)
+                };
+                let here: Region = if members.len() > 40 {
+                    let pieces = geom::islands(&acc);
+                    pieces.par_iter().flat_map_iter(|isl| shape(isl.region())).collect()
+                } else {
+                    shape(acc.clone())
+                };
+                acc = here.clone();
+                out.push((i, here));
+            }
+            out
+        })
+        .collect();
+    for g in per_group {
+        for (i, r) in g {
+            body[i].extend(r);
         }
-        here = geom::simplify_region(&here, SUPPORT_TOLERANCE_MM);
-        here = geom::remove_small(&geom::opening(&here, 0.3), 1.0);
-        // Rounded offsets leave a lot of points; supports don't need them, and
-        // every later layer's work grows with them.
-        here = geom::simplify_region(&here, SUPPORT_TOLERANCE_MM);
-        acc = here.clone();
-        body[i] = here;
     }
     // The last few layers under the model become a dense interface.
     let iface_count = p.support_interface_layers as usize;
