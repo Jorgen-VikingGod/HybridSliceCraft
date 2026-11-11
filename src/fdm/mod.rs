@@ -136,6 +136,10 @@ pub struct JobObject {
     /// (the interface follows the support).
     pub inner_wall_extruder: Option<usize>,
     pub solid_infill_extruder: Option<usize>,
+    /// Top and bottom skins (and ironing, bridges) can be split off from the
+    /// solid infill; `None` follows `solid_infill_extruder`.
+    pub top_surface_extruder: Option<usize>,
+    pub bottom_surface_extruder: Option<usize>,
     pub support_extruder: Option<usize>,
     pub support_interface_extruder: Option<usize>,
     pub flow: f32,
@@ -167,6 +171,22 @@ pub enum ZChange {
     Speed(f32),
 }
 
+/// Something the user asks for at a height: a pause, a filament swap or any
+/// G-code, sent just before the layer at that height is printed.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum LayerActionKind {
+    Pause,
+    FilamentChange,
+    Gcode(String),
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LayerAction {
+    /// Top of the layer the action goes in front of, in mm.
+    pub z: f32,
+    pub kind: LayerActionKind,
+}
+
 #[derive(Clone)]
 pub struct FdmJob {
     pub objects: Vec<JobObject>,
@@ -174,6 +194,7 @@ pub struct FdmJob {
     pub filaments: Vec<Filament>,
     pub process: FdmProcess,
     pub z_changes: Vec<(f32, ZChange)>,
+    pub layer_actions: Vec<LayerAction>,
     pub thumbnail: Option<(u32, u32, Vec<u8>)>,
 }
 
@@ -239,9 +260,15 @@ impl JobObject {
         let t = match feature {
             Feature::InnerWall | Feature::GapFill => self.inner_wall_extruder.unwrap_or(self.extruder),
             Feature::SparseInfill => self.infill_extruder.unwrap_or(self.extruder),
-            Feature::SolidInfill | Feature::TopSurface | Feature::BottomSurface | Feature::Bridge | Feature::Ironing => {
-                self.solid_infill_extruder.unwrap_or(self.extruder)
-            }
+            Feature::SolidInfill => self.solid_infill_extruder.unwrap_or(self.extruder),
+            Feature::TopSurface | Feature::Ironing => self
+                .top_surface_extruder
+                .or(self.solid_infill_extruder)
+                .unwrap_or(self.extruder),
+            Feature::BottomSurface | Feature::Bridge => self
+                .bottom_surface_extruder
+                .or(self.solid_infill_extruder)
+                .unwrap_or(self.extruder),
             Feature::Support => self.support_extruder.unwrap_or(self.extruder),
             Feature::SupportInterface => self
                 .support_interface_extruder
@@ -260,6 +287,8 @@ impl JobObject {
                 self.inner_wall_extruder,
                 self.infill_extruder,
                 self.solid_infill_extruder,
+                self.top_surface_extruder,
+                self.bottom_surface_extruder,
                 self.support_extruder,
                 self.support_interface_extruder,
             ]
@@ -282,6 +311,10 @@ pub struct ExPath {
     pub flow_mult: f64,
     /// Per segment: true where the wall hangs over air.
     pub overhang: Vec<bool>,
+    /// Per segment, when speeds follow the overhang: 0 for fully supported,
+    /// then 1 to 4 for up to a quarter, half, three quarters and all of the line
+    /// hanging in the air. Empty when that is off.
+    pub tier: Vec<u8>,
 }
 
 impl ExPath {
@@ -293,6 +326,7 @@ impl ExPath {
             feature,
             flow_mult: 1.0,
             overhang: Vec::new(),
+            tier: Vec::new(),
         }
     }
     pub fn closed(pts: Vec<DVec2>, width: f64, feature: Feature) -> Self {
@@ -303,6 +337,7 @@ impl ExPath {
             feature,
             flow_mult: 1.0,
             overhang: Vec::new(),
+            tier: Vec::new(),
         }
     }
     pub fn length(&self) -> f64 {

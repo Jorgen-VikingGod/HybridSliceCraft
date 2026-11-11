@@ -53,6 +53,8 @@ pub struct PlateObject {
     pub infill_extruder: Option<usize>,
     pub inner_wall_extruder: Option<usize>,
     pub solid_infill_extruder: Option<usize>,
+    pub top_surface_extruder: Option<usize>,
+    pub bottom_surface_extruder: Option<usize>,
     pub support_extruder: Option<usize>,
     pub support_interface_extruder: Option<usize>,
     pub flow: f32,
@@ -95,6 +97,8 @@ impl PlateObject {
             infill_extruder: None,
             inner_wall_extruder: None,
             solid_infill_extruder: None,
+            top_surface_extruder: None,
+            bottom_surface_extruder: None,
             support_extruder: None,
             support_interface_extruder: None,
             flow: 1.0,
@@ -287,6 +291,8 @@ pub struct Plate {
     pub objects: Vec<PlateObject>,
     /// Calibration changes partway up, e.g. a temperature tower.
     pub z_changes: Vec<(f32, ZChange)>,
+    /// Pauses, filament changes and G-code the user added at layers.
+    pub layer_actions: Vec<crate::fdm::LayerAction>,
     pub note: String,
 }
 

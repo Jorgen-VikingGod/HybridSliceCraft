@@ -2,7 +2,7 @@
 
 use super::plan::Plan;
 use super::writer::{Mv, Writer};
-use super::{bead_area, bead_spacing, ExPath, Feature, FdmJob, FdmResult, ZChange};
+use super::{bead_area, bead_spacing, ExPath, Feature, FdmJob, FdmResult, LayerAction, LayerActionKind, ZChange};
 use crate::geom;
 use crate::profiles::{Firmware, Sequence};
 use crate::slicing::Progress;
@@ -217,6 +217,24 @@ fn file_header(job: &FdmJob, plan: &Plan) -> String {
     header
 }
 
+fn apply_layer_action(w: &mut Writer, action: &LayerAction, printer: &crate::profiles::FdmPrinter, layer: u32) {
+    let (what, text) = match &action.kind {
+        LayerActionKind::Pause => {
+            let own = printer.pause_gcode.trim();
+            ("pause", if own.is_empty() { printer.firmware.pause_command() } else { own })
+        }
+        LayerActionKind::FilamentChange => {
+            let own = printer.filament_change_gcode.trim();
+            ("filament change", if own.is_empty() { printer.firmware.filament_change_command() } else { own })
+        }
+        LayerActionKind::Gcode(s) => ("custom G-code", s.trim()),
+    };
+    let _ = writeln!(w.chunk, "; {what} before layer {layer} ({:.2} mm)", action.z);
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let _ = writeln!(w.chunk, "{line}");
+    }
+}
+
 fn apply_z_change(w: &mut Writer, change: ZChange, firmware: Firmware) {
     match change {
         ZChange::Temperature(t) => {
@@ -278,6 +296,7 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
         seam_anchor: None,
         seam_loop_counter: 88172645463393265,
         last_written: None,
+        tier_speed: None,
     };
 
     let tools_used: Vec<usize> = {
@@ -308,6 +327,9 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
     start.push_str("G92 E0\n");
     if w.tool != 0 {
         let _ = writeln!(start, "T{}", w.tool);
+    }
+    if printer.emit_limits {
+        limit_lines(&mut start, printer);
     }
     shaper_lines(&mut start, printer.firmware, printer.shaper_freq_x, printer.shaper_freq_y);
     if printer.label_objects && printer.firmware == Firmware::Klipper {
@@ -341,6 +363,9 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
     let mut pending_z: Vec<(f32, ZChange)> = job.z_changes.clone();
     pending_z.sort_by(|a, b| a.0.total_cmp(&b.0));
     let mut next_z = 0usize;
+    let mut pending_actions: Vec<LayerAction> = job.layer_actions.clone();
+    pending_actions.sort_by(|a, b| a.z.total_cmp(&b.z));
+    let mut next_action = 0usize;
 
     let order: Vec<Vec<usize>> = if p.sequence == Sequence::ByObject && job.objects.len() > 1 {
         (0..job.objects.len()).map(|oi| vec![oi]).collect()
@@ -414,6 +439,11 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
             while next_z < pending_z.len() && pending_z[next_z].0 as f64 <= layer.z + 1e-3 {
                 apply_z_change(&mut w, pending_z[next_z].1, printer.firmware);
                 next_z += 1;
+            }
+            // Pauses, filament changes and G-code the user put in front of this layer.
+            while next_action < pending_actions.len() && pending_actions[next_action].z as f64 <= layer.z + 1e-3 {
+                apply_layer_action(&mut w, &pending_actions[next_action], printer, display_layer + 1);
+                next_action += 1;
             }
 
             // Skirt and brim only on the very first layer.
@@ -663,6 +693,38 @@ fn object_marker(out: &mut String, fw: Firmware, index: usize, name: &str, start
 }
 
 /// Input shaper frequencies, when the printer has them set.
+/// The printer's speed, acceleration and corner limits as commands.
+fn limit_lines(out: &mut String, p: &crate::profiles::FdmPrinter) {
+    let (speed, accel, corner) = (p.max_speed as f64, p.max_accel as f64, p.corner_speed as f64);
+    let extra = |z: f32, e: f32, scale: f64| {
+        let mut s = String::new();
+        if z > 0.0 {
+            let _ = write!(s, " Z{:.0}", z as f64 * scale);
+        }
+        if e > 0.0 {
+            let _ = write!(s, " E{:.0}", e as f64 * scale);
+        }
+        s
+    };
+    match p.firmware {
+        Firmware::Marlin => {
+            let _ = writeln!(out, "M203 X{speed:.0} Y{speed:.0}{} ; speed limits", extra(p.max_speed_z, p.max_speed_e, 1.0));
+            let _ = writeln!(out, "M201 X{accel:.0} Y{accel:.0}{} ; acceleration limits", extra(p.max_accel_z, p.max_accel_e, 1.0));
+            let _ = writeln!(out, "M204 P{accel:.0} T{accel:.0} ; print and travel acceleration");
+            let _ = writeln!(out, "M205 X{corner:.1} Y{corner:.1} ; jerk");
+        }
+        Firmware::Klipper => {
+            let _ = writeln!(out, "SET_VELOCITY_LIMIT VELOCITY={speed:.0} ACCEL={accel:.0} SQUARE_CORNER_VELOCITY={corner:.1}");
+        }
+        Firmware::RepRap => {
+            let _ = writeln!(out, "M203 X{:.0} Y{:.0}{} ; speed limits, mm/min", speed * 60.0, speed * 60.0, extra(p.max_speed_z, p.max_speed_e, 60.0));
+            let _ = writeln!(out, "M201 X{accel:.0} Y{accel:.0}{} ; acceleration limits", extra(p.max_accel_z, p.max_accel_e, 1.0));
+            let _ = writeln!(out, "M204 P{accel:.0} T{accel:.0} ; print and travel acceleration");
+            let _ = writeln!(out, "M566 X{:.0} Y{:.0} ; jerk, mm/min", corner * 60.0, corner * 60.0);
+        }
+    }
+}
+
 fn shaper_lines(out: &mut String, fw: Firmware, fx: f32, fy: f32) {
     if fx <= 0.0 && fy <= 0.0 {
         return;

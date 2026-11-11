@@ -578,6 +578,8 @@ impl App {
                         o.infill_extruder,
                         o.inner_wall_extruder,
                         o.solid_infill_extruder,
+                        o.top_surface_extruder,
+                        o.bottom_surface_extruder,
                         o.support_extruder,
                         o.support_interface_extruder,
                     ),
@@ -591,6 +593,7 @@ impl App {
                 h,
             );
         }
+        h = hash_text(&format!("{:?}", self.plate().layer_actions), h);
         if self.resin() {
             if let Ok(t) = serde_json::to_string(&(&self.resin_printer, &self.resin_process, &self.resin_mat)) {
                 h = hash_text(&t, h);
@@ -634,6 +637,7 @@ impl App {
             filaments: self.filaments.clone(),
             process: self.fdm_process.clone(),
             z_changes: self.plate().z_changes.clone(),
+            layer_actions: self.plate().layer_actions.clone(),
             thumbnail: None,
         };
         let fingerprint = self.current_fingerprint();
@@ -649,6 +653,8 @@ impl App {
                     infill_extruder: o.infill_extruder,
                     inner_wall_extruder: o.inner_wall_extruder,
                     solid_infill_extruder: o.solid_infill_extruder,
+                    top_surface_extruder: o.top_surface_extruder,
+                    bottom_surface_extruder: o.bottom_surface_extruder,
                     support_extruder: o.support_extruder,
                     support_interface_extruder: o.support_interface_extruder,
                     flow: o.flow,

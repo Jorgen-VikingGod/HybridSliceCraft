@@ -23,6 +23,7 @@ fn job(mesh: Mesh, process: FdmProcess) -> FdmJob {
         filaments: vec![cat.filaments[0].clone()],
         process,
         z_changes: Vec::new(),
+        layer_actions: Vec::new(),
         thumbnail: None,
     }
 }
@@ -774,4 +775,242 @@ fn every_kind_of_line_follows_the_nozzle_that_prints_it() {
     assert!((top / sparse - 2.0).abs() < 0.2, "sparse {sparse}, top {top}");
     assert!((support / iface - 2.0).abs() < 0.2, "interface {iface}, support {support}");
     assert!(outer < 0.6 && sparse < 0.6 && iface < 0.6);
+}
+
+#[test]
+fn top_and_bottom_skins_can_split_off_from_the_solid_infill() {
+    let mut j = two_nozzle_job();
+    j.process.infill_density = 20.0;
+    j.objects.push(JobObject {
+        name: "cube".into(),
+        mesh: centered(make_box(Vec3::new(30.0, 30.0, 10.0))),
+        extruder: 0,
+        solid_infill_extruder: Some(1),
+        top_surface_extruder: Some(0),
+        flow: 1.0,
+        ..Default::default()
+    });
+    let r = slice(&j, &Progress::default()).unwrap();
+    // The top follows its own choice, the bottom the solid infill's.
+    assert_eq!(tools_of(&r, Feature::TopSurface), vec![0]);
+    assert_eq!(tools_of(&r, Feature::BottomSurface), vec![1]);
+    assert_eq!(tools_of(&r, Feature::SolidInfill), vec![1]);
+}
+
+#[test]
+fn pauses_filament_changes_and_gcode_go_in_front_of_their_layer() {
+    use crate::fdm::{LayerAction, LayerActionKind};
+    let mut j = job(centered(make_box(Vec3::new(20.0, 20.0, 10.0))), FdmProcess::default());
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    j.layer_actions = vec![
+        LayerAction { z: 5.0, kind: LayerActionKind::Pause },
+        LayerAction { z: 7.0, kind: LayerActionKind::FilamentChange },
+        LayerAction { z: 3.0, kind: LayerActionKind::Gcode("M117 hello\nM300 S440 P200".into()) },
+    ];
+    let r = slice(&j, &Progress::default()).unwrap();
+    let lines: Vec<&str> = r.gcode.lines().collect();
+    let at = |needle: &str| {
+        let hits: Vec<usize> = lines.iter().enumerate().filter(|(_, l)| l.starts_with(needle)).map(|(i, _)| i).collect();
+        assert_eq!(hits.len(), 1, "{needle}: {hits:?}");
+        hits[0]
+    };
+    let (custom, pause, change) = (at("M117 hello"), at("M601"), at("M600"));
+    assert!(custom < pause && pause < change, "{custom} {pause} {change}");
+    assert_eq!(lines[custom + 1], "M300 S440 P200");
+    // Each sits right after its own comment, in front of that layer's printing.
+    assert!(lines[pause - 1].starts_with("; pause before layer"), "{}", lines[pause - 1]);
+    assert!(lines[change - 1].starts_with("; filament change before layer"));
+    // The printer can supply its own commands instead.
+    j.printer.pause_gcode = "M0 Change nozzle".into();
+    j.printer.firmware = Firmware::Klipper;
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.gcode.contains("\nM0 Change nozzle\n"));
+    j.printer.pause_gcode = String::new();
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.gcode.contains("\nPAUSE\n"));
+}
+
+#[test]
+fn machine_limits_go_into_the_start_only_when_asked_for() {
+    let mut j = job(centered(make_box(Vec3::splat(10.0))), FdmProcess::default());
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    j.printer.max_speed = 250.0;
+    j.printer.max_accel = 5000.0;
+    j.printer.corner_speed = 8.0;
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(!r.gcode.contains("M203") && !r.gcode.contains("M201") && !r.gcode.contains("SET_VELOCITY_LIMIT"));
+
+    j.printer.emit_limits = true;
+    j.printer.max_speed_z = 20.0;
+    j.printer.max_accel_e = 6000.0;
+    j.printer.firmware = Firmware::Marlin;
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(g.contains("M203 X250 Y250 Z20 ;"), "{}", &g[..400]);
+    assert!(g.contains("M201 X5000 Y5000 E6000 ;"));
+    assert!(g.contains("M204 P5000 T5000") && g.contains("M205 X8.0 Y8.0"));
+    // The limits come after the printer's own start script.
+    assert!(g.find("G28").unwrap() < g.find("M203").unwrap());
+
+    j.printer.firmware = Firmware::Klipper;
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(g.contains("SET_VELOCITY_LIMIT VELOCITY=250 ACCEL=5000 SQUARE_CORNER_VELOCITY=8.0"));
+    assert!(!g.contains("M203"));
+
+    j.printer.firmware = Firmware::RepRap;
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(g.contains("M203 X15000 Y15000 Z1200 ;"), "RepRapFirmware speeds are in mm/min");
+    assert!(g.contains("M566 X480 Y480"));
+}
+
+#[test]
+fn accelerations_follow_the_kind_of_line_and_the_first_layer() {
+    let mut j = job(centered(make_box(Vec3::new(20.0, 20.0, 6.0))), FdmProcess::default());
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    j.printer.max_accel = 20000.0;
+    j.printer.firmware = Firmware::Marlin;
+    let plain = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(!plain.contains("M204 S1234") && !plain.contains("M204 S777"));
+    j.process.accel_inner = 1234.0;
+    j.process.accel_first_layer = 777.0;
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(g.contains("M204 S1234"), "inner walls");
+    // The first layer uses its own acceleration, and only the first.
+    let first_layer_end = g.find(";LAYER_CHANGE").and_then(|a| g[a + 1..].find(";LAYER_CHANGE").map(|b| a + 1 + b)).unwrap();
+    assert!(g[..first_layer_end].contains("M204 S777"));
+    assert!(!g[first_layer_end..].contains("M204 S777"));
+    assert!(!g[..first_layer_end].contains("M204 S1234"));
+}
+
+#[test]
+fn each_kind_of_line_has_its_own_flow_ratio() {
+    let mut j = job(centered(make_box(Vec3::new(20.0, 20.0, 6.0))), FdmProcess::default());
+    let base = slice(&j, &Progress::default()).unwrap();
+    j.process.flow_outer = 1.2;
+    j.process.flow_sparse = 0.8;
+    let r = slice(&j, &Progress::default()).unwrap();
+    let by = |res: &FdmResult, f: Feature| res.filament_by_feature[f as usize];
+    assert!((by(&r, Feature::OuterWall) / by(&base, Feature::OuterWall) - 1.2).abs() < 0.01);
+    assert!((by(&r, Feature::SparseInfill) / by(&base, Feature::SparseInfill) - 0.8).abs() < 0.01);
+    // Kinds that weren't touched print the same amount.
+    assert!((by(&r, Feature::InnerWall) / by(&base, Feature::InnerWall) - 1.0).abs() < 1e-4);
+    // The first layer has its own ratio on top.
+    j.process.flow_first_layer = 1.3;
+    let r2 = slice(&j, &Progress::default()).unwrap();
+    assert!(by(&r2, Feature::OuterWall) > by(&r, Feature::OuterWall));
+}
+
+#[test]
+fn support_interface_and_ironing_can_have_their_own_fan_speed() {
+    let mut j = job(centered(table()), FdmProcess::default());
+    j.process.support = SupportKind::Normal;
+    j.process.support_interface_layers = 2;
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    let plain = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(!plain.contains("M106 S102"));
+    j.filaments[0].fan_interface = 40.0;
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(g.contains("M106 S102"), "40% is S102");
+    // It goes back to the layer's speed when the interface is done.
+    let at = g.find(";TYPE:Support interface").unwrap();
+    let after = &g[at..];
+    let back = after.find("M106 S102").unwrap();
+    assert!(after[back..].contains("M106 S"), "fan restored");
+}
+
+fn two_blocks() -> FdmJob {
+    let mut a = make_box(Vec3::new(10.0, 10.0, 6.0));
+    let b = make_box(Vec3::new(10.0, 10.0, 6.0)).transformed(&Mat4::from_translation(Vec3::new(30.0, 0.0, 0.0)));
+    a.append(&b);
+    let mut j = job(centered(a), FdmProcess::default());
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    j.printer.z_hop = 0.4;
+    j
+}
+
+/// Moves that go sideways and up or down in one line.
+fn slanted_moves(g: &str) -> usize {
+    g.lines().filter(|l| l.starts_with("G1 X") && l.contains(" Z") && l.contains(" Y")).count()
+}
+
+#[test]
+fn z_hop_can_lift_along_a_slope_or_in_a_spiral() {
+    let mut j = two_blocks();
+    let normal = slice(&j, &Progress::default()).unwrap().gcode;
+    assert_eq!(slanted_moves(&normal), 0, "a normal lift only goes straight up and down");
+    j.printer.z_hop_type = ZHopType::Slope;
+    let slope = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(slanted_moves(&slope) > 20, "{}", slanted_moves(&slope));
+    j.printer.z_hop_type = ZHopType::Spiral;
+    let spiral = slice(&j, &Progress::default()).unwrap().gcode;
+    assert!(slanted_moves(&spiral) > 100, "{}", slanted_moves(&spiral));
+    // The printing itself is the same however the nozzle lifts.
+    let printed = |g: &str| g.lines().filter(|l| l.contains(" E") && l.starts_with("G1 X")).count();
+    assert_eq!(printed(&normal), printed(&slope));
+    assert_eq!(printed(&normal), printed(&spiral));
+}
+
+#[test]
+fn z_hop_can_be_limited_to_a_range_of_heights() {
+    let mut j = two_blocks();
+    let lifts = |g: &str| g.lines().filter(|l| l.starts_with("G1 Z")).count();
+    let all = lifts(&slice(&j, &Progress::default()).unwrap().gcode);
+    j.printer.z_hop_above = 100.0;
+    let none = lifts(&slice(&j, &Progress::default()).unwrap().gcode);
+    assert!(none < all / 2, "{none} against {all}");
+    j.printer.z_hop_above = 0.0;
+    j.printer.z_hop_below = 3.0;
+    let low = lifts(&slice(&j, &Progress::default()).unwrap().gcode);
+    assert!(low < all && low > none, "{none} < {low} < {all}");
+}
+
+#[test]
+fn retracting_at_layer_change_can_be_forced() {
+    let mut j = job(centered(make_box(Vec3::new(20.0, 20.0, 6.0))), FdmProcess::default());
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    let retracts = |j: &FdmJob| slice(j, &Progress::default()).unwrap().gcode.lines().filter(|l| l.starts_with("G1 E-")).count();
+    let before = retracts(&j);
+    j.printer.retract_layer_change = true;
+    let after = retracts(&j);
+    assert!(after >= before + 15, "{before} then {after}");
+}
+
+#[test]
+fn walls_slow_down_in_steps_by_how_much_they_hang() {
+    let mut j = job(centered(crate::mesh::make_sphere(Vec3::new(0.0, 0.0, 12.0), 12.0, 64, 48)), FdmProcess::default());
+    // Short layers would otherwise be slowed down to cool, which rescales every speed.
+    j.filaments[0].min_layer_time = 0.0;
+    let plain = slice(&j, &Progress::default()).unwrap();
+    let wall_speeds = |r: &FdmResult| -> Vec<u32> {
+        let mut v: Vec<u32> = r
+            .segs
+            .iter()
+            .filter(|s| s.feature == Feature::OuterWall as u32 || s.feature == Feature::InnerWall as u32 || s.feature == Feature::OverhangWall as u32)
+            .map(|s| s.speed.round() as u32)
+            .collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    };
+    for s in [22, 17, 12] {
+        assert!(!wall_speeds(&plain).contains(&s), "{s} appears without tiers");
+    }
+    j.process.overhang_tiers = true;
+    j.process.speed_overhang_2 = 22.0;
+    j.process.speed_overhang_3 = 17.0;
+    j.process.speed_overhang_4 = 12.0;
+    let tiered = slice(&j, &Progress::default()).unwrap();
+    let speeds = wall_speeds(&tiered);
+    for s in [22, 17, 12] {
+        assert!(speeds.contains(&s), "{s} missing from {speeds:?}");
+    }
+    // Only the speed changes, not how much plastic goes down.
+    let (a, b) = (plain.filament_g.iter().sum::<f32>(), tiered.filament_g.iter().sum::<f32>());
+    assert!((a - b).abs() / a < 0.005, "{a} against {b}");
+    assert!(tiered.total_time > plain.total_time);
 }

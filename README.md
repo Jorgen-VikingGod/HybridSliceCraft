@@ -13,10 +13,13 @@ A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast des
 - Seam placement, ironing (all top surfaces, topmost only, or all solid layers), fuzzy skin (outline, holes or both), spiral vase, adaptive layer heights
 - Several filaments in one print, with a prime tower
 - **Paint with filaments**: brush, fill and erase tools colour the model's surface; each colour prints with its own filament and reaches a chosen depth into the part
-- **A filament for each feature**: pick a different filament for a model's walls, inner walls, sparse infill, solid infill (top, bottom and bridge skins), support and support interface, for example a flexible or soluble support interface, or a different colour for the inner walls
+- **A filament for each feature**: pick a different filament for a model's walls, inner walls, sparse infill, solid infill, top surface, bottom surface, support and support interface, for example a flexible or soluble support interface, or a different colour for the inner walls
 - **Several nozzle sizes in one print**: each tool can have its own nozzle (for example 0.4 mm and 0.8 mm). Every kind of line follows the size of the nozzle that prints it: outer walls, inner walls, solid infill, sparse infill, support and support interface each get their width from their own tool, so a fine 0.4 mm nozzle can print the outer wall while a 0.6 mm one prints the rest. A model can also print its walls with the fine nozzle and its infill with the big one, for speed without losing surface detail.
 - Cooling, time and filament estimates that account for acceleration
 - Wall order options (inner-outer-inner, reversed direction)
+- **Pause, filament change or any G-code at a layer**: add them from the preview at the layer the slider is on; they are saved in the project
+- Acceleration, flow ratio and (for bridges, support interface and ironing) fan speed for each kind of line, and walls that slow down in four steps by how much they hang in the air
+- Z-hop types (straight, slope or spiral), lift only between two heights, retract at every layer change, and machine limits (speed, acceleration, corner speed) sent to Marlin, Klipper or RepRapFirmware
 - Input shaper settings and object labels so a failed object can be skipped mid-print (Klipper, Marlin)
 - Snapmaker U1 printer presets (four tool heads, five nozzle choices), with start and end scripts from OrcaSlicer's profile
 - Arc fitting (G2/G3), pressure advance, Marlin, Klipper and RepRapFirmware output

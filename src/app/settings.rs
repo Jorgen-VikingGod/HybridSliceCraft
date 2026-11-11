@@ -555,12 +555,26 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.num(ui, "Support speed", "", &mut p.speed_support, b.speed_support, 1.0..=1000.0, "mm/s", 0, true);
             r.num(ui, "Bridge", "", &mut p.speed_bridge, b.speed_bridge, 1.0..=500.0, "mm/s", 0, true);
             r.num(ui, "Overhang", "", &mut p.speed_overhang, b.speed_overhang, 1.0..=500.0, "mm/s", 0, true);
+            r.flag(ui, "Slow down by overhang", "Slows walls by how much of the line hangs in the air, in four steps. Zero leaves a step at the usual speed.", &mut p.overhang_tiers, b.overhang_tiers, true);
+            if p.overhang_tiers || !r.filter.is_empty() {
+                r.num(ui, "Speed, overhang up to 25%", "", &mut p.speed_overhang_1, b.speed_overhang_1, 0.0..=500.0, "mm/s", 0, true);
+                r.num(ui, "Speed, overhang up to 50%", "", &mut p.speed_overhang_2, b.speed_overhang_2, 0.0..=500.0, "mm/s", 0, true);
+                r.num(ui, "Speed, overhang up to 75%", "", &mut p.speed_overhang_3, b.speed_overhang_3, 0.0..=500.0, "mm/s", 0, true);
+                r.num(ui, "Speed, overhang up to 100%", "", &mut p.speed_overhang_4, b.speed_overhang_4, 0.0..=500.0, "mm/s", 0, true);
+            }
             r.num(ui, "Ironing speed", "", &mut p.ironing_speed, b.ironing_speed, 1.0..=300.0, "mm/s", 0, true);
             r.num(ui, "Travel", "How fast the head moves without printing.", &mut p.speed_travel, b.speed_travel, 1.0..=1500.0, "mm/s", 0, false);
             group(ui, r, "ACCELERATION");
             r.num(ui, "Outer wall acceleration", "", &mut p.accel_outer, b.accel_outer, 100.0..=30000.0, "mm/s²", 0, true);
             r.num(ui, "Default acceleration", "", &mut p.accel_default, b.accel_default, 100.0..=30000.0, "mm/s²", 0, true);
             r.num(ui, "Travel acceleration", "", &mut p.accel_travel, b.accel_travel, 100.0..=30000.0, "mm/s²", 0, true);
+            let same = "Zero uses the default acceleration.";
+            r.num(ui, "Inner wall acceleration", same, &mut p.accel_inner, b.accel_inner, 0.0..=30000.0, "mm/s²", 0, true);
+            r.num(ui, "Sparse infill acceleration", same, &mut p.accel_infill, b.accel_infill, 0.0..=30000.0, "mm/s²", 0, true);
+            r.num(ui, "Solid infill acceleration", same, &mut p.accel_solid, b.accel_solid, 0.0..=30000.0, "mm/s²", 0, true);
+            r.num(ui, "Top surface acceleration", same, &mut p.accel_top, b.accel_top, 0.0..=30000.0, "mm/s²", 0, true);
+            r.num(ui, "Bridge acceleration", same, &mut p.accel_bridge, b.accel_bridge, 0.0..=30000.0, "mm/s²", 0, true);
+            r.num(ui, "First layer acceleration", same, &mut p.accel_first_layer, b.accel_first_layer, 0.0..=30000.0, "mm/s²", 0, true);
             group(ui, r, "TRAVEL");
             r.flag(ui, "Avoid crossing walls", "Skip retraction when a move stays inside the part.", &mut p.avoid_crossing_walls, b.avoid_crossing_walls, true);
             r.num(ui, "Shortest retract distance", "Moves shorter than this don't retract.", &mut p.retract_min_travel, b.retract_min_travel, 0.0..=20.0, "mm", 1, true);
@@ -594,6 +608,19 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.num(ui, "Purge per change", "", &mut p.purge_volume, b.purge_volume, 0.0..=500.0, "mm³", 0, true);
             r.num(ui, "Tower X", "", &mut p.tower_x, b.tower_x, 0.0..=1000.0, "mm", 0, true);
             r.num(ui, "Tower Y", "", &mut p.tower_y, b.tower_y, 0.0..=1000.0, "mm", 0, true);
+            group(ui, r, "FLOW RATIOS");
+            let tip = "Multiplies the extrusion of this kind of line, on top of the filament's flow. Use it to tune one kind of line without touching the others.";
+            r.num(ui, "Outer wall flow", tip, &mut p.flow_outer, b.flow_outer, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Inner wall flow", tip, &mut p.flow_inner, b.flow_inner, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Overhang flow", tip, &mut p.flow_overhang, b.flow_overhang, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Gap fill flow", tip, &mut p.flow_gap, b.flow_gap, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Sparse infill flow", tip, &mut p.flow_sparse, b.flow_sparse, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Solid infill flow", tip, &mut p.flow_solid, b.flow_solid, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Top surface flow", tip, &mut p.flow_top, b.flow_top, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Bottom surface flow", tip, &mut p.flow_bottom, b.flow_bottom, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Support flow", tip, &mut p.flow_support, b.flow_support, 0.5..=1.5, "", 3, true);
+            r.num(ui, "Support interface flow", tip, &mut p.flow_interface, b.flow_interface, 0.5..=1.5, "", 3, true);
+            r.num(ui, "First layer flow", tip, &mut p.flow_first_layer, b.flow_first_layer, 0.5..=1.5, "", 3, true);
             group(ui, r, "PRINT ORDER");
             const ORDER: [Sequence; 2] = [Sequence::ByLayer, Sequence::ByObject];
             r.pick(ui, "Print order", "One object at a time needs room for the print head to pass.", &mut p.sequence, b.sequence, &ORDER, |s| match s {
@@ -736,6 +763,23 @@ fn fdm_printer_editor(ui: &mut egui::Ui, p: &mut FdmPrinter) {
         line(ui, "Cornering speed", |ui| {
             ui.add(num(&mut p.corner_speed, 1.0, 50.0, "mm/s"));
         });
+        line(ui, "Send limits to the printer", |ui| {
+            ui.checkbox(&mut p.emit_limits, "").on_hover_text(crate::i18n::tr("Sends the top speed, top acceleration and cornering speed (and the Z and extruder limits below, when set) at the start of the print. Klipper only takes the first three."));
+        });
+        if p.emit_limits {
+            line(ui, "Top speed, Z", |ui| {
+                ui.add(num(&mut p.max_speed_z, 0.0, 200.0, "mm/s"));
+            });
+            line(ui, "Top acceleration, Z", |ui| {
+                ui.add(num(&mut p.max_accel_z, 0.0, 10000.0, "mm/s²"));
+            });
+            line(ui, "Top speed, extruder", |ui| {
+                ui.add(num(&mut p.max_speed_e, 0.0, 200.0, "mm/s"));
+            });
+            line(ui, "Top acceleration, extruder", |ui| {
+                ui.add(num(&mut p.max_accel_e, 0.0, 50000.0, "mm/s²"));
+            });
+        }
         line(ui, "Retraction length", |ui| {
             ui.add(num(&mut p.retract_length, 0.0, 20.0, "mm"));
         });
@@ -747,6 +791,27 @@ fn fdm_printer_editor(ui: &mut egui::Ui, p: &mut FdmPrinter) {
         });
         line(ui, "Lift during travel", |ui| {
             ui.add(num(&mut p.z_hop, 0.0, 5.0, "mm"));
+        });
+        line(ui, "Lift type", |ui| {
+            egui::ComboBox::from_id_salt("z_hop_type").selected_text(crate::i18n::tr(p.z_hop_type.label())).show_ui(ui, |ui| {
+                for t in ZHopType::ALL {
+                    ui.selectable_value(&mut p.z_hop_type, t, crate::i18n::tr(t.label()));
+                }
+            });
+        });
+        if p.z_hop_type == ZHopType::Slope {
+            line(ui, "Slope angle", |ui| {
+                ui.add(num(&mut p.z_hop_slope_angle, 1.0, 60.0, "°"));
+            });
+        }
+        line(ui, "Lift only above", |ui| {
+            ui.add(num(&mut p.z_hop_above, 0.0, 500.0, "mm"));
+        });
+        line(ui, "Lift only below", |ui| {
+            ui.add(num(&mut p.z_hop_below, 0.0, 500.0, "mm")).on_hover_text(crate::i18n::tr("Zero lifts at every height."));
+        });
+        line(ui, "Retract at layer change", |ui| {
+            ui.checkbox(&mut p.retract_layer_change, "").on_hover_text(crate::i18n::tr("Always pull the filament back when moving up to the next layer, even when the move is short."));
         });
         line(ui, "Wipe distance", |ui| {
             ui.add(num(&mut p.wipe_on_retract, 0.0, 10.0, "mm"));
@@ -774,6 +839,10 @@ fn fdm_printer_editor(ui: &mut egui::Ui, p: &mut FdmPrinter) {
     ui.add(egui::TextEdit::multiline(&mut p.end_gcode).font(egui::TextStyle::Monospace).desired_rows(4).desired_width(f32::INFINITY));
     ui.label(RichText::new(crate::i18n::tr("Tool change script")).strong());
     ui.add(egui::TextEdit::multiline(&mut p.tool_change_gcode).font(egui::TextStyle::Monospace).desired_rows(2).desired_width(f32::INFINITY));
+    ui.label(RichText::new(crate::i18n::tr("Pause script")).strong()).on_hover_text(crate::i18n::tr("Sent where you add a pause at a layer. Empty uses the usual command for the firmware."));
+    ui.add(egui::TextEdit::multiline(&mut p.pause_gcode).font(egui::TextStyle::Monospace).desired_rows(1).desired_width(f32::INFINITY));
+    ui.label(RichText::new(crate::i18n::tr("Filament change script")).strong()).on_hover_text(crate::i18n::tr("Sent where you add a filament change at a layer. Empty uses M600."));
+    ui.add(egui::TextEdit::multiline(&mut p.filament_change_gcode).font(egui::TextStyle::Monospace).desired_rows(1).desired_width(f32::INFINITY));
     ui.label(RichText::new(crate::i18n::tr("Scripts can use {bed_temp}, {nozzle_temp}, {bed_x}, {bed_y}, {height}, {layer_height}, {filament_type}, {nozzle_temp-50}, {nozzle_temp-90}, and {tool} in tool changes.")).small().color(ui_dim()));
 }
 
@@ -861,6 +930,15 @@ fn filament_editor(ui: &mut egui::Ui, f: &mut Filament, slot: usize) {
         });
         line(ui, "Fan off for layers", |ui| {
             ui.add(egui::DragValue::new(&mut f.fan_off_layers).range(0..=20));
+        });
+        line(ui, "Fan, bridges and overhangs", |ui| {
+            ui.add(num(&mut f.fan_bridge, 0.0, 100.0, "%"));
+        });
+        line(ui, "Fan, support interface", |ui| {
+            ui.add(num(&mut f.fan_interface, -1.0, 100.0, "%")).on_hover_text(crate::i18n::tr("Below zero keeps the layer's fan speed."));
+        });
+        line(ui, "Fan, ironing", |ui| {
+            ui.add(num(&mut f.fan_ironing, -1.0, 100.0, "%")).on_hover_text(crate::i18n::tr("Below zero keeps the layer's fan speed."));
         });
         line(ui, "Shortest layer time", |ui| {
             ui.add(num(&mut f.min_layer_time, 0.0, 60.0, "s"));

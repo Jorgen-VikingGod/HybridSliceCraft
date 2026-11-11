@@ -4,7 +4,7 @@
 use super::plan::IslandPlan;
 use super::{bead_area, ExPath, Feature, FdmJob, FdmResult, LayerInfo, PreviewSeg};
 use crate::geom::EdgeIndex;
-use crate::profiles::{Firmware, SeamMode};
+use crate::profiles::{Firmware, SeamMode, ZHopType};
 use glam::{DVec2, DVec3};
 use std::fmt::Write as _;
 
@@ -98,6 +98,8 @@ pub(super) struct Writer<'a> {
     pub seam_anchor: Option<DVec2>,
     pub seam_loop_counter: u64,
     pub last_written: Option<DVec3>,
+    /// Overhang tier of the segment being written, when speeds follow it.
+    pub tier_speed: Option<u8>,
 }
 
 impl<'a> Writer<'a> {
@@ -188,16 +190,56 @@ impl<'a> Writer<'a> {
             return;
         }
         let need_retract = !inside && dist >= min_travel;
-        if need_retract || (z_changes && dist >= min_travel) {
+        if need_retract || (z_changes && (dist >= min_travel || self.job.printer.retract_layer_change)) {
             self.retract();
         }
-        let hop = if need_retract { self.job.printer.z_hop as f64 } else { 0.0 };
+        let pr = &self.job.printer;
+        let allowed = z >= pr.z_hop_above as f64 && (pr.z_hop_below <= 0.0 || z <= pr.z_hop_below as f64);
+        let hop = if need_retract && allowed { pr.z_hop as f64 } else { 0.0 };
         let lift = if hop > 0.0 { (self.pos.z.max(z)) + hop } else { z };
         if hop > 0.0 {
-            let top = DVec3::new(from.x, from.y, lift);
-            self.moves.push(Mv::Travel { to: top, speed: 50f64.max(speed * 0.25) });
-            self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, lift), speed });
-            self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, z), speed: 50f64.max(speed * 0.25) });
+            let slow = 50f64.max(speed * 0.25);
+            match pr.z_hop_type {
+                ZHopType::Slope if dist > 1e-3 => {
+                    // Ramps at the chosen angle; a short move gets a lower peak.
+                    let tan = (pr.z_hop_slope_angle as f64).to_radians().tan().clamp(0.01, 5.0);
+                    let z0 = self.pos.z;
+                    let (up, down) = ((lift - z0).max(1e-6) / tan, (lift - z).max(1e-6) / tan);
+                    let dir = (p - from) / dist;
+                    if dist >= up + down {
+                        let a = from + dir * up;
+                        let b = p - dir * down;
+                        self.moves.push(Mv::Travel { to: DVec3::new(a.x, a.y, lift), speed });
+                        self.moves.push(Mv::Travel { to: DVec3::new(b.x, b.y, lift), speed });
+                    } else {
+                        let k = dist / (up + down);
+                        let m = from + dir * (up * k);
+                        self.moves.push(Mv::Travel { to: DVec3::new(m.x, m.y, z0 + (lift - z0) * k), speed });
+                    }
+                    self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, z), speed });
+                }
+                ZHopType::Spiral => {
+                    // One turn of a helix on the spot, in short straight steps.
+                    const STEPS: usize = 12;
+                    let r = hop.max(0.4);
+                    let centre = from + DVec2::new(r, 0.0);
+                    let z0 = self.pos.z;
+                    for k in 1..=STEPS {
+                        let t = k as f64 / STEPS as f64;
+                        let ang = std::f64::consts::PI + t * std::f64::consts::TAU;
+                        let q = centre + DVec2::new(ang.cos(), ang.sin()) * r;
+                        self.moves.push(Mv::Travel { to: DVec3::new(q.x, q.y, z0 + (lift - z0) * t), speed: slow });
+                    }
+                    self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, lift), speed });
+                    self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, z), speed: slow });
+                }
+                _ => {
+                    let top = DVec3::new(from.x, from.y, lift);
+                    self.moves.push(Mv::Travel { to: top, speed: slow });
+                    self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, lift), speed });
+                    self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, z), speed: slow });
+                }
+            }
         } else {
             if z_changes {
                 let top = DVec3::new(from.x, from.y, z);
@@ -210,6 +252,26 @@ impl<'a> Writer<'a> {
         self.pos = DVec3::new(p.x, p.y, z);
     }
 
+    /// The process's extrusion multiplier for this kind of line.
+    fn flow_ratio(&self, f: Feature) -> f64 {
+        let p = &self.job.process;
+        let r = match f {
+            Feature::OuterWall => p.flow_outer,
+            Feature::InnerWall => p.flow_inner,
+            Feature::OverhangWall => p.flow_overhang,
+            Feature::GapFill => p.flow_gap,
+            Feature::SparseInfill => p.flow_sparse,
+            Feature::SolidInfill => p.flow_solid,
+            Feature::TopSurface => p.flow_top,
+            Feature::BottomSurface => p.flow_bottom,
+            Feature::Support => p.flow_support,
+            Feature::SupportInterface => p.flow_interface,
+            _ => 1.0,
+        };
+        let first = if self.layer_index == 0 { p.flow_first_layer } else { 1.0 };
+        r as f64 * first as f64
+    }
+
     fn ext_seg(&mut self, to: DVec2, z: f64, width: f64, height: f64, flow: f64, feature: Feature) {
         let from = DVec2::new(self.pos.x, self.pos.y);
         let d = from.distance(to);
@@ -218,8 +280,15 @@ impl<'a> Writer<'a> {
             return;
         }
         self.unretract();
-        let area = bead_area(width, height) * flow;
+        let area = bead_area(width, height) * flow * self.flow_ratio(feature);
         let mut speed = self.feature_speed(feature);
+        if let Some(tier @ 1..=4) = self.tier_speed {
+            let p = &self.job.process;
+            let own = [p.speed_overhang_1, p.speed_overhang_2, p.speed_overhang_3, p.speed_overhang_4][tier as usize - 1] as f64;
+            if own > 0.0 {
+                speed = speed.min(own);
+            }
+        }
         let cap = self.filament().max_volumetric as f64 / area.max(1e-4);
         if let (Some(v), true) = (self.volumetric_override, feature != Feature::Ironing) {
             speed = v / area.max(1e-4);
@@ -298,6 +367,7 @@ impl<'a> Writer<'a> {
     }
 
     pub fn emit_path(&mut self, path: &ExPath, z: f64, h: f64, flow: f64, comb: Option<&EdgeIndex>) {
+        self.tier_speed = None;
         if path.pts.len() < 2 {
             return;
         }
@@ -318,6 +388,7 @@ impl<'a> Writer<'a> {
                 let j = (i + 1) % n;
                 let hang = path.overhang.get(i).copied().unwrap_or(false);
                 let f = if hang { Feature::OverhangWall } else { path.feature };
+                self.tier_speed = self.job.process.overhang_tiers.then(|| path.tier.get(i).copied().unwrap_or(0));
                 let seg = path.pts[i].distance(path.pts[j]);
                 if seg >= left {
                     let end = path.pts[i].lerp(path.pts[j], (left / seg.max(1e-9)).min(1.0));
@@ -397,6 +468,7 @@ impl<'a> Writer<'a> {
     }
 
     pub fn emit_spiral(&mut self, island: &IslandPlan, z_top: f64, h: f64, flow: f64, first_spiral: bool) {
+        self.tier_speed = None;
         let Some(outer) = island
             .walls
             .first()
@@ -427,12 +499,21 @@ impl<'a> Writer<'a> {
 
     fn accel_for(&self, f: Feature) -> f64 {
         let p = &self.job.process;
-        let a = match f {
+        let own = |v: f32| if v > 0.0 { v } else { p.accel_default };
+        let mut a = match f {
             Feature::OuterWall | Feature::OverhangWall => p.accel_outer,
+            Feature::InnerWall | Feature::GapFill => own(p.accel_inner),
+            Feature::SparseInfill => own(p.accel_infill),
+            Feature::SolidInfill | Feature::BottomSurface => own(p.accel_solid),
+            Feature::TopSurface | Feature::Ironing => own(p.accel_top),
+            Feature::Bridge => own(p.accel_bridge),
             Feature::Travel => p.accel_travel,
             _ => p.accel_default,
-        } as f64;
-        a.min(self.job.printer.max_accel as f64).max(100.0)
+        };
+        if self.layer_index == 0 && p.accel_first_layer > 0.0 && f != Feature::Travel {
+            a = p.accel_first_layer;
+        }
+        (a as f64).min(self.job.printer.max_accel as f64).max(100.0)
     }
 
     fn write_accel(&mut self, a: f64) {
@@ -515,7 +596,7 @@ impl<'a> Writer<'a> {
                 .unwrap_or(self.pos)
         });
         let mut i = 0usize;
-        let mut boosted = false;
+        let mut boosted: Option<f64> = None;
         let mut print_tool = self.tool_before;
         while i < moves.len() {
             match &moves[i] {
@@ -615,11 +696,21 @@ impl<'a> Writer<'a> {
                     let feature = *feature;
                     if self.current_feature != Some(feature) {
                         let _ = writeln!(self.chunk, ";TYPE:{}", feature.gcode_type());
-                        // Overhangs and bridges cool hard while they print.
-                        let boost = matches!(feature, Feature::Bridge | Feature::OverhangWall) && fan > 0.0;
-                        if boost != boosted {
-                            self.chunk.push_str(&fan_cmd(if boost { 100.0 } else { fan }));
-                            boosted = boost;
+                        // Overhangs and bridges cool hard while they print; support
+                        // interface and ironing can have their own fan speed too.
+                        let want: Option<f64> = if fan > 0.0 {
+                            match feature {
+                                Feature::Bridge | Feature::OverhangWall => Some(fil.fan_bridge as f64),
+                                Feature::SupportInterface if fil.fan_interface >= 0.0 => Some(fil.fan_interface as f64),
+                                Feature::Ironing if fil.fan_ironing >= 0.0 => Some(fil.fan_ironing as f64),
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
+                        if want != boosted {
+                            self.chunk.push_str(&fan_cmd(want.unwrap_or(fan)));
+                            boosted = want;
                         }
                         self.current_feature = Some(feature);
                     }
@@ -684,7 +775,7 @@ impl<'a> Writer<'a> {
             }
             i += 1;
         }
-        if boosted {
+        if boosted.is_some() {
             self.chunk.push_str(&fan_cmd(fan));
         }
         self.last_written = Some(prev_pos);

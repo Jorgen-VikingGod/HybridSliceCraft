@@ -384,5 +384,68 @@ Inner walls	Innenwände	Parois intérieures	Paredes interiores
 Support interface	Stützen-Kontaktschicht	Interface du support	Interfaz del soporte
 Same as walls	Wie die Wände	Comme les parois	Igual que las paredes
 Same as support	Wie die Stütze	Comme le support	Igual que el soporte
-The top, bottom and bridge skins, and ironing.	Die Deck-, Boden- und Brückenhaut sowie das Glätten.	Les peaux du dessus, du dessous et des ponts, et le lissage.	Las pieles superior, inferior y de puentes, y el planchado.
 The filament for the outer walls, and for everything you don't choose another one for below.	Das Filament für die Außenwände und für alles, wofür unten kein anderes gewählt ist.	Le filament des parois extérieures et de tout ce qu'on ne règle pas ci-dessous.	El filamento de las paredes exteriores y de todo lo que no se elija abajo.
+The solid layers inside the part, and the top and bottom skins unless you choose another filament for them below.	Die massiven Schichten im Teil sowie die Deck- und Bodenhaut, sofern unten kein anderes Filament dafür gewählt ist.	Les couches pleines à l'intérieur de la pièce, et les peaux du dessus et du dessous sauf si vous choisissez un autre filament ci-dessous.	Las capas sólidas dentro de la pieza, y las pieles superior e inferior salvo que elijas otro filamento abajo.
+Bottom surface	Unterseite	Surface inférieure	Superficie inferior
+Same as solid infill	Wie die massive Füllung	Comme le remplissage plein	Igual que el relleno sólido
+The top skins and ironing.	Die Deckhaut und das Glätten.	Les peaux du dessus et le lissage.	Las pieles superiores y el planchado.
+The bottom skins and bridges.	Die Bodenhaut und Brücken.	Les peaux du dessous et les ponts.	Las pieles inferiores y los puentes.
+LAYER ACTIONS	SCHICHTAKTIONEN	ACTIONS PAR COUCHE	ACCIONES POR CAPA
+Layer	Schicht	Couche	Capa
+Pause here	Hier pausieren	Pause ici	Pausar aquí
+Change filament here	Hier Filament wechseln	Changer le filament ici	Cambiar filamento aquí
+G-code to send here	Hier zu sendender G-Code	G-code à envoyer ici	G-code a enviar aquí
+Add G-code here	G-Code hier einfügen	Ajouter du G-code ici	Añadir G-code aquí
+Pause	Pause	Pause	Pausa
+Filament change	Filamentwechsel	Changement de filament	Cambio de filamento
+Slice again to put these into the G-code.	Erneut slicen, um diese in den G-Code zu übernehmen.	Retrancher à nouveau pour les mettre dans le G-code.	Vuelve a laminar para ponerlas en el G-code.
+Pause script	Pause-Skript	Script de pause	Script de pausa
+Filament change script	Filamentwechsel-Skript	Script de changement de filament	Script de cambio de filamento
+Sent where you add a pause at a layer. Empty uses the usual command for the firmware.	Wird dort gesendet, wo Sie bei einer Schicht eine Pause einfügen. Leer nutzt den üblichen Befehl der Firmware.	Envoyé là où vous ajoutez une pause à une couche. Vide : la commande habituelle du firmware.	Se envía donde añades una pausa en una capa. Vacío usa el comando habitual del firmware.
+Sent where you add a filament change at a layer. Empty uses M600.	Wird dort gesendet, wo Sie bei einer Schicht einen Filamentwechsel einfügen. Leer nutzt M600.	Envoyé là où vous ajoutez un changement de filament à une couche. Vide : M600.	Se envía donde añades un cambio de filamento en una capa. Vacío usa M600.
+Send limits to the printer	Grenzwerte an den Drucker senden	Envoyer les limites à l'imprimante	Enviar los límites a la impresora
+Top speed, Z	Höchstgeschwindigkeit, Z	Vitesse maximale, Z	Velocidad máxima, Z
+Top acceleration, Z	Höchstbeschleunigung, Z	Accélération maximale, Z	Aceleración máxima, Z
+Top speed, extruder	Höchstgeschwindigkeit, Extruder	Vitesse maximale, extrudeur	Velocidad máxima, extrusor
+Top acceleration, extruder	Höchstbeschleunigung, Extruder	Accélération maximale, extrudeur	Aceleración máxima, extrusor
+Sends the top speed, top acceleration and cornering speed (and the Z and extruder limits below, when set) at the start of the print. Klipper only takes the first three.	Sendet Höchstgeschwindigkeit, Höchstbeschleunigung und Kurvengeschwindigkeit (und die Z- und Extruder-Grenzen unten, wenn gesetzt) zu Druckbeginn. Klipper übernimmt nur die ersten drei.	Envoie la vitesse maximale, l'accélération maximale et la vitesse en virage (et les limites Z et extrudeur ci-dessous, si définies) au début de l'impression. Klipper ne prend que les trois premières.	Envía la velocidad máxima, la aceleración máxima y la velocidad en curvas (y los límites de Z y del extrusor de abajo, si se definen) al empezar la impresión. Klipper solo toma las tres primeras.
+Inner wall acceleration	Beschleunigung der Innenwand	Accélération de la paroi intérieure	Aceleración de la pared interior
+Sparse infill acceleration	Beschleunigung der lockeren Füllung	Accélération du remplissage clairsemé	Aceleración del relleno disperso
+Solid infill acceleration	Beschleunigung der massiven Füllung	Accélération du remplissage plein	Aceleración del relleno sólido
+Top surface acceleration	Beschleunigung der Oberseite	Accélération de la surface supérieure	Aceleración de la superficie superior
+Bridge acceleration	Beschleunigung der Brücken	Accélération des ponts	Aceleración de los puentes
+First layer acceleration	Beschleunigung der ersten Schicht	Accélération de la première couche	Aceleración de la primera capa
+Zero uses the default acceleration.	Null nutzt die Standardbeschleunigung.	Zéro utilise l'accélération par défaut.	Cero usa la aceleración predeterminada.
+FLOW RATIOS	FLUSSVERHÄLTNISSE	RAPPORTS DE DÉBIT	PROPORCIONES DE FLUJO
+Outer wall flow	Fluss der Außenwand	Débit de la paroi extérieure	Flujo de la pared exterior
+Inner wall flow	Fluss der Innenwand	Débit de la paroi intérieure	Flujo de la pared interior
+Overhang flow	Fluss der Überhänge	Débit des surplombs	Flujo de los voladizos
+Gap fill flow	Fluss der Lückenfüllung	Débit du remplissage des vides	Flujo del relleno de huecos
+Sparse infill flow	Fluss der lockeren Füllung	Débit du remplissage clairsemé	Flujo del relleno disperso
+Solid infill flow	Fluss der massiven Füllung	Débit du remplissage plein	Flujo del relleno sólido
+Top surface flow	Fluss der Oberseite	Débit de la surface supérieure	Flujo de la superficie superior
+Bottom surface flow	Fluss der Unterseite	Débit de la surface inférieure	Flujo de la superficie inferior
+Support flow	Fluss der Stützen	Débit du support	Flujo del soporte
+Support interface flow	Fluss der Stützen-Kontaktschicht	Débit de l'interface du support	Flujo de la interfaz del soporte
+First layer flow	Fluss der ersten Schicht	Débit de la première couche	Flujo de la primera capa
+Multiplies the extrusion of this kind of line, on top of the filament's flow. Use it to tune one kind of line without touching the others.	Vervielfacht die Extrusion dieser Linienart zusätzlich zum Fluss des Filaments. So lässt sich eine Linienart abstimmen, ohne die anderen zu ändern.	Multiplie l'extrusion de ce type de ligne, en plus du débit du filament. Permet de régler un type de ligne sans toucher aux autres.	Multiplica la extrusión de este tipo de línea, además del flujo del filamento. Sirve para ajustar un tipo de línea sin tocar las demás.
+Fan, bridges and overhangs	Lüfter, Brücken und Überhänge	Ventilateur, ponts et surplombs	Ventilador, puentes y voladizos
+Fan, support interface	Lüfter, Stützen-Kontaktschicht	Ventilateur, interface du support	Ventilador, interfaz del soporte
+Fan, ironing	Lüfter, Glätten	Ventilateur, lissage	Ventilador, planchado
+Below zero keeps the layer's fan speed.	Unter null bleibt die Lüfterstufe der Schicht.	En dessous de zéro, la vitesse du ventilateur de la couche est conservée.	Por debajo de cero se mantiene la velocidad del ventilador de la capa.
+Lift type	Hubart	Type de levage	Tipo de elevación
+Normal	Normal	Normal	Normal
+Slope	Schräg	En pente	En pendiente
+Spiral	Spirale	En spirale	En espiral
+Slope angle	Neigungswinkel	Angle de la pente	Ángulo de la pendiente
+Lift only above	Nur anheben über	Lever seulement au-dessus de	Elevar solo por encima de
+Lift only below	Nur anheben unter	Lever seulement en dessous de	Elevar solo por debajo de
+Zero lifts at every height.	Null hebt auf jeder Höhe an.	Zéro lève à toutes les hauteurs.	Cero eleva a cualquier altura.
+Retract at layer change	Beim Schichtwechsel zurückziehen	Rétracter au changement de couche	Retraer al cambiar de capa
+Always pull the filament back when moving up to the next layer, even when the move is short.	Zieht das Filament beim Wechsel zur nächsten Schicht immer zurück, auch bei kurzen Wegen.	Retire toujours le filament en passant à la couche suivante, même pour un déplacement court.	Retrae siempre el filamento al pasar a la siguiente capa, aunque el movimiento sea corto.
+Slow down by overhang	Nach Überhang verlangsamen	Ralentir selon le surplomb	Frenar según el voladizo
+Slows walls by how much of the line hangs in the air, in four steps. Zero leaves a step at the usual speed.	Verlangsamt Wände danach, wie viel der Linie in der Luft hängt, in vier Stufen. Null lässt eine Stufe bei der üblichen Geschwindigkeit.	Ralentit les parois selon la part de la ligne en l'air, en quatre paliers. Zéro laisse un palier à la vitesse habituelle.	Frena las paredes según cuánto de la línea cuelga en el aire, en cuatro pasos. Cero deja un paso a la velocidad habitual.
+Speed, overhang up to 25%	Geschwindigkeit, Überhang bis 25 %	Vitesse, surplomb jusqu'à 25 %	Velocidad, voladizo hasta 25 %
+Speed, overhang up to 50%	Geschwindigkeit, Überhang bis 50 %	Vitesse, surplomb jusqu'à 50 %	Velocidad, voladizo hasta 50 %
+Speed, overhang up to 75%	Geschwindigkeit, Überhang bis 75 %	Vitesse, surplomb jusqu'à 75 %	Velocidad, voladizo hasta 75 %
+Speed, overhang up to 100%	Geschwindigkeit, Überhang bis 100 %	Vitesse, surplomb jusqu'à 100 %	Velocidad, voladizo hasta 100 %

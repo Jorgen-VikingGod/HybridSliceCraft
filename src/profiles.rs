@@ -12,6 +12,29 @@ pub enum Firmware {
     RepRap,
 }
 
+/// How the nozzle lifts over a long travel move.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ZHopType {
+    /// Straight up, across, straight down.
+    #[default]
+    Normal,
+    /// Rises along the way and comes down the same way, at a gentle angle.
+    Slope,
+    /// Rises in a small circle, which leaves no mark when the nozzle lifts.
+    Spiral,
+}
+
+impl ZHopType {
+    pub const ALL: [ZHopType; 3] = [ZHopType::Normal, ZHopType::Slope, ZHopType::Spiral];
+    pub fn label(self) -> &'static str {
+        match self {
+            ZHopType::Normal => "Normal",
+            ZHopType::Slope => "Slope",
+            ZHopType::Spiral => "Spiral",
+        }
+    }
+}
+
 impl Firmware {
     pub const ALL: [Firmware; 3] = [Firmware::Marlin, Firmware::Klipper, Firmware::RepRap];
     pub fn label(self) -> &'static str {
@@ -20,6 +43,22 @@ impl Firmware {
             Firmware::Klipper => "Klipper",
             Firmware::RepRap => "RepRapFirmware",
         }
+    }
+}
+
+impl Firmware {
+    /// The command that pauses a print, for when the printer doesn't name its own.
+    pub fn pause_command(self) -> &'static str {
+        match self {
+            Firmware::Marlin => "M601",
+            Firmware::Klipper => "PAUSE",
+            Firmware::RepRap => "M226",
+        }
+    }
+
+    /// The command that swaps filament partway through a print.
+    pub fn filament_change_command(self) -> &'static str {
+        "M600"
     }
 }
 
@@ -40,10 +79,25 @@ pub struct FdmPrinter {
     pub max_speed: f32,
     pub max_accel: f32,
     pub corner_speed: f32,
+    /// Send the limits to the printer at the start of the print. Z and extruder
+    /// limits of zero are left to the printer.
+    pub emit_limits: bool,
+    pub max_speed_z: f32,
+    pub max_accel_z: f32,
+    pub max_speed_e: f32,
+    pub max_accel_e: f32,
     pub retract_length: f32,
     pub retract_speed: f32,
     pub deretract_speed: f32,
     pub z_hop: f32,
+    pub z_hop_type: ZHopType,
+    /// Angle of the ramps for a slope lift, in degrees.
+    pub z_hop_slope_angle: f32,
+    /// Only lift above this height, and below the other one (zero means no limit).
+    pub z_hop_above: f32,
+    pub z_hop_below: f32,
+    /// Always retract when moving up to the next layer, however short the move.
+    pub retract_layer_change: bool,
     pub wipe_on_retract: f32,
     pub relative_e: bool,
     pub arc_fitting: bool,
@@ -55,6 +109,10 @@ pub struct FdmPrinter {
     pub start_gcode: String,
     pub end_gcode: String,
     pub tool_change_gcode: String,
+    /// Sent at a pause or filament change the user adds at a layer. Empty uses
+    /// the usual command for the firmware.
+    pub pause_gcode: String,
+    pub filament_change_gcode: String,
     /// Address of a network printer ("http://192.168.1.50"), Moonraker or OctoPrint.
     pub host: String,
     pub host_key: String,
@@ -76,10 +134,20 @@ impl Default for FdmPrinter {
             max_speed: 300.0,
             max_accel: 3000.0,
             corner_speed: 9.0,
+            emit_limits: false,
+            max_speed_z: 0.0,
+            max_accel_z: 0.0,
+            max_speed_e: 0.0,
+            max_accel_e: 0.0,
             retract_length: 0.8,
             retract_speed: 40.0,
             deretract_speed: 30.0,
             z_hop: 0.2,
+            z_hop_type: ZHopType::Normal,
+            z_hop_slope_angle: 10.0,
+            z_hop_above: 0.0,
+            z_hop_below: 0.0,
+            retract_layer_change: false,
             wipe_on_retract: 0.0,
             relative_e: true,
             arc_fitting: false,
@@ -89,6 +157,8 @@ impl Default for FdmPrinter {
             start_gcode: DEFAULT_START.into(),
             end_gcode: DEFAULT_END.into(),
             tool_change_gcode: String::new(),
+            pause_gcode: String::new(),
+            filament_change_gcode: String::new(),
             host: String::new(),
             host_key: String::new(),
         }
@@ -229,6 +299,11 @@ pub struct Filament {
     pub fan_min: f32,
     pub fan_max: f32,
     pub fan_off_layers: u32,
+    /// Fan speed in percent while bridges and overhangs print.
+    pub fan_bridge: f32,
+    /// Fan speed for support interface and ironing; below zero keeps the layer's speed.
+    pub fan_interface: f32,
+    pub fan_ironing: f32,
     pub slow_layer_time: f32,
     pub min_layer_time: f32,
     pub min_speed: f32,
@@ -253,6 +328,9 @@ impl Default for Filament {
             fan_min: 60.0,
             fan_max: 100.0,
             fan_off_layers: 1,
+            fan_bridge: 100.0,
+            fan_interface: -1.0,
+            fan_ironing: -1.0,
             slow_layer_time: 15.0,
             min_layer_time: 6.0,
             min_speed: 15.0,
@@ -518,10 +596,36 @@ pub struct FdmProcess {
     pub speed_support: f32,
     pub speed_bridge: f32,
     pub speed_overhang: f32,
+    /// Slow walls down by how much of the line hangs in the air: speeds for up
+    /// to a quarter, half, three quarters and all of it. Zero leaves a tier alone.
+    pub overhang_tiers: bool,
+    pub speed_overhang_1: f32,
+    pub speed_overhang_2: f32,
+    pub speed_overhang_3: f32,
+    pub speed_overhang_4: f32,
     pub speed_travel: f32,
     pub accel_outer: f32,
     pub accel_default: f32,
     pub accel_travel: f32,
+    /// Acceleration for these kinds of line; zero follows the default one.
+    pub accel_inner: f32,
+    pub accel_infill: f32,
+    pub accel_solid: f32,
+    pub accel_top: f32,
+    pub accel_bridge: f32,
+    pub accel_first_layer: f32,
+    /// Extrusion multiplier for each kind of line, on top of the filament's flow.
+    pub flow_outer: f32,
+    pub flow_inner: f32,
+    pub flow_overhang: f32,
+    pub flow_gap: f32,
+    pub flow_sparse: f32,
+    pub flow_solid: f32,
+    pub flow_top: f32,
+    pub flow_bottom: f32,
+    pub flow_support: f32,
+    pub flow_interface: f32,
+    pub flow_first_layer: f32,
     // Support
     pub support: SupportKind,
     pub support_angle: f32,
@@ -605,10 +709,32 @@ impl Default for FdmProcess {
             speed_support: 120.0,
             speed_bridge: 40.0,
             speed_overhang: 35.0,
+            overhang_tiers: false,
+            speed_overhang_1: 0.0,
+            speed_overhang_2: 0.0,
+            speed_overhang_3: 0.0,
+            speed_overhang_4: 0.0,
             speed_travel: 300.0,
             accel_outer: 2000.0,
             accel_default: 3000.0,
             accel_travel: 5000.0,
+            accel_inner: 0.0,
+            accel_infill: 0.0,
+            accel_solid: 0.0,
+            accel_top: 0.0,
+            accel_bridge: 0.0,
+            accel_first_layer: 0.0,
+            flow_outer: 1.0,
+            flow_inner: 1.0,
+            flow_overhang: 1.0,
+            flow_gap: 1.0,
+            flow_sparse: 1.0,
+            flow_solid: 1.0,
+            flow_top: 1.0,
+            flow_bottom: 1.0,
+            flow_support: 1.0,
+            flow_interface: 1.0,
+            flow_first_layer: 1.0,
             support: SupportKind::None,
             support_angle: 35.0,
             support_plate_only: false,

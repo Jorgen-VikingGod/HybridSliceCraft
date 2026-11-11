@@ -26,6 +26,8 @@ struct SavedObject {
     infill_extruder: Option<usize>,
     inner_wall_extruder: Option<usize>,
     solid_infill_extruder: Option<usize>,
+    top_surface_extruder: Option<usize>,
+    bottom_surface_extruder: Option<usize>,
     support_extruder: Option<usize>,
     support_interface_extruder: Option<usize>,
     flow: f32,
@@ -45,6 +47,8 @@ struct SavedProject {
     version: u32,
     resin_mode: bool,
     plates: Vec<Vec<SavedObject>>,
+    /// Layer actions of each plate, in the same order as `plates`.
+    layer_actions: Vec<Vec<crate::fdm::LayerAction>>,
     fdm_printer: FdmPrinter,
     fdm_process: FdmProcess,
     filaments: Vec<Filament>,
@@ -108,6 +112,8 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
                 infill_extruder: o.infill_extruder,
                 inner_wall_extruder: o.inner_wall_extruder,
                 solid_infill_extruder: o.solid_infill_extruder,
+                top_surface_extruder: o.top_surface_extruder,
+                bottom_surface_extruder: o.bottom_surface_extruder,
                 support_extruder: o.support_extruder,
                 support_interface_extruder: o.support_interface_extruder,
                 flow: o.flow,
@@ -126,6 +132,7 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
         version: 1,
         resin_mode: s.resin_mode,
         plates: saved,
+        layer_actions: plates.iter().map(|p| p.layer_actions.clone()).collect(),
         fdm_printer: s.fdm_printer.clone(),
         fdm_process: s.fdm_process.clone(),
         filaments: s.filaments.clone(),
@@ -180,6 +187,8 @@ pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
             o.infill_extruder = s.infill_extruder;
             o.inner_wall_extruder = s.inner_wall_extruder;
             o.solid_infill_extruder = s.solid_infill_extruder;
+            o.top_surface_extruder = s.top_surface_extruder;
+            o.bottom_surface_extruder = s.bottom_surface_extruder;
             o.support_extruder = s.support_extruder;
             o.support_interface_extruder = s.support_interface_extruder;
             o.flow = s.flow;
@@ -195,6 +204,7 @@ pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
             o.refresh_paint();
             plate.objects.push(o);
         }
+        plate.layer_actions = project.layer_actions.get(plates.len()).cloned().unwrap_or_default();
         plates.push(plate);
     }
     if plates.is_empty() {
@@ -396,11 +406,15 @@ mod tests {
         o.extruder = 1;
         o.inner_wall_extruder = Some(2);
         o.solid_infill_extruder = Some(3);
+        o.top_surface_extruder = Some(1);
+        o.bottom_surface_extruder = Some(2);
         o.support_extruder = Some(0);
         o.support_interface_extruder = Some(1);
         o.infill = Some(33.0);
         o.holes.push(DrainHole { pos: [1.0, 2.0, 3.0], normal: [0.0, 0.0, -1.0], diameter: 3.0 });
         let mut plate = Plate::default();
+        plate.layer_actions.push(crate::fdm::LayerAction { z: 4.2, kind: crate::fdm::LayerActionKind::Pause });
+        plate.layer_actions.push(crate::fdm::LayerAction { z: 6.0, kind: crate::fdm::LayerActionKind::Gcode("M117 hi".into()) });
         plate.objects.push(o);
         let settings = ProjectSettings {
             resin_mode: true,
@@ -423,7 +437,12 @@ mod tests {
             (back.inner_wall_extruder, back.solid_infill_extruder, back.support_extruder, back.support_interface_extruder),
             (Some(2), Some(3), Some(0), Some(1))
         );
+        assert_eq!((back.top_surface_extruder, back.bottom_surface_extruder), (Some(1), Some(2)));
         assert_eq!(back.infill, Some(33.0));
+        assert_eq!(plates[0].layer_actions, vec![
+            crate::fdm::LayerAction { z: 4.2, kind: crate::fdm::LayerActionKind::Pause },
+            crate::fdm::LayerAction { z: 6.0, kind: crate::fdm::LayerActionKind::Gcode("M117 hi".into()) },
+        ]);
         assert_eq!(back.holes.len(), 1);
         assert_eq!(back.mesh.t.len(), tris_before);
         let painted_after = back.paint.as_ref().map(|p| p.iter().filter(|v| **v == 2).count()).unwrap_or(0);
