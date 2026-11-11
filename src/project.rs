@@ -47,6 +47,8 @@ struct SavedProject {
     version: u32,
     resin_mode: bool,
     plates: Vec<Vec<SavedObject>>,
+    /// Layer actions of each plate, in the same order as `plates`.
+    layer_actions: Vec<Vec<crate::fdm::LayerAction>>,
     fdm_printer: FdmPrinter,
     fdm_process: FdmProcess,
     filaments: Vec<Filament>,
@@ -130,6 +132,7 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
         version: 1,
         resin_mode: s.resin_mode,
         plates: saved,
+        layer_actions: plates.iter().map(|p| p.layer_actions.clone()).collect(),
         fdm_printer: s.fdm_printer.clone(),
         fdm_process: s.fdm_process.clone(),
         filaments: s.filaments.clone(),
@@ -201,6 +204,7 @@ pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
             o.refresh_paint();
             plate.objects.push(o);
         }
+        plate.layer_actions = project.layer_actions.get(plates.len()).cloned().unwrap_or_default();
         plates.push(plate);
     }
     if plates.is_empty() {
@@ -409,6 +413,8 @@ mod tests {
         o.infill = Some(33.0);
         o.holes.push(DrainHole { pos: [1.0, 2.0, 3.0], normal: [0.0, 0.0, -1.0], diameter: 3.0 });
         let mut plate = Plate::default();
+        plate.layer_actions.push(crate::fdm::LayerAction { z: 4.2, kind: crate::fdm::LayerActionKind::Pause });
+        plate.layer_actions.push(crate::fdm::LayerAction { z: 6.0, kind: crate::fdm::LayerActionKind::Gcode("M117 hi".into()) });
         plate.objects.push(o);
         let settings = ProjectSettings {
             resin_mode: true,
@@ -433,6 +439,10 @@ mod tests {
         );
         assert_eq!((back.top_surface_extruder, back.bottom_surface_extruder), (Some(1), Some(2)));
         assert_eq!(back.infill, Some(33.0));
+        assert_eq!(plates[0].layer_actions, vec![
+            crate::fdm::LayerAction { z: 4.2, kind: crate::fdm::LayerActionKind::Pause },
+            crate::fdm::LayerAction { z: 6.0, kind: crate::fdm::LayerActionKind::Gcode("M117 hi".into()) },
+        ]);
         assert_eq!(back.holes.len(), 1);
         assert_eq!(back.mesh.t.len(), tris_before);
         let painted_after = back.paint.as_ref().map(|p| p.iter().filter(|v| **v == 2).count()).unwrap_or(0);

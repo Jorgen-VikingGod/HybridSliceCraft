@@ -23,6 +23,22 @@ impl Firmware {
     }
 }
 
+impl Firmware {
+    /// The command that pauses a print, for when the printer doesn't name its own.
+    pub fn pause_command(self) -> &'static str {
+        match self {
+            Firmware::Marlin => "M601",
+            Firmware::Klipper => "PAUSE",
+            Firmware::RepRap => "M226",
+        }
+    }
+
+    /// The command that swaps filament partway through a print.
+    pub fn filament_change_command(self) -> &'static str {
+        "M600"
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FdmPrinter {
@@ -55,6 +71,10 @@ pub struct FdmPrinter {
     pub start_gcode: String,
     pub end_gcode: String,
     pub tool_change_gcode: String,
+    /// Sent at a pause or filament change the user adds at a layer. Empty uses
+    /// the usual command for the firmware.
+    pub pause_gcode: String,
+    pub filament_change_gcode: String,
     /// Address of a network printer ("http://192.168.1.50"), Moonraker or OctoPrint.
     pub host: String,
     pub host_key: String,
@@ -89,6 +109,8 @@ impl Default for FdmPrinter {
             start_gcode: DEFAULT_START.into(),
             end_gcode: DEFAULT_END.into(),
             tool_change_gcode: String::new(),
+            pause_gcode: String::new(),
+            filament_change_gcode: String::new(),
             host: String::new(),
             host_key: String::new(),
         }

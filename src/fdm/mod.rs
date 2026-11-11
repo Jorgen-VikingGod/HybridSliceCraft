@@ -171,6 +171,22 @@ pub enum ZChange {
     Speed(f32),
 }
 
+/// Something the user asks for at a height: a pause, a filament swap or any
+/// G-code, sent just before the layer at that height is printed.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum LayerActionKind {
+    Pause,
+    FilamentChange,
+    Gcode(String),
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LayerAction {
+    /// Top of the layer the action goes in front of, in mm.
+    pub z: f32,
+    pub kind: LayerActionKind,
+}
+
 #[derive(Clone)]
 pub struct FdmJob {
     pub objects: Vec<JobObject>,
@@ -178,6 +194,7 @@ pub struct FdmJob {
     pub filaments: Vec<Filament>,
     pub process: FdmProcess,
     pub z_changes: Vec<(f32, ZChange)>,
+    pub layer_actions: Vec<LayerAction>,
     pub thumbnail: Option<(u32, u32, Vec<u8>)>,
 }
 

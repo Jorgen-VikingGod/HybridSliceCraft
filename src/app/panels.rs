@@ -532,6 +532,7 @@ impl App {
                 ui.label(RichText::new(w).color(ui_yellow()).small());
             }
         }
+        self.layer_actions_ui(ui, &res);
         section(ui, crate::i18n::tr("COLOUR BY"));
         let before = self.scheme;
         egui::ComboBox::from_id_salt("scheme")
@@ -582,6 +583,67 @@ impl App {
                 self.show_send = true;
             }
         });
+    }
+
+    /// Pauses, filament changes and G-code to send in front of a layer.
+    fn layer_actions_ui(&mut self, ui: &mut egui::Ui, res: &crate::fdm::FdmResult) {
+        use crate::fdm::{LayerAction, LayerActionKind};
+        let n = res.layers.len();
+        if n == 0 {
+            return;
+        }
+        section(ui, crate::i18n::tr("LAYER ACTIONS"));
+        let li = self.layer_high.min(n - 1);
+        let z = res.layers[li].z;
+        ui.label(RichText::new(format!("{} {} ({:.2} mm)", crate::i18n::tr("Layer"), li + 1, z)).small().color(ui_dim()));
+        let mut add: Option<LayerActionKind> = None;
+        ui.horizontal_wrapped(|ui| {
+            if ui.button(crate::i18n::tr("Pause here")).clicked() {
+                add = Some(LayerActionKind::Pause);
+            }
+            if ui.button(crate::i18n::tr("Change filament here")).clicked() {
+                add = Some(LayerActionKind::FilamentChange);
+            }
+        });
+        ui.add(
+            egui::TextEdit::singleline(&mut self.layer_gcode_text)
+                .hint_text(crate::i18n::tr("G-code to send here"))
+                .desired_width(f32::INFINITY),
+        );
+        let has_text = !self.layer_gcode_text.trim().is_empty();
+        if ui.add_enabled(has_text, egui::Button::new(crate::i18n::tr("Add G-code here"))).clicked() {
+            add = Some(LayerActionKind::Gcode(self.layer_gcode_text.trim().to_string()));
+            self.layer_gcode_text.clear();
+        }
+        if let Some(kind) = add {
+            let actions = &mut self.plate_mut().layer_actions;
+            if !actions.iter().any(|a| (a.z - z).abs() < 1e-3 && a.kind == kind) {
+                actions.push(LayerAction { z, kind });
+                actions.sort_by(|a, b| a.z.total_cmp(&b.z));
+            }
+        }
+        let mut remove = None;
+        for (i, a) in self.plate().layer_actions.iter().enumerate() {
+            ui.horizontal(|ui| {
+                let what = match &a.kind {
+                    LayerActionKind::Pause => crate::i18n::tr("Pause").to_string(),
+                    LayerActionKind::FilamentChange => crate::i18n::tr("Filament change").to_string(),
+                    LayerActionKind::Gcode(s) => s.clone(),
+                };
+                ui.label(RichText::new(format!("{:.2} mm  {what}", a.z)).small());
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.small_button("✕").clicked() {
+                        remove = Some(i);
+                    }
+                });
+            });
+        }
+        if let Some(i) = remove {
+            self.plate_mut().layer_actions.remove(i);
+        }
+        if !self.plate().layer_actions.is_empty() {
+            ui.label(RichText::new(crate::i18n::tr("Slice again to put these into the G-code.")).small().color(ui_faint()));
+        }
     }
 
     pub fn resin_results(&mut self, ui: &mut egui::Ui) {

@@ -390,3 +390,16 @@ Bottom surface	Unterseite	Surface inférieure	Superficie inferior
 Same as solid infill	Wie die massive Füllung	Comme le remplissage plein	Igual que el relleno sólido
 The top skins and ironing.	Die Deckhaut und das Glätten.	Les peaux du dessus et le lissage.	Las pieles superiores y el planchado.
 The bottom skins and bridges.	Die Bodenhaut und Brücken.	Les peaux du dessous et les ponts.	Las pieles inferiores y los puentes.
+LAYER ACTIONS	SCHICHTAKTIONEN	ACTIONS PAR COUCHE	ACCIONES POR CAPA
+Layer	Schicht	Couche	Capa
+Pause here	Hier pausieren	Pause ici	Pausar aquí
+Change filament here	Hier Filament wechseln	Changer le filament ici	Cambiar filamento aquí
+G-code to send here	Hier zu sendender G-Code	G-code à envoyer ici	G-code a enviar aquí
+Add G-code here	G-Code hier einfügen	Ajouter du G-code ici	Añadir G-code aquí
+Pause	Pause	Pause	Pausa
+Filament change	Filamentwechsel	Changement de filament	Cambio de filamento
+Slice again to put these into the G-code.	Erneut slicen, um diese in den G-Code zu übernehmen.	Retrancher à nouveau pour les mettre dans le G-code.	Vuelve a laminar para ponerlas en el G-code.
+Pause script	Pause-Skript	Script de pause	Script de pausa
+Filament change script	Filamentwechsel-Skript	Script de changement de filament	Script de cambio de filamento
+Sent where you add a pause at a layer. Empty uses the usual command for the firmware.	Wird dort gesendet, wo Sie bei einer Schicht eine Pause einfügen. Leer nutzt den üblichen Befehl der Firmware.	Envoyé là où vous ajoutez une pause à une couche. Vide : la commande habituelle du firmware.	Se envía donde añades una pausa en una capa. Vacío usa el comando habitual del firmware.
+Sent where you add a filament change at a layer. Empty uses M600.	Wird dort gesendet, wo Sie bei einer Schicht einen Filamentwechsel einfügen. Leer nutzt M600.	Envoyé là où vous ajoutez un changement de filament à une couche. Vide : M600.	Se envía donde añades un cambio de filamento en una capa. Vacío usa M600.

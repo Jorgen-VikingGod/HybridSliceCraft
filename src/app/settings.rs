@@ -774,6 +774,10 @@ fn fdm_printer_editor(ui: &mut egui::Ui, p: &mut FdmPrinter) {
     ui.add(egui::TextEdit::multiline(&mut p.end_gcode).font(egui::TextStyle::Monospace).desired_rows(4).desired_width(f32::INFINITY));
     ui.label(RichText::new(crate::i18n::tr("Tool change script")).strong());
     ui.add(egui::TextEdit::multiline(&mut p.tool_change_gcode).font(egui::TextStyle::Monospace).desired_rows(2).desired_width(f32::INFINITY));
+    ui.label(RichText::new(crate::i18n::tr("Pause script")).strong()).on_hover_text(crate::i18n::tr("Sent where you add a pause at a layer. Empty uses the usual command for the firmware."));
+    ui.add(egui::TextEdit::multiline(&mut p.pause_gcode).font(egui::TextStyle::Monospace).desired_rows(1).desired_width(f32::INFINITY));
+    ui.label(RichText::new(crate::i18n::tr("Filament change script")).strong()).on_hover_text(crate::i18n::tr("Sent where you add a filament change at a layer. Empty uses M600."));
+    ui.add(egui::TextEdit::multiline(&mut p.filament_change_gcode).font(egui::TextStyle::Monospace).desired_rows(1).desired_width(f32::INFINITY));
     ui.label(RichText::new(crate::i18n::tr("Scripts can use {bed_temp}, {nozzle_temp}, {bed_x}, {bed_y}, {height}, {layer_height}, {filament_type}, {nozzle_temp-50}, {nozzle_temp-90}, and {tool} in tool changes.")).small().color(ui_dim()));
 }
 

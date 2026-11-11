@@ -291,6 +291,8 @@ pub struct Plate {
     pub objects: Vec<PlateObject>,
     /// Calibration changes partway up, e.g. a temperature tower.
     pub z_changes: Vec<(f32, ZChange)>,
+    /// Pauses, filament changes and G-code the user added at layers.
+    pub layer_actions: Vec<crate::fdm::LayerAction>,
     pub note: String,
 }
 

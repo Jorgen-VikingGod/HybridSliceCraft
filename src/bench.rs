@@ -214,6 +214,7 @@ pub fn run_fdm(o: &BenchOptions) -> Result<(), String> {
         filaments: vec![cat.filaments[0].clone()],
         process,
         z_changes: Vec::new(),
+        layer_actions: Vec::new(),
         thumbnail: None,
     };
     println!(

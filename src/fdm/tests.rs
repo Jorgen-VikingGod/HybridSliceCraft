@@ -23,6 +23,7 @@ fn job(mesh: Mesh, process: FdmProcess) -> FdmJob {
         filaments: vec![cat.filaments[0].clone()],
         process,
         z_changes: Vec::new(),
+        layer_actions: Vec::new(),
         thumbnail: None,
     }
 }
@@ -794,4 +795,38 @@ fn top_and_bottom_skins_can_split_off_from_the_solid_infill() {
     assert_eq!(tools_of(&r, Feature::TopSurface), vec![0]);
     assert_eq!(tools_of(&r, Feature::BottomSurface), vec![1]);
     assert_eq!(tools_of(&r, Feature::SolidInfill), vec![1]);
+}
+
+#[test]
+fn pauses_filament_changes_and_gcode_go_in_front_of_their_layer() {
+    use crate::fdm::{LayerAction, LayerActionKind};
+    let mut j = job(centered(make_box(Vec3::new(20.0, 20.0, 10.0))), FdmProcess::default());
+    j.printer.start_gcode = "G28".into();
+    j.printer.end_gcode = String::new();
+    j.layer_actions = vec![
+        LayerAction { z: 5.0, kind: LayerActionKind::Pause },
+        LayerAction { z: 7.0, kind: LayerActionKind::FilamentChange },
+        LayerAction { z: 3.0, kind: LayerActionKind::Gcode("M117 hello\nM300 S440 P200".into()) },
+    ];
+    let r = slice(&j, &Progress::default()).unwrap();
+    let lines: Vec<&str> = r.gcode.lines().collect();
+    let at = |needle: &str| {
+        let hits: Vec<usize> = lines.iter().enumerate().filter(|(_, l)| l.starts_with(needle)).map(|(i, _)| i).collect();
+        assert_eq!(hits.len(), 1, "{needle}: {hits:?}");
+        hits[0]
+    };
+    let (custom, pause, change) = (at("M117 hello"), at("M601"), at("M600"));
+    assert!(custom < pause && pause < change, "{custom} {pause} {change}");
+    assert_eq!(lines[custom + 1], "M300 S440 P200");
+    // Each sits right after its own comment, in front of that layer's printing.
+    assert!(lines[pause - 1].starts_with("; pause before layer"), "{}", lines[pause - 1]);
+    assert!(lines[change - 1].starts_with("; filament change before layer"));
+    // The printer can supply its own commands instead.
+    j.printer.pause_gcode = "M0 Change nozzle".into();
+    j.printer.firmware = Firmware::Klipper;
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.gcode.contains("\nM0 Change nozzle\n"));
+    j.printer.pause_gcode = String::new();
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.gcode.contains("\nPAUSE\n"));
 }

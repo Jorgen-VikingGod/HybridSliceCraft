@@ -2,7 +2,7 @@
 
 use super::plan::Plan;
 use super::writer::{Mv, Writer};
-use super::{bead_area, bead_spacing, ExPath, Feature, FdmJob, FdmResult, ZChange};
+use super::{bead_area, bead_spacing, ExPath, Feature, FdmJob, FdmResult, LayerAction, LayerActionKind, ZChange};
 use crate::geom;
 use crate::profiles::{Firmware, Sequence};
 use crate::slicing::Progress;
@@ -217,6 +217,24 @@ fn file_header(job: &FdmJob, plan: &Plan) -> String {
     header
 }
 
+fn apply_layer_action(w: &mut Writer, action: &LayerAction, printer: &crate::profiles::FdmPrinter, layer: u32) {
+    let (what, text) = match &action.kind {
+        LayerActionKind::Pause => {
+            let own = printer.pause_gcode.trim();
+            ("pause", if own.is_empty() { printer.firmware.pause_command() } else { own })
+        }
+        LayerActionKind::FilamentChange => {
+            let own = printer.filament_change_gcode.trim();
+            ("filament change", if own.is_empty() { printer.firmware.filament_change_command() } else { own })
+        }
+        LayerActionKind::Gcode(s) => ("custom G-code", s.trim()),
+    };
+    let _ = writeln!(w.chunk, "; {what} before layer {layer} ({:.2} mm)", action.z);
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let _ = writeln!(w.chunk, "{line}");
+    }
+}
+
 fn apply_z_change(w: &mut Writer, change: ZChange, firmware: Firmware) {
     match change {
         ZChange::Temperature(t) => {
@@ -341,6 +359,9 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
     let mut pending_z: Vec<(f32, ZChange)> = job.z_changes.clone();
     pending_z.sort_by(|a, b| a.0.total_cmp(&b.0));
     let mut next_z = 0usize;
+    let mut pending_actions: Vec<LayerAction> = job.layer_actions.clone();
+    pending_actions.sort_by(|a, b| a.z.total_cmp(&b.z));
+    let mut next_action = 0usize;
 
     let order: Vec<Vec<usize>> = if p.sequence == Sequence::ByObject && job.objects.len() > 1 {
         (0..job.objects.len()).map(|oi| vec![oi]).collect()
@@ -414,6 +435,11 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
             while next_z < pending_z.len() && pending_z[next_z].0 as f64 <= layer.z + 1e-3 {
                 apply_z_change(&mut w, pending_z[next_z].1, printer.firmware);
                 next_z += 1;
+            }
+            // Pauses, filament changes and G-code the user put in front of this layer.
+            while next_action < pending_actions.len() && pending_actions[next_action].z as f64 <= layer.z + 1e-3 {
+                apply_layer_action(&mut w, &pending_actions[next_action], printer, display_layer + 1);
+                next_action += 1;
             }
 
             // Skirt and brim only on the very first layer.

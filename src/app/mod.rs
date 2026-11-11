@@ -218,6 +218,8 @@ pub struct App {
 
     pub layer_high: usize,
     pub layer_low: usize,
+    /// G-code being typed for a layer action.
+    pub layer_gcode_text: String,
     pub move_end: f32,
     pub scheme: ColorScheme,
     pub feature_on: [bool; Feature::COUNT],
@@ -372,6 +374,7 @@ impl App {
             gpu_segs: Vec::new(),
             layer_high: 0,
             layer_low: 0,
+            layer_gcode_text: String::new(),
             move_end: 1.0,
             scheme: ColorScheme::Feature,
             feature_on,
