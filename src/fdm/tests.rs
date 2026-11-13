@@ -1200,3 +1200,31 @@ fn scarf_seam_changes_the_wall_ends_but_not_the_plastic_used() {
     widths.sort_by(|x, y| x.total_cmp(y));
     assert!(widths[0] < widths[widths.len() / 2] * 0.6, "{} vs {}", widths[0], widths[widths.len() / 2]);
 }
+
+fn feature_count(r: &FdmResult, f: Feature) -> usize {
+    r.segs.iter().filter(|s| s.feature == f as u32).count()
+}
+
+#[test]
+fn looser_top_surface_uses_fewer_lines() {
+    let mesh = centered(make_box(Vec3::new(30.0, 30.0, 6.0)));
+    let solid = slice(&job(mesh.clone(), FdmProcess::default()), &Progress::default()).unwrap();
+    let mut p = FdmProcess::default();
+    p.top_density = 50.0;
+    let loose = slice(&job(mesh, p), &Progress::default()).unwrap();
+    let (a, b) = (feature_count(&solid, Feature::TopSurface), feature_count(&loose, Feature::TopSurface));
+    assert!(b * 10 < a * 7, "top lines {a} -> {b}");
+}
+
+#[test]
+fn thick_bridges_are_as_wide_as_the_nozzle_and_carry_more_plastic() {
+    let thin = slice(&job(centered(table()), FdmProcess::default()), &Progress::default()).unwrap();
+    let mut p = FdmProcess::default();
+    p.thick_bridges = true;
+    let thick = slice(&job(centered(table()), p), &Progress::default()).unwrap();
+    let width = |r: &FdmResult| r.segs.iter().find(|s| s.feature == Feature::Bridge as u32).map(|s| s.width).unwrap();
+    let flow = |r: &FdmResult| r.segs.iter().filter(|s| s.feature == Feature::Bridge as u32).map(|s| s.flow).fold(0.0, f32::max);
+    assert!((width(&thick) - 0.4).abs() < 0.02, "{}", width(&thick));
+    assert!(flow(&thick) > flow(&thin) * 0.9);
+    assert!(feature_count(&thick, Feature::Bridge) < feature_count(&thin, Feature::Bridge) * 2);
+}

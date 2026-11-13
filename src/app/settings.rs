@@ -589,6 +589,10 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.flag(ui, "Stagger inner seams", "Moves the seam of inner walls a little on every layer so they don't line up.", &mut p.stagger_inner_seams, b.stagger_inner_seams, true);
             group(ui, r, "SIZE ACCURACY");
             r.num(ui, "Size correction", "Grow or shrink outlines to match real measurements.", &mut p.xy_compensation, b.xy_compensation, -1.0..=1.0, "mm", 3, true);
+            r.num(ui, "Hole size correction", "Make holes bigger (positive) or smaller (negative) on their own.", &mut p.xy_hole_compensation, b.xy_hole_compensation, -1.0..=1.0, "mm", 3, true);
+            r.num(ui, "Close gaps up to", "Closes cracks in the model's skin up to this wide while slicing.", &mut p.slice_closing_radius, b.slice_closing_radius, 0.0..=2.0, "mm", 2, true);
+            r.flag(ui, "Polyholes", "Redraw small round holes as polygons that print to size.", &mut p.polyholes, b.polyholes, true);
+            r.num(ui, "Polyhole up to", "Holes wider than this stay as they are.", &mut p.polyhole_max, b.polyhole_max, 1.0..=50.0, "mm", 1, true);
             r.num(ui, "Elephant foot fix", "Pulls the first layer in so it doesn't bulge.", &mut p.elephant_foot, b.elephant_foot, 0.0..=1.0, "mm", 3, true);
             group(ui, r, "SURFACE");
             r.flag(ui, "Ironing", "Runs the hot nozzle over the top to smooth it.", &mut p.ironing, b.ironing, false);
@@ -613,6 +617,8 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.int(ui, "Bottom layers", "", &mut p.bottom_layers, b.bottom_layers, 0..=50, false);
             r.pick(ui, "Top pattern", "", &mut p.top_pattern, b.top_pattern, &SurfacePattern::ALL, SurfacePattern::label, true);
             r.pick(ui, "Bottom pattern", "", &mut p.bottom_pattern, b.bottom_pattern, &SurfacePattern::ALL, SurfacePattern::label, true);
+            r.num(ui, "Top surface density", "Fill the top surface less than solid to save time; 100 is solid.", &mut p.top_density, b.top_density, 10.0..=100.0, "%", 0, true);
+            r.num(ui, "Bottom surface density", "Fill the bottom surface less than solid; 100 is solid.", &mut p.bottom_density, b.bottom_density, 10.0..=100.0, "%", 0, true);
             group(ui, r, "INFILL");
             r.num(ui, "Infill density", "How full the inside is. 15% suits most decorative prints.", &mut p.infill_density, b.infill_density, 0.0..=100.0, "%", 0, false);
             r.pick(ui, "Infill pattern", "", &mut p.infill_pattern, b.infill_pattern, &InfillPattern::ALL, InfillPattern::label, false);
@@ -673,6 +679,7 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.num(ui, "Tree tip radius", "", &mut p.tree_tip_radius, b.tree_tip_radius, 0.2..=5.0, "mm", 2, true);
             group(ui, r, "BRIDGES");
             r.num(ui, "Bridge flow", "", &mut p.bridge_flow, b.bridge_flow, 0.3..=1.5, "", 2, true);
+            r.flag(ui, "Thick bridges", "Print bridges as round strands as wide as the nozzle, which sag less over long gaps.", &mut p.thick_bridges, b.thick_bridges, true);
         }
         _ => {
             group(ui, r, "BED ADHESION");

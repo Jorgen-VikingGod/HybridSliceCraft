@@ -359,10 +359,13 @@ pub enum InfillPattern {
     Stars,
     Hilbert,
     Archimedean,
+    Lattice,
+    Honeycomb3D,
+    OctagramSpiral,
 }
 
 impl InfillPattern {
-    pub const ALL: [InfillPattern; 14] = [
+    pub const ALL: [InfillPattern; 17] = [
         InfillPattern::Grid,
         InfillPattern::Lines,
         InfillPattern::Rectilinear,
@@ -377,6 +380,9 @@ impl InfillPattern {
         InfillPattern::Stars,
         InfillPattern::Hilbert,
         InfillPattern::Archimedean,
+        InfillPattern::Lattice,
+        InfillPattern::Honeycomb3D,
+        InfillPattern::OctagramSpiral,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -394,6 +400,9 @@ impl InfillPattern {
             InfillPattern::Stars => "Stars",
             InfillPattern::Hilbert => "Hilbert curve",
             InfillPattern::Archimedean => "Archimedean chords",
+            InfillPattern::Lattice => "2D lattice",
+            InfillPattern::Honeycomb3D => "3D honeycomb",
+            InfillPattern::OctagramSpiral => "Octagram spiral",
         }
     }
 }
@@ -573,6 +582,13 @@ pub struct FdmProcess {
     pub first_layer_line_width: f32,
     pub xy_compensation: f32,
     pub elephant_foot: f32,
+    /// Move holes on their own, in mm: positive makes them bigger.
+    pub xy_hole_compensation: f32,
+    /// Close gaps in the model's skin up to this wide, in mm.
+    pub slice_closing_radius: f32,
+    /// Redraw small round holes as polygons that print to size.
+    pub polyholes: bool,
+    pub polyhole_max: f32,
     pub seam: SeamMode,
     pub seam_gap: f32,
     /// Fade the outer wall in and out over a stretch at the seam so it leaves no bump.
@@ -614,6 +630,11 @@ pub struct FdmProcess {
     pub top_pattern: SurfacePattern,
     pub bottom_pattern: SurfacePattern,
     pub spiral_vase: bool,
+    /// How tightly the top and bottom surfaces are filled, in percent of solid.
+    pub top_density: f32,
+    pub bottom_density: f32,
+    /// Print bridges as round strands as wide as the nozzle, which sag less over long gaps.
+    pub thick_bridges: bool,
     // Speed (mm/s)
     pub speed_first_layer: f32,
     pub speed_outer: f32,
@@ -702,6 +723,10 @@ impl Default for FdmProcess {
             first_layer_line_width: 0.5,
             xy_compensation: 0.0,
             elephant_foot: 0.1,
+            xy_hole_compensation: 0.0,
+            slice_closing_radius: 0.0,
+            polyholes: false,
+            polyhole_max: 10.0,
             seam: SeamMode::Aligned,
             seam_gap: 0.05,
             scarf_seam: false,
@@ -734,6 +759,9 @@ impl Default for FdmProcess {
             top_pattern: SurfacePattern::Monotonic,
             bottom_pattern: SurfacePattern::Monotonic,
             spiral_vase: false,
+            top_density: 100.0,
+            bottom_density: 100.0,
+            thick_bridges: false,
             speed_first_layer: 35.0,
             speed_outer: 120.0,
             speed_inner: 180.0,

@@ -5,11 +5,11 @@ use super::infill;
 use super::support::{self, SupportLayer};
 use super::{bead_spacing, ExPath, Feature, FdmJob};
 use crate::geom::{self, EdgeIndex, Polyline, Region};
-use crate::profiles::{BrimType, FuzzyMode, InfillPattern, IroningType, SurfacePattern};
+use crate::profiles::{BrimType, FdmProcess, FuzzyMode, InfillPattern, IroningType, SurfacePattern};
 use crate::slicing::{slice_mesh, Progress};
 use glam::DVec2;
 use rayon::prelude::*;
-use std::f64::consts::PI;
+use std::f64::consts::{PI, TAU};
 
 pub struct IslandPlan {
     pub comb: EdgeIndex,
@@ -53,7 +53,46 @@ pub struct Plan {
 /// OrcaSlicer's default "resolution".
 const OUTLINE_TOLERANCE_MM: f64 = 0.01;
 
-pub(super) fn object_slices(mesh: &crate::mesh::Mesh, zs_mid: &[f64], xy: f64, foot: f64) -> (Vec<Region>, usize) {
+/// Round holes redrawn as the polygons a printer can really make, each one
+/// wide enough that the hole doesn't print too small.
+fn polyholes(r: &Region, max_diameter: f64, nozzle: f64) -> Region {
+    let mut out: Region = Vec::with_capacity(r.len());
+    for path in r {
+        let area = geom::path_area_mm2(path);
+        if area >= 0.0 {
+            out.push(path.clone());
+            continue;
+        }
+        let pts = geom::path_to_mm(path);
+        let hole = -area;
+        let perimeter: f64 = (0..pts.len()).map(|k| pts[k].distance(pts[(k + 1) % pts.len()])).sum();
+        // Only near-circular holes: circularity 4*pi*A / P^2 is close to 1.
+        let circularity = 4.0 * PI * hole / (perimeter * perimeter).max(1e-9);
+        let d = 2.0 * (hole / PI).sqrt();
+        if circularity < 0.85 || d > max_diameter || d < nozzle {
+            out.push(path.clone());
+            continue;
+        }
+        let centre = pts.iter().fold(DVec2::ZERO, |a, p| a + *p) / pts.len() as f64;
+        let n = ((PI / (1.0 - (nozzle / d).min(0.95)).acos()).ceil() as usize).clamp(4, 64);
+        let radius = d * 0.5 / (PI / n as f64).cos();
+        let mut poly: Vec<DVec2> = (0..n)
+            .map(|k| {
+                let a = TAU * k as f64 / n as f64;
+                centre + DVec2::new(a.cos(), a.sin()) * radius
+            })
+            .collect();
+        // Holes run clockwise.
+        poly.reverse();
+        out.push(geom::path_from(&poly));
+    }
+    out
+}
+
+pub(super) fn object_slices(mesh: &crate::mesh::Mesh, zs_mid: &[f64], p: &FdmProcess, nozzle: f64) -> (Vec<Region>, usize) {
+    let (xy, foot) = (p.xy_compensation as f64, p.elephant_foot as f64);
+    let (hole_d, closing) = (p.xy_hole_compensation as f64, p.slice_closing_radius as f64);
+    let poly = p.polyholes.then_some(p.polyhole_max as f64);
     let (loops, forced) = slice_mesh(mesh, zs_mid);
     let slices: Vec<Region> = loops
         .par_iter()
@@ -63,9 +102,24 @@ pub(super) fn object_slices(mesh: &crate::mesh::Mesh, zs_mid: &[f64], xy: f64, f
             let mut r = geom::union(&paths);
             r = geom::remove_small(&r, 0.002);
             r = geom::simplify_region(&r, OUTLINE_TOLERANCE_MM);
+            if closing > 0.0 {
+                // Close gaps up to this wide, such as a crack in the model's skin.
+                r = geom::offset(&geom::offset(&r, closing), -closing);
+            }
+            if let Some(max) = poly {
+                r = polyholes(&r, max, nozzle);
+            }
             let d = xy - if i == 0 { foot } else { 0.0 };
             if d != 0.0 {
                 r = geom::offset(&r, d);
+            }
+            if hole_d != 0.0 {
+                // Holes move on their own: positive makes them bigger.
+                let outers: Region = r.iter().filter(|p| geom::path_area_mm2(p) > 0.0).cloned().collect();
+                let holes = geom::diff(&outers, &r);
+                if !holes.is_empty() {
+                    r = geom::diff(&outers, &geom::offset(&holes, hole_d));
+                }
             }
             r
         })
@@ -510,12 +564,14 @@ fn solid_fill(
     angle: f64,
     feature: Feature,
     start: DVec2,
+    density: f64,
     out: &mut Vec<ExPath>,
 ) {
     if region.is_empty() {
         return;
     }
-    let s = bead_spacing(w, h);
+    // Below full density the lines simply sit further apart.
+    let s = bead_spacing(w, h) / density.clamp(0.05, 1.0);
     match pattern {
         SurfacePattern::Concentric => {
             let mut lines: Vec<Polyline> = Vec::new();
@@ -666,8 +722,6 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
     let n = layers.len();
 
     progress.set(0.05, "Cutting the model into layers");
-    let xy = p.xy_compensation as f64;
-    let foot = p.elephant_foot as f64;
     let mut all_slices: Vec<Vec<Region>> = Vec::with_capacity(job.objects.len());
     let mut stitched = 0;
     for o in &job.objects {
@@ -676,7 +730,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
             all_slices.push(ready.as_ref().clone());
             continue;
         }
-        let (slices, forced) = object_slices(&o.mesh, &zs_mid, xy, foot);
+        let (slices, forced) = object_slices(&o.mesh, &zs_mid, p, job.printer.nozzle_for(o.extruder) as f64);
         stitched += forced;
         all_slices.push(slices);
     }
@@ -943,19 +997,28 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                         if !bridge_fill.is_empty() {
                             let a = best_bridge_angle(&bridge_area);
                             let mut bridge = Vec::new();
+                            // Thick bridges are round strands as wide as the nozzle,
+                            // laid side by side with no squish between them.
+                            let (bw, bh) = if p.thick_bridges { (g.nozzle_in, 0.0) } else { (w, h) };
                             solid_fill(
                                 &bridge_fill,
                                 &bound_solid,
                                 SurfacePattern::Rectilinear,
-                                w,
-                                h,
+                                bw,
+                                bh,
                                 a,
                                 Feature::Bridge,
                                 center,
+                                1.0,
                                 &mut bridge,
                             );
+                            let mult = if p.thick_bridges {
+                                std::f64::consts::FRAC_PI_4 * bw * bw / super::bead_area(bw, h)
+                            } else {
+                                1.0
+                            };
                             for b in &mut bridge {
-                                b.flow_mult = p.bridge_flow as f64;
+                                b.flow_mult = p.bridge_flow as f64 * mult;
                             }
                             fill.extend(bridge);
                         }
@@ -970,6 +1033,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             angle,
                             solid_feature,
                             center,
+                            if is_bottom { p.bottom_density as f64 / 100.0 } else { 1.0 },
                             &mut fill,
                         );
                         drop(_t);
@@ -1002,6 +1066,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             angle,
                             Feature::TopSurface,
                             center,
+                            p.top_density as f64 / 100.0,
                             &mut fill,
                         );
                         drop(_t);
@@ -1154,4 +1219,43 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
         warnings,
         spiral_from,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn square_with_hole(hole_d: f64) -> Region {
+        let outer = geom::rect(DVec2::new(0.0, 0.0), DVec2::new(30.0, 30.0));
+        let mut hole = geom::circle(DVec2::new(15.0, 15.0), hole_d / 2.0, 48);
+        hole.reverse();
+        vec![outer, hole]
+    }
+
+    fn hole_area(r: &Region) -> f64 {
+        r.iter().map(geom::path_area_mm2).filter(|a| *a < 0.0).map(|a| -a).sum()
+    }
+
+    #[test]
+    fn polyholes_replace_small_round_holes_with_slightly_bigger_polygons() {
+        let r = square_with_hole(4.0);
+        let before = hole_area(&r);
+        let after = hole_area(&polyholes(&r, 10.0, 0.4));
+        assert!(after >= before * 0.99 && after < before * 1.3, "{before} -> {after}");
+        let points = |r: &Region| r.iter().find(|p| geom::path_area_mm2(p) < 0.0).map(|p| p.len()).unwrap();
+        assert!(points(&polyholes(&r, 10.0, 0.4)) < 40, "should be a coarse polygon");
+        // Big holes are left alone.
+        assert_eq!(hole_area(&polyholes(&square_with_hole(14.0), 10.0, 0.4)), hole_area(&square_with_hole(14.0)));
+    }
+
+    #[test]
+    fn slice_layers_apply_hole_correction_and_gap_closing() {
+        let mesh = crate::mesh::make_box(glam::Vec3::new(20.0, 20.0, 5.0));
+        let mut p = FdmProcess::default();
+        let plain = object_slices(&mesh, &[2.0], &p, 0.4).0;
+        assert!(hole_area(&plain[0]) == 0.0);
+        p.xy_compensation = 0.1;
+        let grown = object_slices(&mesh, &[2.0], &p, 0.4).0;
+        assert!(geom::region_area(&grown[0]) > geom::region_area(&plain[0]));
+    }
 }

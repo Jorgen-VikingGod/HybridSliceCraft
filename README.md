@@ -7,7 +7,7 @@ A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast des
 ![Filament preview: the starter bear sliced, coloured by line type](docs/fdm-preview.png)
 
 - Walls, gap fill and thin-wall detection, top and bottom skins, bridges and overhang slow-down
-- Fourteen infill patterns: grid, lines, rectilinear, triangles, cubic, quarter cubic, stars, gyroid, honeycomb, concentric, cross hatch, lightning-style, Hilbert curve, Archimedean chords
+- Seventeen infill patterns: grid, lines, rectilinear, triangles, cubic, quarter cubic, stars, gyroid, honeycomb, 3D honeycomb, 2D lattice, concentric, cross hatch, lightning-style, Hilbert curve, Archimedean chords, octagram spiral
 - Grid and tree supports with interface layers
 - Skirt, brim (outside, inside holes or both) and raft
 - Seam placement, ironing (all top surfaces, topmost only, or all solid layers), fuzzy skin (outline, holes or both), spiral vase, adaptive layer heights
@@ -22,6 +22,7 @@ A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast des
 - Z-hop types (straight, slope or spiral), lift only between two heights, retract at every layer change, and machine limits (speed, acceleration, corner speed) sent to Marlin, Klipper or RepRapFirmware
 - **Paint more than colour**: mark support enforcers and blockers (supports appear where you paint them, even with supports off, and stay out of blocked areas), where the seam should or should not go, and where the skin should be fuzzy
 - Scarf seam (the outer wall fades in and out at the seam), mouse-ear brim pads at sharp corners, and a grid style for supports
+- Looser top and bottom surfaces, thick round-strand bridges, and slicing aids: separate hole size correction, closing small cracks in a model's skin, and polyholes that make small round holes print to size
 - Input shaper settings and object labels so a failed object can be skipped mid-print (Klipper, Marlin)
 - Snapmaker U1 printer presets (four tool heads, five nozzle choices), with start and end scripts from OrcaSlicer's profile
 - Arc fitting (G2/G3), pressure advance, Marlin, Klipper and RepRapFirmware output
