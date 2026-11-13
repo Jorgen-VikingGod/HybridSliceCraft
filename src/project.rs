@@ -39,6 +39,9 @@ struct SavedObject {
     /// Name of the file holding one paint number per triangle, if painted.
     paint_file: Option<String>,
     paint_depth: Option<f32>,
+    /// Name of the file holding support, seam and fuzzy skin marks, if any.
+    #[serde(default)]
+    marks_file: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -101,6 +104,13 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
                 zip.write_all(p).map_err(|e| e.to_string())?;
                 paint_file = Some(name);
             }
+            let mut marks_file = None;
+            if let Some(p) = o.marks.as_ref().filter(|p| p.len() == o.mesh.t.len()) {
+                let name = format!("marks/{}.bin", next - 1);
+                zip.start_file(&name, opts).map_err(|e| e.to_string())?;
+                zip.write_all(p).map_err(|e| e.to_string())?;
+                marks_file = Some(name);
+            }
             list.push(SavedObject {
                 name: o.name.clone(),
                 file,
@@ -124,6 +134,7 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
                 holes: o.holes.clone(),
                 paint_file,
                 paint_depth: Some(o.paint_depth),
+                marks_file,
             });
         }
         saved.push(list);
@@ -178,6 +189,16 @@ pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
                     paint = Some(raw.iter().zip(&kept).filter(|(_, k)| **k).map(|(v, _)| *v).collect());
                 }
             }
+            let mut marks: Option<Vec<u8>> = None;
+            if let Some(name) = &s.marks_file {
+                let mut raw = Vec::new();
+                if let Ok(mut f) = zip.by_name(name) {
+                    let _ = f.read_to_end(&mut raw);
+                }
+                if raw.len() == kept.len() {
+                    marks = Some(raw.iter().zip(&kept).filter(|(_, k)| **k).map(|(v, _)| *v).collect());
+                }
+            }
             let mut o = PlateObject::new(s.name, mesh);
             o.pivot = Vec3::from(s.pivot);
             o.pos = Vec3::from(s.pos);
@@ -201,6 +222,7 @@ pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
                 o.paint_depth = d;
             }
             o.paint = paint.map(Arc::new);
+            o.marks = marks.map(Arc::new);
             o.refresh_paint();
             plate.objects.push(o);
         }
@@ -396,8 +418,12 @@ mod tests {
     fn project_round_trip() {
         let mut o = PlateObject::new("Thing", make_box(Vec3::new(5.0, 6.0, 7.0)));
         // A painted corner, so the paint has to survive saving too.
-        o.paint_at(Vec3::new(0.0, 0.0, 3.5), 0, crate::scene::PaintOp::Brush { radius: 1.5, value: 2 });
+        o.paint_at(Vec3::new(0.0, 0.0, 3.5), 0, crate::scene::PaintOp::Brush { radius: 1.5, value: 2 }, crate::scene::Channel::Filament);
         let painted_before = o.paint.as_ref().map(|p| p.iter().filter(|v| **v == 2).count()).unwrap_or(0);
+        o.paint_at(Vec3::new(0.0, 0.0, -3.5), 0, crate::scene::PaintOp::Brush { radius: 1.5, value: crate::paint::SUPPORT_BLOCKER }, crate::scene::Channel::Marks);
+        let marked_before = o.marks.as_ref().map(|p| p.iter().filter(|v| **v == crate::paint::SUPPORT_BLOCKER).count()).unwrap_or(0);
+        assert!(marked_before > 0);
+        assert_eq!(o.paint.as_ref().map(|p| p.len()), Some(o.mesh.t.len()), "both kinds of paint follow a split triangle");
         let tris_before = o.mesh.t.len();
         assert!(painted_before > 0);
         o.pos = Vec3::new(10.0, 20.0, 3.5);
@@ -447,7 +473,9 @@ mod tests {
         assert_eq!(back.mesh.t.len(), tris_before);
         let painted_after = back.paint.as_ref().map(|p| p.iter().filter(|v| **v == 2).count()).unwrap_or(0);
         assert_eq!(painted_after, painted_before, "paint should come back");
-        assert_eq!(back.paint_values, vec![0, 2]);
+        let marked_after = back.marks.as_ref().map(|p| p.iter().filter(|v| **v == crate::paint::SUPPORT_BLOCKER).count()).unwrap_or(0);
+        assert_eq!(marked_after, marked_before, "marks should come back");
+        assert_eq!(back.paint_values, vec![0, 2, 100 + crate::paint::SUPPORT_BLOCKER]);
         assert!((back.size() - plates[0].objects[0].size()).length() < 1e-3);
         assert!((back.pos - Vec3::new(10.0, 20.0, 3.5)).length() < 1e-4);
         assert!(loaded.resin_mode);

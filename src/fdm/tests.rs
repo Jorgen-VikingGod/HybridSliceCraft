@@ -1014,3 +1014,189 @@ fn walls_slow_down_in_steps_by_how_much_they_hang() {
     assert!((a - b).abs() / a < 0.005, "{a} against {b}");
     assert!(tiered.total_time > plain.total_time);
 }
+
+/// The table's underside (and the top of its leg) marked with `mark`.
+fn marked_underside(mesh: &Mesh, mark: u8) -> std::sync::Arc<Vec<u8>> {
+    std::sync::Arc::new(
+        (0..mesh.t.len())
+            .map(|i| {
+                let [a, b, c] = mesh.tri(i);
+                if (a.z - 12.0).abs() < 1e-3 && (b.z - 12.0).abs() < 1e-3 && (c.z - 12.0).abs() < 1e-3 { mark } else { 0 }
+            })
+            .collect(),
+    )
+}
+
+fn support_lines(r: &FdmResult) -> usize {
+    r.segs.iter().filter(|s| s.feature == Feature::Support as u32 || s.feature == Feature::SupportInterface as u32).count()
+}
+
+#[test]
+fn painted_enforcers_make_support_even_when_supports_are_off() {
+    let mesh = centered(table());
+    let mut j = job(mesh.clone(), FdmProcess::default());
+    assert_eq!(support_lines(&slice(&j, &Progress::default()).unwrap()), 0);
+    j.objects[0].marks = Some(marked_underside(&mesh, crate::paint::SUPPORT_ENFORCER));
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(support_lines(&r) > 50, "{}", support_lines(&r));
+}
+
+#[test]
+fn painted_blockers_keep_support_out() {
+    for kind in [SupportKind::Normal, SupportKind::Tree] {
+        let mesh = centered(table());
+        let mut p = FdmProcess::default();
+        p.support = kind;
+        let mut j = job(mesh.clone(), p);
+        let plain = support_lines(&slice(&j, &Progress::default()).unwrap());
+        assert!(plain > 50);
+        j.objects[0].marks = Some(marked_underside(&mesh, crate::paint::SUPPORT_BLOCKER));
+        let blocked = support_lines(&slice(&j, &Progress::default()).unwrap());
+        assert!(blocked * 4 < plain, "{kind:?}: {plain} lines became {blocked}");
+    }
+}
+
+/// Where each outer wall loop starts: the nozzle position when its ";TYPE" line comes.
+fn outer_wall_starts(gcode: &str) -> Vec<(f64, f64)> {
+    let (mut x, mut y) = (0.0, 0.0);
+    let mut out = Vec::new();
+    for l in gcode.lines() {
+        if l.starts_with(";TYPE:Outer wall") {
+            out.push((x, y));
+        } else if l.starts_with("G0 ") || l.starts_with("G1 ") {
+            for word in l.split_whitespace() {
+                if let Some(v) = word.strip_prefix('X') {
+                    x = v.parse().unwrap_or(x);
+                } else if let Some(v) = word.strip_prefix('Y') {
+                    y = v.parse().unwrap_or(y);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// A 30 mm cube with the triangles on one side marked.
+fn cube_with_marked_side(mark: u8, side: fn(Vec3) -> bool) -> (Mesh, std::sync::Arc<Vec<u8>>) {
+    let mesh = centered(make_box(Vec3::new(30.0, 30.0, 10.0)));
+    let marks = (0..mesh.t.len())
+        .map(|i| {
+            let [a, b, c] = mesh.tri(i);
+            if side(a) && side(b) && side(c) { mark } else { 0 }
+        })
+        .collect();
+    (mesh, std::sync::Arc::new(marks))
+}
+
+#[test]
+fn painted_seam_enforcer_pulls_the_seam_to_that_side() {
+    // The cube spans 90 to 120 mm each way; a back seam sits in its back right corner.
+    let mut p = FdmProcess::default();
+    p.seam = SeamMode::Back;
+    let mut j = job(centered(make_box(Vec3::new(30.0, 30.0, 10.0))), p);
+    let plain = outer_wall_starts(&slice(&j, &Progress::default()).unwrap().gcode);
+    assert!(plain.len() > 20);
+    assert!(plain.iter().filter(|s| s.0 < 100.0).count() < plain.len() / 2, "the seam shouldn't already sit on the left");
+    let (mesh, marks) = cube_with_marked_side(crate::paint::SEAM_ENFORCER, |v| v.x < 90.1);
+    j.objects[0].mesh = mesh;
+    j.objects[0].marks = Some(marks);
+    let marked = outer_wall_starts(&slice(&j, &Progress::default()).unwrap().gcode);
+    let on_left = marked.iter().filter(|s| s.0 < 92.0).count();
+    assert!(on_left * 10 >= marked.len() * 9, "{on_left} of {} seams on the painted side", marked.len());
+}
+
+#[test]
+fn painted_seam_blocker_keeps_the_seam_off_that_side() {
+    let mut p = FdmProcess::default();
+    p.seam = SeamMode::Back;
+    let mut j = job(centered(make_box(Vec3::new(30.0, 30.0, 10.0))), p);
+    let plain = outer_wall_starts(&slice(&j, &Progress::default()).unwrap().gcode);
+    assert!(plain.iter().filter(|s| s.1 > 118.0).count() * 10 >= plain.len() * 8, "the back seam should sit at the back");
+    let (mesh, marks) = cube_with_marked_side(crate::paint::SEAM_BLOCKER, |v| v.y > 119.9);
+    j.objects[0].mesh = mesh;
+    j.objects[0].marks = Some(marks);
+    let marked = outer_wall_starts(&slice(&j, &Progress::default()).unwrap().gcode);
+    assert!(marked.iter().filter(|s| s.1 > 118.0).count() * 10 <= marked.len(), "seams on the blocked side: {:?}", &marked[..5]);
+}
+
+#[test]
+fn painted_fuzzy_skin_roughens_only_the_painted_side() {
+    let (mesh, marks) = cube_with_marked_side(crate::paint::FUZZY, |v| v.x > 119.9);
+    let mut j = job(mesh, FdmProcess::default());
+    j.objects[0].marks = Some(marks);
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    // Outer wall points near the painted right wall wobble; the left wall stays straight.
+    let mut x = 0.0;
+    let (mut right, mut left) = (Vec::new(), Vec::new());
+    let mut in_outer = false;
+    for l in g.lines() {
+        if l.starts_with(";TYPE:") {
+            in_outer = l.starts_with(";TYPE:Outer wall");
+        }
+        if l.starts_with("G1 ") && l.contains(" E") {
+            for w in l.split_whitespace() {
+                if let Some(v) = w.strip_prefix('X') {
+                    x = v.parse().unwrap_or(x);
+                }
+            }
+            if in_outer {
+                if x > 119.5 {
+                    right.push(x);
+                } else if x < 90.3 {
+                    left.push(x);
+                }
+            }
+        }
+    }
+    let spread = |v: &[f64]| v.iter().cloned().fold(f64::MIN, f64::max) - v.iter().cloned().fold(f64::MAX, f64::min);
+    assert!(!right.is_empty() && !left.is_empty());
+    assert!(spread(&left) < 0.1, "unpainted side moved by {}", spread(&left));
+    assert!(spread(&right) > 0.1, "painted side only moved by {}", spread(&right));
+}
+
+#[test]
+fn mouse_ears_sit_at_the_corners_only() {
+    use crate::profiles::BrimType;
+    // The cube spans 90 to 120 mm; look 3 mm outside the middle of its front edge.
+    let brim_near = |t: BrimType, at: (f32, f32)| {
+        let mut p = FdmProcess::default();
+        p.brim_width = 5.0;
+        p.brim_type = t;
+        let r = slice(&job(centered(make_box(Vec3::new(30.0, 30.0, 5.0))), p), &Progress::default()).unwrap();
+        r.segs.iter().filter(|s| s.feature == Feature::Brim as u32).any(|s| ((s.a[0] + s.b[0]) / 2.0 - at.0).abs() < 1.5 && ((s.a[1] + s.b[1]) / 2.0 - at.1).abs() < 1.5)
+    };
+    let (middle, corner) = ((105.0, 87.0), (88.0, 88.0));
+    assert!(brim_near(BrimType::Outer, middle));
+    assert!(!brim_near(BrimType::Ears, middle), "no pad along a straight edge");
+    assert!(brim_near(BrimType::Ears, corner), "a pad at the corner");
+}
+
+#[test]
+fn both_support_styles_make_support() {
+    let amount = |style: SupportStyle| {
+        let mut p = FdmProcess::default();
+        p.support = SupportKind::Normal;
+        p.support_style = style;
+        let r = slice(&job(centered(table()), p), &Progress::default()).unwrap();
+        r.segs.iter().filter(|s| s.feature == Feature::Support as u32).count()
+    };
+    let (snug, grid) = (amount(SupportStyle::Snug), amount(SupportStyle::Grid));
+    assert!(snug > 50 && grid > 50, "{snug} {grid}");
+}
+
+#[test]
+fn scarf_seam_changes_the_wall_ends_but_not_the_plastic_used() {
+    let mut p = FdmProcess::default();
+    p.scarf_seam = false;
+    let mesh = centered(make_box(Vec3::new(30.0, 30.0, 10.0)));
+    let plain = slice(&job(mesh.clone(), p.clone()), &Progress::default()).unwrap();
+    p.scarf_seam = true;
+    let scarf = slice(&job(mesh, p), &Progress::default()).unwrap();
+    let (a, b) = (replay(&plain.gcode).3, replay(&scarf.gcode).3);
+    assert!((a - b).abs() / a < 0.03, "plastic used {a} vs {b}");
+    assert_ne!(plain.gcode, scarf.gcode);
+    // The fade shows as outer wall moves with less flow than the rest.
+    let mut widths: Vec<f32> = scarf.segs.iter().filter(|s| s.feature == Feature::OuterWall as u32).map(|s| s.flow).collect();
+    widths.sort_by(|x, y| x.total_cmp(y));
+    assert!(widths[0] < widths[widths.len() / 2] * 0.6, "{} vs {}", widths[0], widths[widths.len() / 2]);
+}

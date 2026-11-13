@@ -89,8 +89,18 @@ fn longest_edge(mesh: &Mesh, ti: usize) -> (usize, f32) {
 
 /// Split triangles near `centre` until their edges are no longer than
 /// `max_edge`. Paint on a split triangle carries over to both halves.
+#[allow(dead_code)]
 pub fn refine_near(mesh: &mut Mesh, paint: &mut Vec<u8>, centre: Vec3, radius: f32, max_edge: f32) {
+    refine_near_with(mesh, paint, &mut [], centre, radius, max_edge)
+}
+
+/// Like `refine_near`, and the arrays in `follow` (other kinds of paint on the
+/// same model) are split along with the triangles so they keep fitting.
+pub fn refine_near_with(mesh: &mut Mesh, paint: &mut Vec<u8>, follow: &mut [&mut Vec<u8>], centre: Vec3, radius: f32, max_edge: f32) {
     paint.resize(mesh.t.len(), UNPAINTED);
+    for f in follow.iter_mut() {
+        f.resize(mesh.t.len(), UNPAINTED);
+    }
     for _round in 0..40 {
         // Every long edge of a triangle that the brush touches.
         let mut wanted: Vec<(u64, f32, u32, u32)> = Vec::new();
@@ -138,6 +148,10 @@ pub fn refine_near(mesh: &mut Mesh, paint: &mut Vec<u8>, centre: Vec3, radius: f
                 mesh.t.push([mid, ib, ic]);
                 let value = paint[ti];
                 paint.push(value);
+                for f in follow.iter_mut() {
+                    let v = f[ti];
+                    f.push(v);
+                }
             }
         }
     }
@@ -146,9 +160,15 @@ pub fn refine_near(mesh: &mut Mesh, paint: &mut Vec<u8>, centre: Vec3, radius: f
 /// Paint a round patch of the surface around `centre`. Only triangles that join
 /// up with the one under the brush are painted, so a thin wall doesn't get
 /// painted on its far side.
+#[allow(dead_code)]
 pub fn brush(mesh: &mut Mesh, paint: &mut Vec<u8>, centre: Vec3, radius: f32, value: u8) -> usize {
+    brush_with(mesh, paint, &mut [], centre, radius, value)
+}
+
+/// `brush`, keeping the arrays in `follow` in step with any triangles it splits.
+pub fn brush_with(mesh: &mut Mesh, paint: &mut Vec<u8>, follow: &mut [&mut Vec<u8>], centre: Vec3, radius: f32, value: u8) -> usize {
     let radius = radius.max(0.05);
-    refine_near(mesh, paint, centre, radius, (radius * 0.5).max(0.25));
+    refine_near_with(mesh, paint, follow, centre, radius, (radius * 0.5).max(0.25));
     let cand = near_triangles(mesh, centre, radius * 1.05);
     if cand.is_empty() {
         return 0;
@@ -389,28 +409,40 @@ pub fn slots_used(paint: &[u8]) -> usize {
 /// The model cut into one piece per paint value, for drawing in colour.
 /// Values come back in ascending order; unpainted comes first.
 pub fn split_by_paint(mesh: &Mesh, paint: &[u8]) -> Vec<(u8, Mesh)> {
-    let mut pieces: Vec<(u8, Mesh)> = Vec::new();
-    for value in 0..=slots_used(paint) as u8 {
-        let mut out = Mesh::default();
-        let mut remap: AHashMap<u32, u32> = AHashMap::new();
-        for (ti, t) in mesh.t.iter().enumerate() {
-            if paint.get(ti).copied().unwrap_or(UNPAINTED) != value {
-                continue;
-            }
-            let mut tri = [0u32; 3];
-            for k in 0..3 {
-                tri[k] = *remap.entry(t[k]).or_insert_with(|| {
-                    out.v.push(mesh.v[t[k] as usize]);
-                    (out.v.len() - 1) as u32
-                });
-            }
-            out.t.push(tri);
+    let mut pieces: Vec<Option<(Mesh, AHashMap<u32, u32>)>> = (0..256).map(|_| None).collect();
+    for (ti, t) in mesh.t.iter().enumerate() {
+        let value = paint.get(ti).copied().unwrap_or(UNPAINTED) as usize;
+        let (out, remap) = pieces[value].get_or_insert_with(|| (Mesh::default(), AHashMap::new()));
+        let mut tri = [0u32; 3];
+        for k in 0..3 {
+            tri[k] = *remap.entry(t[k]).or_insert_with(|| {
+                out.v.push(mesh.v[t[k] as usize]);
+                (out.v.len() - 1) as u32
+            });
         }
-        if !out.t.is_empty() {
-            pieces.push((value, out));
-        }
+        out.t.push(tri);
     }
-    pieces
+    pieces.into_iter().enumerate().filter_map(|(v, p)| p.map(|(m, _)| (v as u8, m))).collect()
+}
+
+/// Paint values from 100 up mark the kinds of paint that aren't a filament.
+pub const MARK_BASE: u8 = 100;
+/// What a mark of each kind is stored as: one number per triangle.
+pub const SUPPORT_ENFORCER: u8 = 1;
+pub const SUPPORT_BLOCKER: u8 = 2;
+pub const SEAM_ENFORCER: u8 = 3;
+pub const SEAM_BLOCKER: u8 = 4;
+pub const FUZZY: u8 = 5;
+
+/// Marks and filament paint of a model as one array, for drawing: where a
+/// triangle has a mark, its value is `MARK_BASE` plus the mark.
+pub fn display(paint: Option<&[u8]>, marks: Option<&[u8]>, triangles: usize) -> Vec<u8> {
+    (0..triangles)
+        .map(|i| match marks.and_then(|m| m.get(i)).copied().unwrap_or(0) {
+            0 => paint.and_then(|p| p.get(i)).copied().unwrap_or(0),
+            m => MARK_BASE + m,
+        })
+        .collect()
 }
 
 #[cfg(test)]

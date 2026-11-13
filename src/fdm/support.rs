@@ -1,7 +1,7 @@
 //! Supports for filament prints: grid (block) supports and tree supports.
 
 use crate::geom::{self, EdgeIndex, Region};
-use crate::profiles::{FdmProcess, SupportKind};
+use crate::profiles::{FdmProcess, SupportKind, SupportStyle};
 use glam::DVec2;
 use rayon::prelude::*;
 
@@ -32,30 +32,60 @@ fn overhangs(slices: &[Region], heights: &[f64], angle_deg: f64) -> Vec<Region> 
 /// occupies, layer by layer. Done on its own so the slow step-by-step part that
 /// follows can run beside other work.
 pub struct Prepared {
+    kind: SupportKind,
     over: Vec<Region>,
     clear: Vec<Region>,
     clear_idx: Vec<EdgeIndex>,
 }
 
-pub fn prepare(slices: &[Region], heights: &[f64], p: &FdmProcess) -> Prepared {
-    match p.support {
-        SupportKind::None => Prepared { over: Vec::new(), clear: Vec::new(), clear_idx: Vec::new() },
-        SupportKind::Normal => Prepared {
-            over: overhangs(slices, heights, p.support_angle as f64),
-            clear: clearance(slices, p.support_xy_gap as f64),
-            clear_idx: Vec::new(),
-        },
-        SupportKind::Tree => {
-            let clear = clearance(slices, p.support_xy_gap as f64 + 0.2);
-            let clear_idx = clear.par_iter().map(EdgeIndex::new).collect();
-            Prepared { over: overhangs(slices, heights, p.support_angle as f64), clear, clear_idx }
-        }
+/// Where the user painted support enforcers and blockers, layer by layer.
+#[derive(Clone, Default)]
+pub struct Painted {
+    pub enforce: Vec<Region>,
+    pub block: Vec<Region>,
+}
+
+impl Painted {
+    pub fn any_enforcer(&self) -> bool {
+        self.enforce.iter().any(|r| !r.is_empty())
     }
+}
+
+pub fn prepare(slices: &[Region], heights: &[f64], p: &FdmProcess, painted: &Painted) -> Prepared {
+    // Enforcers make supports where painted even when supports are off.
+    let kind = match p.support {
+        SupportKind::None if painted.any_enforcer() => SupportKind::Normal,
+        k => k,
+    };
+    let auto = p.support != SupportKind::None;
+    if kind == SupportKind::None {
+        return Prepared { kind, over: Vec::new(), clear: Vec::new(), clear_idx: Vec::new() };
+    }
+    let mut over = if auto { overhangs(slices, heights, p.support_angle as f64) } else { vec![Vec::new(); slices.len()] };
+    over.par_iter_mut().enumerate().for_each(|(i, o)| {
+        if let Some(b) = painted.block.get(i).filter(|b| !b.is_empty()) {
+            *o = geom::diff(o, b);
+        }
+        if let Some(e) = painted.enforce.get(i).filter(|e| !e.is_empty()) {
+            let forced = geom::inter(e, &slices[i]);
+            *o = geom::union2(o, &geom::remove_small(&geom::opening(&forced, 0.1), 0.05));
+        }
+    });
+    let gap = if kind == SupportKind::Tree { p.support_xy_gap as f64 + 0.2 } else { p.support_xy_gap as f64 };
+    let mut clear = clearance(slices, gap);
+    // Nothing is supported inside a blocker, however far down it reaches.
+    clear.par_iter_mut().enumerate().for_each(|(i, c)| {
+        if let Some(b) = painted.block.get(i).filter(|b| !b.is_empty()) {
+            *c = geom::union2(c, b);
+        }
+    });
+    let clear_idx = if kind == SupportKind::Tree { clear.par_iter().map(EdgeIndex::new).collect() } else { Vec::new() };
+    Prepared { kind, over, clear, clear_idx }
 }
 
 /// Supports from the groundwork `prepare` made.
 pub fn generate_from(prep: Prepared, slices: &[Region], heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
-    match p.support {
+    match prep.kind {
         SupportKind::None => vec![SupportLayer::default(); slices.len()],
         SupportKind::Normal => block_supports(prep, slices, p),
         SupportKind::Tree => tree_supports(prep, slices.len(), heights, p),
@@ -63,7 +93,7 @@ pub fn generate_from(prep: Prepared, slices: &[Region], heights: &[f64], p: &Fdm
 }
 
 pub fn generate(slices: &[Region], heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
-    generate_from(prepare(slices, heights, p), slices, heights, p)
+    generate_from(prepare(slices, heights, p, &Painted::default()), slices, heights, p)
 }
 
 fn clearance(slices: &[Region], xy: f64) -> Vec<Region> {
@@ -186,6 +216,19 @@ fn block_supports(prep: Prepared, slices: &[Region], p: &FdmProcess) -> Vec<Supp
                     }
                     here = geom::simplify_region(&here, SUPPORT_TOLERANCE_MM);
                     here = geom::remove_small(&geom::opening(&here, 0.3), 1.0);
+                    if p.support_style == SupportStyle::Grid && !here.is_empty() {
+                        // A rectangle around each patch, still kept off the model.
+                        let boxes: Region = geom::islands(&here)
+                            .iter()
+                            .filter_map(|isl| geom::bbox(&isl.region()))
+                            .map(|(a, b)| geom::rect(a, b))
+                            .collect();
+                        let boxes = geom::union(&boxes);
+                        here = geom::diff(&boxes, &geom::crop(&clear[i], lo - pad, hi + pad));
+                        if p.support_plate_only {
+                            here = geom::diff(&here, &geom::crop(&below[i], lo - pad, hi + pad));
+                        }
+                    }
                     // Rounded offsets leave a lot of points; supports don't need them, and
                     // every later layer's work grows with them.
                     geom::simplify_region(&here, SUPPORT_TOLERANCE_MM)
@@ -243,7 +286,7 @@ struct Node {
 
 /// Branches grow from the overhang tips down to the bed, merging as they go.
 fn tree_supports(prep: Prepared, n: usize, heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
-    let Prepared { over, clear, clear_idx } = prep;
+    let Prepared { over, clear, clear_idx, .. } = prep;
     let gap = p.support_z_gap as usize;
     let spacing = (p.support_spacing as f64 * 1.6).max(2.0);
     let tip = p.tree_tip_radius as f64;

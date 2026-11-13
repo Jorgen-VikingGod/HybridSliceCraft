@@ -3,6 +3,7 @@
 
 pub mod gcode;
 pub mod infill;
+pub mod marks;
 pub mod painting;
 pub mod plan;
 pub mod support;
@@ -154,6 +155,8 @@ pub struct JobObject {
     pub slices: Option<std::sync::Arc<Vec<crate::geom::Region>>>,
     /// The whole model's outlines, so skins and overhangs ignore colour borders.
     pub cover: Option<std::sync::Arc<Vec<crate::geom::Region>>>,
+    /// Support, seam and fuzzy skin marks, one number per triangle (see `paint`).
+    pub marks: Option<std::sync::Arc<Vec<u8>>>,
     /// Pieces of a painted model other than the first get no supports of their own.
     pub no_support: bool,
 }
@@ -315,6 +318,9 @@ pub struct ExPath {
     /// then 1 to 4 for up to a quarter, half, three quarters and all of the line
     /// hanging in the air. Empty when that is off.
     pub tier: Vec<u8>,
+    /// Per point of a wall loop, when the user painted the seam: 1 where the
+    /// seam should go, -1 where it should not, 0 elsewhere. Empty without paint.
+    pub seam: Vec<i8>,
 }
 
 impl ExPath {
@@ -327,6 +333,7 @@ impl ExPath {
             flow_mult: 1.0,
             overhang: Vec::new(),
             tier: Vec::new(),
+            seam: Vec::new(),
         }
     }
     pub fn closed(pts: Vec<DVec2>, width: f64, feature: Feature) -> Self {
@@ -338,6 +345,7 @@ impl ExPath {
             flow_mult: 1.0,
             overhang: Vec::new(),
             tier: Vec::new(),
+            seam: Vec::new(),
         }
     }
     pub fn length(&self) -> f64 {

@@ -583,6 +583,9 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             group(ui, r, "SEAM");
             r.pick(ui, "Seam position", "Where each wall starts and ends.", &mut p.seam, b.seam, &SeamMode::ALL, SeamMode::label, false);
             r.num(ui, "Seam gap", "Stops slightly short to hide the join (fraction of line width).", &mut p.seam_gap, b.seam_gap, 0.0..=0.5, "", 2, true);
+            r.flag(ui, "Scarf seam", "Fades the outer wall in and out over a stretch at the seam, so it leaves no bump.", &mut p.scarf_seam, b.scarf_seam, true);
+            r.num(ui, "Scarf length", "Length of the fade at the seam.", &mut p.scarf_length, b.scarf_length, 1.0..=40.0, "mm", 1, true);
+            r.num(ui, "Scarf start flow", "How much plastic the wall starts with, in percent of full.", &mut p.scarf_start, b.scarf_start, 5.0..=100.0, "%", 0, true);
             r.flag(ui, "Stagger inner seams", "Moves the seam of inner walls a little on every layer so they don't line up.", &mut p.stagger_inner_seams, b.stagger_inner_seams, true);
             group(ui, r, "SIZE ACCURACY");
             r.num(ui, "Size correction", "Grow or shrink outlines to match real measurements.", &mut p.xy_compensation, b.xy_compensation, -1.0..=1.0, "mm", 3, true);
@@ -658,6 +661,7 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
         3 => {
             group(ui, r, "SUPPORTS");
             r.pick(ui, "Support type", "Tree supports use less plastic and are easier to remove.", &mut p.support, b.support, &SupportKind::ALL, SupportKind::label, false);
+            r.pick(ui, "Support style", "Snug supports follow the outline of what they hold up; grid supports fill a rectangle around it.", &mut p.support_style, b.support_style, &SupportStyle::ALL, SupportStyle::label, true);
             r.num(ui, "Support from angle", "Surfaces shallower than this get supports.", &mut p.support_angle, b.support_angle, 5.0..=85.0, "°", 0, false);
             r.flag(ui, "Only from the plate", "Never build supports on top of the model.", &mut p.support_plate_only, b.support_plate_only, false);
             r.int(ui, "Top gap", "Empty layers between support and model, for easy removal.", &mut p.support_z_gap, b.support_z_gap, 0..=5, true);
@@ -676,6 +680,7 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.num(ui, "Skirt distance", "", &mut p.skirt_distance, b.skirt_distance, 0.0..=50.0, "mm", 1, true);
             r.num(ui, "Brim width", "A flat border that helps parts stay down.", &mut p.brim_width, b.brim_width, 0.0..=50.0, "mm", 1, false);
             r.pick(ui, "Brim type", "Put the brim outside the part, inside its holes, or both.", &mut p.brim_type, b.brim_type, &BrimType::ALL, BrimType::label, true);
+            r.num(ui, "Mouse ear angle", "With mouse ears, pads go on outer corners sharper than this.", &mut p.brim_ear_angle, b.brim_ear_angle, 30.0..=170.0, "°", 0, true);
             r.int(ui, "Raft layers", "A disposable base under the whole print.", &mut p.raft_layers, b.raft_layers, 0..=10, false);
             r.num(ui, "Raft margin", "", &mut p.raft_margin, b.raft_margin, 0.0..=30.0, "mm", 1, true);
             group(ui, r, "SEVERAL FILAMENTS");

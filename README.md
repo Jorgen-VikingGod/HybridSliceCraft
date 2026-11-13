@@ -20,6 +20,8 @@ A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast des
 - **Pause, filament change or any G-code at a layer**: add them from the preview at the layer the slider is on; they are saved in the project
 - Acceleration, flow ratio and (for bridges, support interface and ironing) fan speed for each kind of line, and walls that slow down in four steps by how much they hang in the air
 - Z-hop types (straight, slope or spiral), lift only between two heights, retract at every layer change, and machine limits (speed, acceleration, corner speed) sent to Marlin, Klipper or RepRapFirmware
+- **Paint more than colour**: mark support enforcers and blockers (supports appear where you paint them, even with supports off, and stay out of blocked areas), where the seam should or should not go, and where the skin should be fuzzy
+- Scarf seam (the outer wall fades in and out at the seam), mouse-ear brim pads at sharp corners, and a grid style for supports
 - Input shaper settings and object labels so a failed object can be skipped mid-print (Klipper, Marlin)
 - Snapmaker U1 printer presets (four tool heads, five nozzle choices), with start and end scripts from OrcaSlicer's profile
 - Arc fitting (G2/G3), pressure advance, Marlin, Klipper and RepRapFirmware output

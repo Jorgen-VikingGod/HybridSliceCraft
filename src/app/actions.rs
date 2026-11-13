@@ -344,7 +344,8 @@ impl App {
             o.mesh = Arc::new(m);
             o.mesh_id = next_id();
             // Repair can rebuild triangles, so painting no longer lines up.
-            o.clear_paint();
+            o.clear_paint(crate::scene::Channel::Filament);
+            o.clear_paint(crate::scene::Channel::Marks);
         }
         let text = if note.is_empty() {
             "Nothing needed fixing.".to_string()
@@ -662,6 +663,7 @@ impl App {
                     walls: o.walls,
                     paint: o.paint.clone().filter(|p| p.len() == o.mesh.t.len()),
                     paint_depth: o.paint_depth,
+                    marks: o.marks.clone().filter(|p| p.len() == o.mesh.t.len()),
                     ..Default::default()
                 })
                 .collect();

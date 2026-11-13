@@ -466,6 +466,11 @@ fn process(r: &mut Reader, name: &str) -> FdmProcess {
             _ => SeamMode::Aligned,
         };
     }
+    if let Some(t) = r.text("seam_slope_type") {
+        p.scarf_seam = t == "external" || t == "all";
+    }
+    set!(r, p.scarf_length, "seam_slope_min_length", num);
+    set!(r, p.scarf_start, "seam_slope_start_height", num);
     set!(r, p.stagger_inner_seams, "staggered_inner_seams", flag);
     if let Some(f) = r.text("fuzzy_skin") {
         match f.as_str() {
@@ -573,6 +578,9 @@ fn process(r: &mut Reader, name: &str) -> FdmProcess {
     } else if enable == Some(true) && p.support == SupportKind::None {
         p.support = SupportKind::Normal;
     }
+    if let Some(t) = r.text("support_style") {
+        p.support_style = if t == "grid" { SupportStyle::Grid } else { SupportStyle::Snug };
+    }
     set!(r, p.support_angle, "support_threshold_angle", num);
     set!(r, p.support_plate_only, "support_on_build_plate_only", flag);
     if let Some(d) = r.num("support_top_z_distance") {
@@ -597,6 +605,10 @@ fn process(r: &mut Reader, name: &str) -> FdmProcess {
             "outer_and_inner" => p.brim_type = BrimType::Both,
             _ => p.brim_type = BrimType::Outer,
         }
+    }
+    set!(r, p.brim_ear_angle, "brim_ears_max_angle", num);
+    if r.flag("brim_ears") == Some(true) {
+        p.brim_type = BrimType::Ears;
     }
     set!(r, p.raft_layers, "raft_layers", uint);
     // Multi-material

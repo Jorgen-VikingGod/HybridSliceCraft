@@ -313,12 +313,28 @@ impl<'a> Writer<'a> {
         }
     }
 
-    fn pick_seam(&mut self, pts: &[DVec2], is_outer: bool) -> usize {
+    fn pick_seam(&mut self, pts: &[DVec2], is_outer: bool, painted: &[i8]) -> usize {
         let n = pts.len();
         if n == 0 {
             return 0;
         }
         let here = DVec2::new(self.pos.x, self.pos.y);
+        // Where the user painted the seam: the corner nearest the last one among
+        // the enforced points, or failing that the points not blocked.
+        if is_outer && painted.len() == n {
+            let anchor = if self.job.process.seam == SeamMode::Aligned { self.seam_anchor.unwrap_or(here) } else { here };
+            let pick = |want: fn(i8) -> bool| {
+                (0..n).filter(|&i| want(painted[i])).min_by(|&a, &b| pts[a].distance_squared(anchor).total_cmp(&pts[b].distance_squared(anchor)))
+            };
+            if let Some(i) = pick(|v| v > 0) {
+                return i;
+            }
+            if painted.iter().any(|&v| v < 0) && painted.iter().any(|&v| v >= 0) {
+                let allowed: Vec<usize> = (0..n).filter(|&i| painted[i] >= 0).collect();
+                let best = self.pick_seam_among(pts, &allowed, anchor);
+                return best;
+            }
+        }
         let mode = if is_outer { self.job.process.seam } else { SeamMode::Nearest };
         match mode {
             SeamMode::Nearest if !is_outer && self.job.process.stagger_inner_seams => {
@@ -366,6 +382,69 @@ impl<'a> Writer<'a> {
         }
     }
 
+    /// An outer wall that fades in over the first stretch and fades out over the
+    /// same stretch again past the start, so the two ends overlap into a slope
+    /// and the plastic adds up to a full line.
+    fn emit_scarf(&mut self, path: &ExPath, seam: usize, z: f64, h: f64, flow: f64) {
+        let p = &self.job.process;
+        let total = path.length();
+        let fade = (p.scarf_length as f64).clamp(1.0, total * 0.4);
+        let start = (p.scarf_start as f64 / 100.0).clamp(0.05, 1.0);
+        let step = (fade / 8.0).max(0.3);
+        let n = path.pts.len();
+        let mut done = 0.0;
+        // Round the loop once, then along its first stretch again.
+        'laps: for k in 0..2 * n {
+            let i = (seam + k) % n;
+            let j = (i + 1) % n;
+            let (a, b) = (path.pts[i], path.pts[j]);
+            let seg = a.distance(b);
+            if seg < 1e-9 {
+                continue;
+            }
+            let hang = path.overhang.get(i).copied().unwrap_or(false);
+            let f = if hang { Feature::OverhangWall } else { path.feature };
+            self.tier_speed = self.job.process.overhang_tiers.then(|| path.tier.get(i).copied().unwrap_or(0));
+            let pieces = (seg / step).ceil().max(1.0) as usize;
+            for q in 0..pieces {
+                let t = (q + 1) as f64 / pieces as f64;
+                let d = done + seg * t;
+                // Distance along the first lap fades in; past the start it fades out.
+                let ramp = |x: f64| start + (1.0 - start) * (x / fade).min(1.0);
+                let factor = if d > total + 1e-9 { 1.0 - ramp(d - total) } else if d < fade { ramp(d) } else { 1.0 };
+                let to = a.lerp(b, t);
+                if d > total + fade + 1e-9 {
+                    break 'laps;
+                }
+                self.ext_seg(to, z, path.width, h, flow * path.flow_mult * factor.max(0.0), f);
+            }
+            done += seg;
+            if done > total + fade {
+                break;
+            }
+        }
+    }
+
+    /// The best seam among some allowed points: the same corner preference as
+    /// the normal Aligned choice, measured from the anchor.
+    fn pick_seam_among(&self, pts: &[DVec2], allowed: &[usize], anchor: DVec2) -> usize {
+        let n = pts.len();
+        let mut best = allowed[0];
+        let mut bs = f64::MAX;
+        for &i in allowed {
+            let a = pts[(i + n - 1) % n];
+            let b = pts[i];
+            let c = pts[(i + 1) % n];
+            let turn = (b - a).normalize_or_zero().perp_dot((c - b).normalize_or_zero());
+            let score = b.distance(anchor) - if turn < -0.3 { 4.0 } else if turn > 0.3 { 2.0 } else { 0.0 };
+            if score < bs {
+                bs = score;
+                best = i;
+            }
+        }
+        best
+    }
+
     pub fn emit_path(&mut self, path: &ExPath, z: f64, h: f64, flow: f64, comb: Option<&EdgeIndex>) {
         self.tier_speed = None;
         if path.pts.len() < 2 {
@@ -373,10 +452,15 @@ impl<'a> Writer<'a> {
         }
         if path.closed {
             let is_outer = path.feature == Feature::OuterWall;
-            let seam = self.pick_seam(&path.pts, is_outer);
+            let seam = self.pick_seam(&path.pts, is_outer, &path.seam);
             let n = path.pts.len();
             self.travel_to(path.pts[seam], z, comb);
             let total = path.length();
+            let scarf = self.job.process.scarf_seam && is_outer && total > 4.0;
+            if scarf {
+                self.emit_scarf(path, seam, z, h, flow);
+                return;
+            }
             let gap = if matches!(path.feature, Feature::OuterWall | Feature::InnerWall) {
                 (self.job.process.seam_gap as f64 * path.width).min(total * 0.2)
             } else {

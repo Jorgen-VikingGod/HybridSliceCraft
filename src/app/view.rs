@@ -67,6 +67,8 @@ impl App {
     fn paint_value(&self) -> u8 {
         if self.paint_mode == PaintMode::Erase {
             0
+        } else if let Some(m) = self.paint_kind.mark() {
+            m
         } else {
             (self.paint_slot as u8).saturating_add(1)
         }
@@ -75,12 +77,13 @@ impl App {
     /// One brush dab, or a bucket fill, at a picked spot.
     fn paint_here(&mut self, id: u64, hit: Vec3, tri: usize) {
         let value = self.paint_value();
+        let channel = self.paint_kind.channel();
         let op = match self.paint_mode {
             PaintMode::Fill => PaintOp::Fill { angle: self.paint_angle, value },
             _ => PaintOp::Brush { radius: self.paint_radius, value },
         };
         if let Some(o) = self.plate_mut().objects.iter_mut().find(|o| o.id == id) {
-            o.paint_at(hit, tri, op);
+            o.paint_at(hit, tri, op, channel);
         }
         self.last_dab = Some(hit);
     }
@@ -740,7 +743,10 @@ impl App {
                         self.to_screen(rect, hit + n * 0.05 + (u * a.cos() + w * a.sin()) * self.paint_radius)
                     })
                     .collect();
-                let slot = self.filaments.get(self.paint_slot).map(|f| f.color).unwrap_or([255, 255, 255]);
+                let slot = match self.paint_kind.mark() {
+                    Some(m) => super::mark_colour(m),
+                    None => self.filaments.get(self.paint_slot).map(|f| f.color).unwrap_or([255, 255, 255]),
+                };
                 let col = if self.paint_mode == PaintMode::Erase { Color32::WHITE } else { Color32::from_rgb(slot[0], slot[1], slot[2]) };
                 painter.add(egui::Shape::line(ring.clone(), Stroke::new(3.5, Color32::BLACK)));
                 painter.add(egui::Shape::line(ring, Stroke::new(2.0, col)));
@@ -1039,7 +1045,10 @@ impl App {
                     // Painted: one piece of the model for each filament.
                     for v in &o.paint_values {
                         let mut c = color;
-                        if *v > 0 && inside {
+                        if *v > crate::paint::MARK_BASE {
+                            let m = super::mark_colour(*v - crate::paint::MARK_BASE);
+                            c = [m[0] as f32 / 255.0, m[1] as f32 / 255.0, m[2] as f32 / 255.0, 1.0];
+                        } else if *v > 0 && inside {
                             let slot = (*v as usize - 1).min(self.filaments.len().saturating_sub(1));
                             if let Some(f) = self.filaments.get(slot) {
                                 c = [f.color[0] as f32 / 255.0, f.color[1] as f32 / 255.0, f.color[2] as f32 / 255.0, 1.0];
@@ -1161,8 +1170,8 @@ impl App {
                 // A painted piece: cut the model by paint and upload every piece.
                 let pid = (d.mesh_id >> 8) & ((1u64 << 54) - 1);
                 if let Some(o) = plate.objects.iter().find(|o| o.paint_id == pid) {
-                    if let Some(paint) = &o.paint {
-                        for (v, m) in crate::paint::split_by_paint(&o.mesh, paint) {
+                    if let Some(paint) = o.display_paint() {
+                        for (v, m) in crate::paint::split_by_paint(&o.mesh, &paint) {
                             vp.upload_mesh(paint_piece_id(pid, v), &m);
                         }
                     }
@@ -1200,7 +1209,7 @@ fn paint_piece_id(paint_id: u64, value: u8) -> u64 {
 impl App {
     /// The floating panel with the painting controls.
     fn paint_panel(&mut self, ui: &mut egui::Ui, rect: Rect) {
-        let area = Rect::from_min_size(rect.left_top() + Vec2::new(60.0, 10.0), Vec2::new(330.0, 170.0));
+        let area = Rect::from_min_size(rect.left_top() + Vec2::new(60.0, 10.0), Vec2::new(330.0, 215.0));
         let mut paint_all = false;
         let mut clear = false;
         ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
@@ -1216,7 +1225,15 @@ impl App {
                         }
                     });
                     ui.horizontal_wrapped(|ui| {
-                        for (i, f) in self.filaments.iter().enumerate() {
+                        for k in super::PaintKind::ALL {
+                            let name = crate::i18n::tr(k.label());
+                            if ui.selectable_label(self.paint_kind == k, name).clicked() {
+                                self.paint_kind = k;
+                            }
+                        }
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        for (i, f) in self.filaments.iter().enumerate().filter(|_| self.paint_kind == super::PaintKind::Filament) {
                             let (r, resp) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::click());
                             let c = Color32::from_rgb(f.color[0], f.color[1], f.color[2]);
                             ui.painter().rect_filled(r, 5.0, c);
@@ -1245,7 +1262,8 @@ impl App {
                             ui.add(egui::Slider::new(&mut self.paint_radius, 0.5..=30.0).suffix(" mm").max_decimals(1));
                         });
                     }
-                    if let Some(o) = self.selected_mut() {
+                    let filament_kind = self.paint_kind == super::PaintKind::Filament;
+                    if let Some(o) = self.selected_mut().filter(|_| filament_kind) {
                         ui.horizontal(|ui| {
                             ui.label(crate::i18n::tr("Colour reaches in"));
                             ui.add(egui::Slider::new(&mut o.paint_depth, 0.4..=20.0).suffix(" mm").max_decimals(1));
@@ -1264,12 +1282,14 @@ impl App {
         if paint_all || clear {
             self.push_undo();
             let value = self.paint_value().max(1);
-            let slot_value = if self.paint_mode == PaintMode::Erase { 1 } else { value };
+            let channel = self.paint_kind.channel();
+            let erase = self.paint_mode == PaintMode::Erase;
+            let slot_value = if erase { u8::from(channel == crate::scene::Channel::Filament) } else { value };
             if let Some(o) = self.selected_mut() {
                 if clear {
-                    o.clear_paint();
+                    o.clear_paint(channel);
                 } else {
-                    o.paint_at(Vec3::ZERO, 0, PaintOp::All { value: slot_value });
+                    o.paint_at(Vec3::ZERO, 0, PaintOp::All { value: slot_value }, channel);
                 }
             }
         }

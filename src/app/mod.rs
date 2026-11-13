@@ -58,6 +58,63 @@ pub enum PaintMode {
     Erase,
 }
 
+/// What the paint tool puts on the surface.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PaintKind {
+    Filament,
+    SupportEnforcer,
+    SupportBlocker,
+    SeamEnforcer,
+    SeamBlocker,
+    Fuzzy,
+}
+
+impl PaintKind {
+    pub const ALL: [PaintKind; 6] = [
+        PaintKind::Filament,
+        PaintKind::SupportEnforcer,
+        PaintKind::SupportBlocker,
+        PaintKind::SeamEnforcer,
+        PaintKind::SeamBlocker,
+        PaintKind::Fuzzy,
+    ];
+    pub fn label(self) -> &'static str {
+        match self {
+            PaintKind::Filament => "Filament",
+            PaintKind::SupportEnforcer => "Support enforcer",
+            PaintKind::SupportBlocker => "Support blocker",
+            PaintKind::SeamEnforcer => "Seam enforcer",
+            PaintKind::SeamBlocker => "Seam blocker",
+            PaintKind::Fuzzy => "Fuzzy skin",
+        }
+    }
+    /// What is stored on the triangles, or `None` for a filament.
+    pub fn mark(self) -> Option<u8> {
+        match self {
+            PaintKind::Filament => None,
+            PaintKind::SupportEnforcer => Some(crate::paint::SUPPORT_ENFORCER),
+            PaintKind::SupportBlocker => Some(crate::paint::SUPPORT_BLOCKER),
+            PaintKind::SeamEnforcer => Some(crate::paint::SEAM_ENFORCER),
+            PaintKind::SeamBlocker => Some(crate::paint::SEAM_BLOCKER),
+            PaintKind::Fuzzy => Some(crate::paint::FUZZY),
+        }
+    }
+    pub fn channel(self) -> crate::scene::Channel {
+        if self == PaintKind::Filament { crate::scene::Channel::Filament } else { crate::scene::Channel::Marks }
+    }
+}
+
+/// Colour a mark is drawn in (RGB): green to add, red to forbid.
+pub fn mark_colour(mark: u8) -> [u8; 3] {
+    match mark {
+        crate::paint::SUPPORT_ENFORCER => [60, 200, 90],
+        crate::paint::SUPPORT_BLOCKER => [225, 70, 70],
+        crate::paint::SEAM_ENFORCER => [70, 150, 235],
+        crate::paint::SEAM_BLOCKER => [235, 150, 50],
+        _ => [170, 90, 220],
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ColorScheme {
     Feature,
@@ -187,6 +244,7 @@ pub struct App {
     /// Painting: filament slot, mode, brush size (mm) and crease angle for fill.
     pub paint_slot: usize,
     pub paint_mode: PaintMode,
+    pub paint_kind: PaintKind,
     pub paint_radius: f32,
     pub paint_angle: f32,
     /// True while a brush stroke is being dragged, and where its last dab landed.
@@ -349,6 +407,7 @@ impl App {
             hover_point: None,
             paint_slot: 1,
             paint_mode: PaintMode::Brush,
+            paint_kind: PaintKind::Filament,
             paint_radius: 3.0,
             paint_angle: 30.0,
             painting: false,

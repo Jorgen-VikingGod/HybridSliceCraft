@@ -471,15 +471,18 @@ pub enum BrimType {
     Outer,
     Inner,
     Both,
+    /// Round pads only at sharp outer corners, as wide as the brim width.
+    Ears,
 }
 
 impl BrimType {
-    pub const ALL: [BrimType; 3] = [BrimType::Outer, BrimType::Inner, BrimType::Both];
+    pub const ALL: [BrimType; 4] = [BrimType::Outer, BrimType::Inner, BrimType::Both, BrimType::Ears];
     pub fn label(self) -> &'static str {
         match self {
             BrimType::Outer => "Outside",
             BrimType::Inner => "Inside holes",
             BrimType::Both => "Outside and inside",
+            BrimType::Ears => "Mouse ears",
         }
     }
 }
@@ -529,6 +532,26 @@ impl SupportKind {
     }
 }
 
+/// How the body of normal (grid) supports is shaped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SupportStyle {
+    /// Follows the outline of what it holds up.
+    #[default]
+    Snug,
+    /// Fills a rectangle around each patch, which is sturdier and simpler to remove.
+    Grid,
+}
+
+impl SupportStyle {
+    pub const ALL: [SupportStyle; 2] = [SupportStyle::Snug, SupportStyle::Grid];
+    pub fn label(self) -> &'static str {
+        match self {
+            SupportStyle::Snug => "Snug",
+            SupportStyle::Grid => "Grid",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Sequence {
     #[default]
@@ -552,6 +575,12 @@ pub struct FdmProcess {
     pub elephant_foot: f32,
     pub seam: SeamMode,
     pub seam_gap: f32,
+    /// Fade the outer wall in and out over a stretch at the seam so it leaves no bump.
+    pub scarf_seam: bool,
+    /// Length of the fade, in mm.
+    pub scarf_length: f32,
+    /// How much plastic the wall starts with, in percent of full.
+    pub scarf_start: f32,
     /// Move the seam of inner walls a little on every layer.
     pub stagger_inner_seams: bool,
     pub fuzzy_skin: bool,
@@ -628,6 +657,7 @@ pub struct FdmProcess {
     pub flow_first_layer: f32,
     // Support
     pub support: SupportKind,
+    pub support_style: SupportStyle,
     pub support_angle: f32,
     pub support_plate_only: bool,
     pub support_z_gap: u32,
@@ -642,6 +672,8 @@ pub struct FdmProcess {
     pub skirt_distance: f32,
     pub brim_width: f32,
     pub brim_type: BrimType,
+    /// Mouse ears go on outer corners sharper than this many degrees.
+    pub brim_ear_angle: f32,
     pub raft_layers: u32,
     pub raft_margin: f32,
     // Multi-material
@@ -672,6 +704,9 @@ impl Default for FdmProcess {
             elephant_foot: 0.1,
             seam: SeamMode::Aligned,
             seam_gap: 0.05,
+            scarf_seam: false,
+            scarf_length: 10.0,
+            scarf_start: 20.0,
             stagger_inner_seams: false,
             fuzzy_skin: false,
             fuzzy_thickness: 0.2,
@@ -736,6 +771,7 @@ impl Default for FdmProcess {
             flow_interface: 1.0,
             flow_first_layer: 1.0,
             support: SupportKind::None,
+            support_style: SupportStyle::Snug,
             support_angle: 35.0,
             support_plate_only: false,
             support_z_gap: 1,
@@ -749,6 +785,7 @@ impl Default for FdmProcess {
             skirt_distance: 4.0,
             brim_width: 0.0,
             brim_type: BrimType::Outer,
+            brim_ear_angle: 125.0,
             raft_layers: 0,
             raft_margin: 2.0,
             prime_tower: true,

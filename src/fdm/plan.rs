@@ -174,7 +174,7 @@ impl Xorshift {
     }
 }
 
-fn fuzzy(points: &[DVec2], amount: f64, seed: u64) -> Polyline {
+fn fuzzy(points: &[DVec2], amount: f64, seed: u64, only_in: Option<&EdgeIndex>) -> Polyline {
     let mut rng = Xorshift(seed | 1);
     let mut out = Vec::with_capacity(points.len() * 3);
     let n = points.len();
@@ -187,7 +187,9 @@ fn fuzzy(points: &[DVec2], amount: f64, seed: u64) -> Polyline {
         let steps = (len / 0.6).ceil().max(1.0) as usize;
         for k in 0..steps {
             let t = (k as f64 + rng.next() * 0.5) / steps as f64;
-            out.push(a.lerp(b, t) + normal * (rng.next() - 0.5) * amount);
+            let on = a.lerp(b, t);
+            let jitter = normal * (rng.next() - 0.5) * amount;
+            out.push(if only_in.map_or(true, |m| m.inside(on)) { on + jitter } else { on });
         }
     }
     out
@@ -341,6 +343,45 @@ struct LayerGeom {
     nozzle_in: f64,
 }
 
+/// Where the user painted the seam and fuzzy skin on one layer.
+struct WallMarks {
+    seam_enforce: EdgeIndex,
+    seam_block: EdgeIndex,
+    fuzzy: EdgeIndex,
+}
+
+/// The painted areas of every layer, found once per model.
+struct LayerMarks {
+    seam_enforce: Vec<Region>,
+    seam_block: Vec<Region>,
+    fuzzy: Vec<Region>,
+}
+
+/// How far from a painted wall its outline still counts as painted, in mm.
+const MARK_REACH_MM: f64 = 0.5;
+
+impl LayerMarks {
+    fn new(obj: &super::JobObject, layers: &[Layer]) -> Option<Self> {
+        let m = obj.marks.as_deref()?;
+        let find = |mark| super::marks::mark_regions(&obj.mesh, m, mark, layers, MARK_REACH_MM);
+        let out = Self {
+            seam_enforce: find(crate::paint::SEAM_ENFORCER),
+            seam_block: find(crate::paint::SEAM_BLOCKER),
+            fuzzy: find(crate::paint::FUZZY),
+        };
+        let any = |v: &Vec<Region>| v.iter().any(|r| !r.is_empty());
+        (any(&out.seam_enforce) || any(&out.seam_block) || any(&out.fuzzy)).then_some(out)
+    }
+
+    fn layer(&self, i: usize) -> WallMarks {
+        WallMarks {
+            seam_enforce: EdgeIndex::new(&self.seam_enforce[i]),
+            seam_block: EdgeIndex::new(&self.seam_block[i]),
+            fuzzy: EdgeIndex::new(&self.fuzzy[i]),
+        }
+    }
+}
+
 struct WallResult {
     walls: Vec<Vec<ExPath>>,
     thin: Vec<ExPath>,
@@ -354,6 +395,7 @@ fn build_walls(
     job: &FdmJob,
     wall_count: usize,
     below: Option<&Below>,
+    marks: Option<&WallMarks>,
     seed: u64,
 ) -> WallResult {
     let p = &job.process;
@@ -419,8 +461,14 @@ fn build_walls(
                 FuzzyMode::Outline => !hole,
                 FuzzyMode::Holes => hole,
             };
-            if k == 0 && p.fuzzy_skin && rough {
-                pts = fuzzy(&pts, p.fuzzy_thickness as f64, seed ^ (g.index as u64).wrapping_mul(2654435761));
+            if k == 0 {
+                let mask = marks.map(|m| &m.fuzzy).filter(|m| !m.is_empty());
+                if p.fuzzy_skin && rough {
+                    pts = fuzzy(&pts, p.fuzzy_thickness as f64, seed ^ (g.index as u64).wrapping_mul(2654435761), None);
+                } else if mask.is_some() {
+                    // Painted rough: only where the paint is.
+                    pts = fuzzy(&pts, p.fuzzy_thickness as f64, seed ^ (g.index as u64).wrapping_mul(2654435761), mask);
+                }
             }
             let mut ex = ExPath::closed(Vec::new(), width, feature);
             if let Some(b) = below {
@@ -430,6 +478,15 @@ fn build_walls(
                 ex.tier = tiers;
             } else {
                 ex.pts = pts;
+            }
+            if k == 0 {
+                if let Some(m) = marks.filter(|m| !m.seam_enforce.is_empty() || !m.seam_block.is_empty()) {
+                    ex.seam = ex
+                        .pts
+                        .iter()
+                        .map(|&q| if m.seam_block.inside(q) { -1 } else if m.seam_enforce.inside(q) { 1 } else { 0 })
+                        .collect();
+                }
             }
             loops.push(ex);
         }
@@ -548,6 +605,52 @@ fn support_paths(sup: &SupportLayer, job: &FdmJob, g: LayerGeom) -> Vec<ExPath> 
     out
 }
 
+/// Round pads at the sharp outer corners of the first layer, which is where
+/// parts lift. Each pad is the disc around the corner without the part itself.
+fn brim_ears(footprint: &Region, radius: f64, max_angle_deg: f64, w: f64, spacing: f64) -> Vec<ExPath> {
+    let part = geom::offset_round(footprint, w * 0.5);
+    let mut out = Vec::new();
+    for path in footprint {
+        // Outer outlines only; holes have no corners that lift.
+        if geom::path_area_mm2(path) <= 0.0 {
+            continue;
+        }
+        let pts = geom::simplify(&geom::path_to_mm(path), 0.05);
+        let n = pts.len();
+        if n < 3 {
+            continue;
+        }
+        for i in 0..n {
+            let (a, b, c) = (pts[(i + n - 1) % n], pts[i], pts[(i + 1) % n]);
+            let (u, v) = ((a - b).normalize_or_zero(), (c - b).normalize_or_zero());
+            if u == DVec2::ZERO || v == DVec2::ZERO {
+                continue;
+            }
+            // Interior angle at the corner; outlines run counter-clockwise, so a
+            // left turn is a convex corner.
+            let convex = (b - a).perp_dot(c - b) > 0.0;
+            let angle = u.dot(v).clamp(-1.0, 1.0).acos().to_degrees();
+            if !convex || angle > max_angle_deg {
+                continue;
+            }
+            let pad = geom::diff(&vec![geom::circle(b, radius, 32)], &part);
+            let mut k = 0;
+            loop {
+                let ring = geom::offset(&pad, -(k as f64 + 0.5) * spacing);
+                let ring = geom::remove_small(&ring, 0.01);
+                if ring.is_empty() || k > 40 {
+                    break;
+                }
+                for r in &ring {
+                    out.push(ExPath::closed(geom::path_to_mm(r), w, Feature::Brim));
+                }
+                k += 1;
+            }
+        }
+    }
+    out
+}
+
 pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
     let t0 = std::time::Instant::now();
     let lap = |what: &str| super::lap(&t0, what);
@@ -618,11 +721,18 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
         progress.set(frac(0.0), &format!("Planning supports for {}", obj.name));
         // Support planning walks the layers one after another, so it gets its own
         // thread and runs alongside the walls, skins and infill, which use the rest.
-        let support_task = if obj.no_support || matches!(p.support, crate::profiles::SupportKind::None) {
+        let painted = match obj.marks.as_deref().filter(|_| !obj.no_support) {
+            Some(m) => support::Painted {
+                enforce: super::marks::mark_regions(&obj.mesh, m, crate::paint::SUPPORT_ENFORCER, &layers, 0.0),
+                block: super::marks::mark_regions(&obj.mesh, m, crate::paint::SUPPORT_BLOCKER, &layers, 0.0),
+            },
+            None => support::Painted::default(),
+        };
+        let support_task = if obj.no_support || (matches!(p.support, crate::profiles::SupportKind::None) && !painted.any_enforcer()) {
             None
         } else {
             // The groundwork is parallel, so it goes first with every core.
-            let prep = support::prepare(cover, &heights, p);
+            let prep = support::prepare(cover, &heights, p, &painted);
             lap("support groundwork done");
             let (cover_copy, heights_copy, process_copy) = (cover.to_vec(), heights.clone(), p.clone());
             Some(std::thread::spawn(move || support::generate_from(prep, &cover_copy, &heights_copy, &process_copy)))
@@ -664,6 +774,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                 nozzle_in,
             }
         };
+        let layer_marks = LayerMarks::new(obj, &layers);
         struct Stage1 {
             islands: Vec<(Region, WallResult)>,
         }
@@ -681,6 +792,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                 } else {
                     None
                 };
+                let wall_marks = layer_marks.as_ref().map(|m| m.layer(i));
                 let islands = geom::islands(&slices[i])
                     .into_iter()
                     .enumerate()
@@ -693,7 +805,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                         });
                         let count = if open_top { wall_count.min(1) } else { wall_count };
                         let _t = super::span("build_walls");
-                        let wr = build_walls(&reg, g, job, count, below.as_ref(), k as u64 + 7);
+                        let wr = build_walls(&reg, g, job, count, below.as_ref(), wall_marks.as_ref(), k as u64 + 7);
                         (reg, wr)
                     })
                     .collect();
@@ -993,7 +1105,9 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
         }
         z_shift = z + 0.15;
     } else if !footprint.is_empty() {
-        if p.brim_width > 0.0 {
+        if p.brim_width > 0.0 && p.brim_type == BrimType::Ears {
+            adhesion.extend(brim_ears(&footprint, p.brim_width as f64, p.brim_ear_angle as f64, w0, s0));
+        } else if p.brim_width > 0.0 {
             // Innermost rings first so the brim bonds to the part.
             let count = ((p.brim_width as f64 / s0).ceil() as usize).max(1);
             for k in 0..count {
@@ -1003,7 +1117,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                     let wanted = match p.brim_type {
                         BrimType::Outer => !hole,
                         BrimType::Inner => hole,
-                        BrimType::Both => true,
+                        BrimType::Both | BrimType::Ears => true,
                     };
                     if wanted && geom::path_area_mm2(path).abs() > 0.0 {
                         adhesion.push(ExPath::closed(geom::path_to_mm(path), w0, Feature::Brim));
