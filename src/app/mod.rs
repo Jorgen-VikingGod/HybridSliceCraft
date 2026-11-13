@@ -236,6 +236,8 @@ pub struct App {
     pub advanced: bool,
     pub settings_tab: usize,
     pub show_printer: bool,
+    /// What the last profile import could not carry over, shown until closed.
+    pub import_notes: Option<Vec<String>>,
     pub show_material: bool,
     pub show_about: bool,
     pub show_shortcuts: bool,
@@ -390,6 +392,7 @@ impl App {
             advanced: false,
             settings_tab: 0,
             show_printer: false,
+            import_notes: None,
             show_material: false,
             show_about: false,
             show_shortcuts: false,

@@ -293,6 +293,82 @@ impl App {
                 self.save_process_preset(ui.ctx());
             }
         });
+        if ui
+            .button(crate::i18n::tr("Import profiles…"))
+            .on_hover_text(crate::i18n::tr("Read printer, filament and process presets exported from OrcaSlicer or Bambu Studio"))
+            .clicked()
+        {
+            self.import_profiles(ui.ctx());
+        }
+    }
+
+    fn import_profiles(&mut self, ctx: &egui::Context) {
+        let Some(files) = rfd::FileDialog::new()
+            .add_filter("Slicer presets", &["json", "orca_printer", "orca_filament", "bbscfg", "bbsflmt", "zip"])
+            .add_filter("All files", &["*"])
+            .set_title("Import printer, filament and process presets")
+            .pick_files()
+        else {
+            return;
+        };
+        let imp = crate::import::load_files(&files);
+        if imp.count() == 0 {
+            let mut notes = imp.notes;
+            notes.insert(0, "No presets were found in the chosen files.".into());
+            self.import_notes = Some(notes);
+            return;
+        }
+        self.cat.add_imported(&imp);
+        if let Some(p) = imp.printers.first() {
+            if let Some(p) = self.cat.fdm_printers.iter().rev().find(|e| e.name.starts_with(&p.name)).cloned() {
+                self.fdm_printer = p;
+                self.filaments.truncate((self.fdm_printer.extruders as usize).max(1));
+                self.place_new_objects();
+                self.frame_all();
+            }
+        }
+        if let Some(f) = imp.filaments.first() {
+            if let Some(f) = self.cat.filaments.iter().rev().find(|e| e.name.starts_with(&f.name)).cloned() {
+                if let Some(slot) = self.filaments.first_mut() {
+                    *slot = f;
+                }
+            }
+        }
+        if let Some(s) = imp.processes.first() {
+            if let Some(s) = self.cat.fdm_processes.iter().rev().find(|e| e.name.starts_with(&s.name)).cloned() {
+                self.fdm_process = s.clone();
+                self.fdm_process_base = s;
+            }
+        }
+        let msg = format!(
+            "Imported {} printers, {} filaments and {} print settings.",
+            imp.printers.len(),
+            imp.filaments.len(),
+            imp.processes.len()
+        );
+        match self.cat.save_custom() {
+            Ok(()) => self.toast(ctx, ToastKind::Good, msg),
+            Err(e) => self.toast(ctx, ToastKind::Bad, format!("Couldn't save the presets: {e}")),
+        }
+        if !imp.notes.is_empty() {
+            self.import_notes = Some(imp.notes);
+        }
+    }
+
+    pub fn import_report_window(&mut self, ctx: &egui::Context) {
+        let Some(notes) = self.import_notes.clone() else { return };
+        let mut open = true;
+        egui::Window::new(crate::i18n::tr("Import report")).open(&mut open).default_width(460.0).show(ctx, |ui| {
+            egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+                for n in &notes {
+                    ui.label(crate::i18n::tr(n));
+                    ui.add_space(4.0);
+                }
+            });
+        });
+        if !open {
+            self.import_notes = None;
+        }
     }
 
     fn save_process_preset(&mut self, ctx: &egui::Context) {

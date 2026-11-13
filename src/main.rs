@@ -5,6 +5,7 @@ mod app;
 mod bench;
 mod fdm;
 mod geom;
+mod import;
 mod keys;
 mod i18n;
 mod mesh;
