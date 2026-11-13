@@ -22,6 +22,7 @@ mod resin;
 mod scene;
 mod shapes;
 mod slicing;
+mod step;
 
 use app::{App, StartOptions};
 use egui_wgpu::wgpu;

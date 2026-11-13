@@ -138,7 +138,7 @@ impl App {
 
     pub fn import_dialog(&mut self) {
         let Some(files) = rfd::FileDialog::new()
-            .add_filter("3D models", &["stl", "obj", "3mf", "ply"])
+            .add_filter("3D models", &["stl", "obj", "3mf", "ply", "step", "stp"])
             .add_filter("All files", &["*"])
             .set_title("Add models to the plate")
             .pick_files()
