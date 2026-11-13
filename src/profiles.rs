@@ -359,10 +359,13 @@ pub enum InfillPattern {
     Stars,
     Hilbert,
     Archimedean,
+    Lattice,
+    Honeycomb3D,
+    OctagramSpiral,
 }
 
 impl InfillPattern {
-    pub const ALL: [InfillPattern; 14] = [
+    pub const ALL: [InfillPattern; 17] = [
         InfillPattern::Grid,
         InfillPattern::Lines,
         InfillPattern::Rectilinear,
@@ -377,6 +380,9 @@ impl InfillPattern {
         InfillPattern::Stars,
         InfillPattern::Hilbert,
         InfillPattern::Archimedean,
+        InfillPattern::Lattice,
+        InfillPattern::Honeycomb3D,
+        InfillPattern::OctagramSpiral,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -394,6 +400,9 @@ impl InfillPattern {
             InfillPattern::Stars => "Stars",
             InfillPattern::Hilbert => "Hilbert curve",
             InfillPattern::Archimedean => "Archimedean chords",
+            InfillPattern::Lattice => "2D lattice",
+            InfillPattern::Honeycomb3D => "3D honeycomb",
+            InfillPattern::OctagramSpiral => "Octagram spiral",
         }
     }
 }

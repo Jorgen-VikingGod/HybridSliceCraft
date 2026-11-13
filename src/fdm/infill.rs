@@ -240,6 +240,50 @@ fn archimedean(idx: &EdgeIndex, mn: DVec2, mx: DVec2, spacing: f64, out: &mut Ve
     idx.clip_polyline(&line, out);
 }
 
+/// An Archimedean spiral whose reach swells and shrinks eight times a turn,
+/// which draws a star.
+fn octagram(idx: &EdgeIndex, mn: DVec2, mx: DVec2, spacing: f64, out: &mut Vec<Polyline>) {
+    let c = (mn + mx) * 0.5;
+    let reach = (mx - mn).length() * 0.5 + spacing;
+    let mut line: Polyline = Vec::new();
+    let mut theta = 0.0f64;
+    loop {
+        let base = spacing * theta / TAU;
+        if base > reach {
+            break;
+        }
+        let r = base * (1.0 + 0.18 * (8.0 * theta).cos());
+        line.push(c + DVec2::new(theta.cos(), theta.sin()) * r);
+        theta += (0.35 / base.max(0.5)).min(0.2);
+    }
+    idx.clip_polyline(&line, out);
+}
+
+/// Wavy lines both ways whose waves slide with height, so the cells they make
+/// open and close from layer to layer like a 3D honeycomb.
+fn wavy_cells(idx: &EdgeIndex, mn: DVec2, mx: DVec2, spacing: f64, z: f64, out: &mut Vec<Polyline>) {
+    let lambda = spacing * 2.0;
+    let amp = spacing * 0.35;
+    let phase = TAU * z / lambda;
+    for horizontal in [true, false] {
+        let (a0, a1) = if horizontal { (mn.y, mx.y) } else { (mn.x, mx.x) };
+        let (b0, b1) = if horizontal { (mn.x, mx.x) } else { (mn.y, mx.y) };
+        let rows = ((a1 - a0) / spacing).ceil() as i64 + 2;
+        for r in -1..rows {
+            let base = a0 + r as f64 * spacing;
+            let mut line: Polyline = Vec::new();
+            let mut t = b0 - spacing;
+            while t < b1 + spacing {
+                // The two directions wave out of step so crossings stay clean.
+                let off = amp * (TAU * t / lambda + phase + if horizontal { 0.0 } else { std::f64::consts::PI }).sin();
+                line.push(if horizontal { DVec2::new(t, base + off) } else { DVec2::new(base + off, t) });
+                t += 0.4;
+            }
+            idx.clip_polyline(&line, out);
+        }
+    }
+}
+
 fn concentric(region: &Region, spacing: f64, out: &mut Vec<Polyline>) {
     let mut cur = geom::offset(region, -spacing * 0.5);
     let mut guard = 0;
@@ -360,6 +404,18 @@ pub fn sparse(
         }
         InfillPattern::Concentric => {
             concentric(region, (width / density).max(width), &mut out);
+        }
+        InfillPattern::Lattice => {
+            // Two families that cross at an angle instead of a right angle.
+            let s = width * 2.0 / density;
+            add_lines(base_angle + 0.5, s, 0.0, false);
+            add_lines(base_angle - 0.5, s, 0.0, false);
+        }
+        InfillPattern::Honeycomb3D => {
+            wavy_cells(&idx, mn, mx, (2.6 * width / density).max(width * 2.0), z, &mut out);
+        }
+        InfillPattern::OctagramSpiral => {
+            octagram(&idx, mn, mx, (width / density).max(width), &mut out);
         }
     }
     out.retain(|l| {
