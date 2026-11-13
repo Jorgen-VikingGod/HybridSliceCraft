@@ -1,6 +1,10 @@
 //! HybridSliceCraft: a hybrid slicer for filament (FDM) and resin printers.
 //! Author: Jürgen Könnemann
 
+// A release build on Windows is a window program: no black console box opens beside
+// it, and closing one can't take the slicer down with it.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod app;
 mod bench;
 mod fdm;
@@ -151,7 +155,37 @@ fn window_icon() -> egui::IconData {
     decoded.unwrap_or_default()
 }
 
+/// Started from a terminal, the program prints (for `--help` and the like) into
+/// that terminal even though it has no console of its own.
+#[cfg(windows)]
+fn attach_parent_console() {
+    use std::os::windows::io::AsRawHandle;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn AttachConsole(process_id: u32) -> i32;
+        fn SetStdHandle(which: u32, handle: *mut std::ffi::c_void) -> i32;
+    }
+    const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
+    const STD_OUTPUT_HANDLE: u32 = -11i32 as u32;
+    const STD_ERROR_HANDLE: u32 = -12i32 as u32;
+    // Fails, harmlessly, when there is no terminal to join (a double click).
+    if unsafe { AttachConsole(ATTACH_PARENT_PROCESS) } == 0 {
+        return;
+    }
+    if let Ok(out) = std::fs::OpenOptions::new().write(true).open("CONOUT$") {
+        let handle = out.as_raw_handle();
+        unsafe {
+            SetStdHandle(STD_OUTPUT_HANDLE, handle as *mut _);
+            SetStdHandle(STD_ERROR_HANDLE, handle as *mut _);
+        }
+        // The handle stays in use for the life of the program.
+        std::mem::forget(out);
+    }
+}
+
 fn main() {
+    #[cfg(windows)]
+    attach_parent_console();
     if let Some(b) = parse_bench() {
         let result = b.and_then(|o| if o.fdm { bench::run_fdm(&o) } else { bench::run(&o) });
         if let Err(e) = result {
