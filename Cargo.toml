@@ -32,6 +32,8 @@ depends = ["libxkbcommon0", "libwayland-client0", "libvulkan1 | libgl1"]
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland", "accesskit"] }
 egui-wgpu = "0.37"
+# Without this the system clipboard is off, and nothing copied elsewhere can be pasted.
+egui-winit = { version = "0.37", default-features = false, features = ["clipboard"] }
 egui = "0.37"
 glam = { version = "0.30", features = ["bytemuck"] }
 bytemuck = { version = "1", features = ["derive"] }
