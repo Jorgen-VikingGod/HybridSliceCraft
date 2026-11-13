@@ -843,9 +843,10 @@ impl App {
         };
         let host = self.fdm_printer.host.clone();
         let key = self.fdm_printer.host_key.clone();
+        let kind = self.fdm_printer.host_kind;
         let name = format!("{}.gcode", self.default_name());
         self.spawn_job("Sending to the printer", move |_| {
-            let message = project::send_to_printer(&host, &key, &name, res.gcode.as_bytes())?;
+            let message = project::send_to_printer(kind, &host, &key, &name, res.gcode.as_bytes())?;
             Ok(JobOutcome::Saved(message))
         });
     }

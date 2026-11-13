@@ -35,7 +35,7 @@ const META: &[&str] = &[
     "print_settings_id", "filament_settings_id", "printer_settings_id", "default_print_profile", "default_filament_profile",
     "printer_model", "printer_variant", "printer_technology", "thumbnails", "bed_model", "bed_texture", "hotend_model",
     "model_id", "family", "filament_vendor", "filament_notes", "printer_notes", "print_extruder_id", "print_extruder_variant",
-    "filament_extruder_variant", "is_custom_defined", "host_type", "print_host", "printhost_apikey", "printhost_user",
+    "filament_extruder_variant", "is_custom_defined", "printhost_user",
     "printhost_password", "printhost_cafile", "printhost_ssl_ignore_revoke", "printhost_authorization_type", "update_time",
     "user_id", "machine_tech", "machine_load_filament_time", "machine_unload_filament_time", "machine_tool_change_time",
 ];
@@ -342,6 +342,19 @@ fn printer(r: &mut Reader, name: &str) -> FdmPrinter {
     set!(r, p.retract_layer_change, "retract_when_changing_layer", flag);
     set!(r, p.wipe_on_retract, "wipe_distance", num);
     set!(r, p.relative_e, "use_relative_e_distances", flag);
+    if let Some(h) = r.text("print_host").filter(|h| !h.is_empty()) {
+        p.host = h;
+    }
+    if let Some(k) = r.text("printhost_apikey") {
+        p.host_key = k;
+    }
+    if let Some(t) = r.text("host_type") {
+        p.host_kind = match t.as_str() {
+            "prusalink" | "prusaconnect" => HostKind::PrusaLink,
+            "duet" => HostKind::Duet,
+            _ => HostKind::OctoPrint,
+        };
+    }
     if let Some(g) = r.text("machine_start_gcode") {
         p.start_gcode = translate_gcode(&g);
     }

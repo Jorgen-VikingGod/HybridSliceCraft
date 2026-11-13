@@ -12,6 +12,28 @@ pub enum Firmware {
     RepRap,
 }
 
+/// What kind of print server a network printer runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum HostKind {
+    /// OctoPrint, or Moonraker (Klipper), which takes the same upload.
+    #[default]
+    OctoPrint,
+    PrusaLink,
+    /// Duet boards (RepRapFirmware) with their web interface.
+    Duet,
+}
+
+impl HostKind {
+    pub const ALL: [HostKind; 3] = [HostKind::OctoPrint, HostKind::PrusaLink, HostKind::Duet];
+    pub fn label(self) -> &'static str {
+        match self {
+            HostKind::OctoPrint => "OctoPrint / Moonraker",
+            HostKind::PrusaLink => "PrusaLink",
+            HostKind::Duet => "Duet",
+        }
+    }
+}
+
 /// How the nozzle lifts over a long travel move.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ZHopType {
@@ -115,6 +137,7 @@ pub struct FdmPrinter {
     pub filament_change_gcode: String,
     /// Address of a network printer ("http://192.168.1.50"), Moonraker or OctoPrint.
     pub host: String,
+    pub host_kind: HostKind,
     pub host_key: String,
 }
 
@@ -160,6 +183,7 @@ impl Default for FdmPrinter {
             pause_gcode: String::new(),
             filament_change_gcode: String::new(),
             host: String::new(),
+            host_kind: HostKind::OctoPrint,
             host_key: String::new(),
         }
     }
