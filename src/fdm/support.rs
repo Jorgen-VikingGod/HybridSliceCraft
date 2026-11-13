@@ -1,7 +1,7 @@
 //! Supports for filament prints: grid (block) supports and tree supports.
 
 use crate::geom::{self, EdgeIndex, Region};
-use crate::profiles::{FdmProcess, SupportKind};
+use crate::profiles::{FdmProcess, SupportKind, SupportStyle};
 use glam::DVec2;
 use rayon::prelude::*;
 
@@ -216,6 +216,19 @@ fn block_supports(prep: Prepared, slices: &[Region], p: &FdmProcess) -> Vec<Supp
                     }
                     here = geom::simplify_region(&here, SUPPORT_TOLERANCE_MM);
                     here = geom::remove_small(&geom::opening(&here, 0.3), 1.0);
+                    if p.support_style == SupportStyle::Grid && !here.is_empty() {
+                        // A rectangle around each patch, still kept off the model.
+                        let boxes: Region = geom::islands(&here)
+                            .iter()
+                            .filter_map(|isl| geom::bbox(&isl.region()))
+                            .map(|(a, b)| geom::rect(a, b))
+                            .collect();
+                        let boxes = geom::union(&boxes);
+                        here = geom::diff(&boxes, &geom::crop(&clear[i], lo - pad, hi + pad));
+                        if p.support_plate_only {
+                            here = geom::diff(&here, &geom::crop(&below[i], lo - pad, hi + pad));
+                        }
+                    }
                     // Rounded offsets leave a lot of points; supports don't need them, and
                     // every later layer's work grows with them.
                     geom::simplify_region(&here, SUPPORT_TOLERANCE_MM)

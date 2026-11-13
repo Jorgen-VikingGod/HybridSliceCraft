@@ -382,6 +382,49 @@ impl<'a> Writer<'a> {
         }
     }
 
+    /// An outer wall that fades in over the first stretch and fades out over the
+    /// same stretch again past the start, so the two ends overlap into a slope
+    /// and the plastic adds up to a full line.
+    fn emit_scarf(&mut self, path: &ExPath, seam: usize, z: f64, h: f64, flow: f64) {
+        let p = &self.job.process;
+        let total = path.length();
+        let fade = (p.scarf_length as f64).clamp(1.0, total * 0.4);
+        let start = (p.scarf_start as f64 / 100.0).clamp(0.05, 1.0);
+        let step = (fade / 8.0).max(0.3);
+        let n = path.pts.len();
+        let mut done = 0.0;
+        // Round the loop once, then along its first stretch again.
+        'laps: for k in 0..2 * n {
+            let i = (seam + k) % n;
+            let j = (i + 1) % n;
+            let (a, b) = (path.pts[i], path.pts[j]);
+            let seg = a.distance(b);
+            if seg < 1e-9 {
+                continue;
+            }
+            let hang = path.overhang.get(i).copied().unwrap_or(false);
+            let f = if hang { Feature::OverhangWall } else { path.feature };
+            self.tier_speed = self.job.process.overhang_tiers.then(|| path.tier.get(i).copied().unwrap_or(0));
+            let pieces = (seg / step).ceil().max(1.0) as usize;
+            for q in 0..pieces {
+                let t = (q + 1) as f64 / pieces as f64;
+                let d = done + seg * t;
+                // Distance along the first lap fades in; past the start it fades out.
+                let ramp = |x: f64| start + (1.0 - start) * (x / fade).min(1.0);
+                let factor = if d > total + 1e-9 { 1.0 - ramp(d - total) } else if d < fade { ramp(d) } else { 1.0 };
+                let to = a.lerp(b, t);
+                if d > total + fade + 1e-9 {
+                    break 'laps;
+                }
+                self.ext_seg(to, z, path.width, h, flow * path.flow_mult * factor.max(0.0), f);
+            }
+            done += seg;
+            if done > total + fade {
+                break;
+            }
+        }
+    }
+
     /// The best seam among some allowed points: the same corner preference as
     /// the normal Aligned choice, measured from the anchor.
     fn pick_seam_among(&self, pts: &[DVec2], allowed: &[usize], anchor: DVec2) -> usize {
@@ -413,6 +456,11 @@ impl<'a> Writer<'a> {
             let n = path.pts.len();
             self.travel_to(path.pts[seam], z, comb);
             let total = path.length();
+            let scarf = self.job.process.scarf_seam && is_outer && total > 4.0;
+            if scarf {
+                self.emit_scarf(path, seam, z, h, flow);
+                return;
+            }
             let gap = if matches!(path.feature, Feature::OuterWall | Feature::InnerWall) {
                 (self.job.process.seam_gap as f64 * path.width).min(total * 0.2)
             } else {

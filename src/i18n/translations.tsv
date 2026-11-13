@@ -457,3 +457,16 @@ Support enforcer	Stützen erzwingen	Forcer les supports	Forzar soportes
 Support blocker	Stützen verbieten	Bloquer les supports	Bloquear soportes
 Seam enforcer	Naht erzwingen	Forcer la couture	Forzar costura
 Seam blocker	Naht vermeiden	Éviter la couture	Evitar costura
+Mouse ears	Mausohren	Oreilles de souris	Orejas de ratón
+Mouse ear angle	Winkel für Mausohren	Angle des oreilles de souris	Ángulo de las orejas de ratón
+With mouse ears, pads go on outer corners sharper than this.	Bei Mausohren kommen Pads an äußere Ecken, die spitzer sind als dieser Winkel.	Avec les oreilles de souris, des pastilles sont posées sur les coins extérieurs plus aigus que cet angle.	Con orejas de ratón, se colocan almohadillas en las esquinas exteriores más agudas que este ángulo.
+Support style	Stützenstil	Style de support	Estilo de soporte
+Snug	Eng anliegend	Ajusté	Ajustado
+Grid	Raster	Grille	Rejilla
+Snug supports follow the outline of what they hold up; grid supports fill a rectangle around it.	Eng anliegende Stützen folgen der Kontur des gestützten Teils; Raster-Stützen füllen ein Rechteck darum.	Les supports ajustés suivent le contour de ce qu'ils soutiennent ; les supports en grille remplissent un rectangle autour.	Los soportes ajustados siguen el contorno de lo que sostienen; los de rejilla llenan un rectángulo a su alrededor.
+Scarf seam	Schrägnaht	Couture en biseau	Costura en bisel
+Fades the outer wall in and out over a stretch at the seam, so it leaves no bump.	Blendet die Außenwand an der Naht über eine Strecke ein und aus, damit keine Beule entsteht.	Fait entrer et sortir la paroi extérieure en fondu sur une distance à la couture, pour ne laisser aucune bosse.	Atenúa la pared exterior al entrar y salir en la costura, para no dejar un bulto.
+Scarf length	Länge der Schrägnaht	Longueur du biseau	Longitud del bisel
+Length of the fade at the seam.	Länge des Übergangs an der Naht.	Longueur du fondu à la couture.	Longitud del desvanecimiento en la costura.
+Scarf start flow	Startfluss der Schrägnaht	Débit de départ du biseau	Flujo inicial del bisel
+How much plastic the wall starts with, in percent of full.	Wie viel Kunststoff die Wand am Anfang bekommt, in Prozent.	Quantité de plastique au départ de la paroi, en pourcentage du plein.	Cuánto plástico lleva la pared al empezar, en porcentaje del total.

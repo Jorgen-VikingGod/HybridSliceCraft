@@ -605,6 +605,52 @@ fn support_paths(sup: &SupportLayer, job: &FdmJob, g: LayerGeom) -> Vec<ExPath> 
     out
 }
 
+/// Round pads at the sharp outer corners of the first layer, which is where
+/// parts lift. Each pad is the disc around the corner without the part itself.
+fn brim_ears(footprint: &Region, radius: f64, max_angle_deg: f64, w: f64, spacing: f64) -> Vec<ExPath> {
+    let part = geom::offset_round(footprint, w * 0.5);
+    let mut out = Vec::new();
+    for path in footprint {
+        // Outer outlines only; holes have no corners that lift.
+        if geom::path_area_mm2(path) <= 0.0 {
+            continue;
+        }
+        let pts = geom::simplify(&geom::path_to_mm(path), 0.05);
+        let n = pts.len();
+        if n < 3 {
+            continue;
+        }
+        for i in 0..n {
+            let (a, b, c) = (pts[(i + n - 1) % n], pts[i], pts[(i + 1) % n]);
+            let (u, v) = ((a - b).normalize_or_zero(), (c - b).normalize_or_zero());
+            if u == DVec2::ZERO || v == DVec2::ZERO {
+                continue;
+            }
+            // Interior angle at the corner; outlines run counter-clockwise, so a
+            // left turn is a convex corner.
+            let convex = (b - a).perp_dot(c - b) > 0.0;
+            let angle = u.dot(v).clamp(-1.0, 1.0).acos().to_degrees();
+            if !convex || angle > max_angle_deg {
+                continue;
+            }
+            let pad = geom::diff(&vec![geom::circle(b, radius, 32)], &part);
+            let mut k = 0;
+            loop {
+                let ring = geom::offset(&pad, -(k as f64 + 0.5) * spacing);
+                let ring = geom::remove_small(&ring, 0.01);
+                if ring.is_empty() || k > 40 {
+                    break;
+                }
+                for r in &ring {
+                    out.push(ExPath::closed(geom::path_to_mm(r), w, Feature::Brim));
+                }
+                k += 1;
+            }
+        }
+    }
+    out
+}
+
 pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
     let t0 = std::time::Instant::now();
     let lap = |what: &str| super::lap(&t0, what);
@@ -1059,7 +1105,9 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
         }
         z_shift = z + 0.15;
     } else if !footprint.is_empty() {
-        if p.brim_width > 0.0 {
+        if p.brim_width > 0.0 && p.brim_type == BrimType::Ears {
+            adhesion.extend(brim_ears(&footprint, p.brim_width as f64, p.brim_ear_angle as f64, w0, s0));
+        } else if p.brim_width > 0.0 {
             // Innermost rings first so the brim bonds to the part.
             let count = ((p.brim_width as f64 / s0).ceil() as usize).max(1);
             for k in 0..count {
@@ -1069,7 +1117,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                     let wanted = match p.brim_type {
                         BrimType::Outer => !hole,
                         BrimType::Inner => hole,
-                        BrimType::Both => true,
+                        BrimType::Both | BrimType::Ears => true,
                     };
                     if wanted && geom::path_area_mm2(path).abs() > 0.0 {
                         adhesion.push(ExPath::closed(geom::path_to_mm(path), w0, Feature::Brim));

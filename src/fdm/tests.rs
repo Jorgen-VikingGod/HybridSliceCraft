@@ -1153,3 +1153,50 @@ fn painted_fuzzy_skin_roughens_only_the_painted_side() {
     assert!(spread(&left) < 0.1, "unpainted side moved by {}", spread(&left));
     assert!(spread(&right) > 0.1, "painted side only moved by {}", spread(&right));
 }
+
+#[test]
+fn mouse_ears_sit_at_the_corners_only() {
+    use crate::profiles::BrimType;
+    // The cube spans 90 to 120 mm; look 3 mm outside the middle of its front edge.
+    let brim_near = |t: BrimType, at: (f32, f32)| {
+        let mut p = FdmProcess::default();
+        p.brim_width = 5.0;
+        p.brim_type = t;
+        let r = slice(&job(centered(make_box(Vec3::new(30.0, 30.0, 5.0))), p), &Progress::default()).unwrap();
+        r.segs.iter().filter(|s| s.feature == Feature::Brim as u32).any(|s| ((s.a[0] + s.b[0]) / 2.0 - at.0).abs() < 1.5 && ((s.a[1] + s.b[1]) / 2.0 - at.1).abs() < 1.5)
+    };
+    let (middle, corner) = ((105.0, 87.0), (88.0, 88.0));
+    assert!(brim_near(BrimType::Outer, middle));
+    assert!(!brim_near(BrimType::Ears, middle), "no pad along a straight edge");
+    assert!(brim_near(BrimType::Ears, corner), "a pad at the corner");
+}
+
+#[test]
+fn both_support_styles_make_support() {
+    let amount = |style: SupportStyle| {
+        let mut p = FdmProcess::default();
+        p.support = SupportKind::Normal;
+        p.support_style = style;
+        let r = slice(&job(centered(table()), p), &Progress::default()).unwrap();
+        r.segs.iter().filter(|s| s.feature == Feature::Support as u32).count()
+    };
+    let (snug, grid) = (amount(SupportStyle::Snug), amount(SupportStyle::Grid));
+    assert!(snug > 50 && grid > 50, "{snug} {grid}");
+}
+
+#[test]
+fn scarf_seam_changes_the_wall_ends_but_not_the_plastic_used() {
+    let mut p = FdmProcess::default();
+    p.scarf_seam = false;
+    let mesh = centered(make_box(Vec3::new(30.0, 30.0, 10.0)));
+    let plain = slice(&job(mesh.clone(), p.clone()), &Progress::default()).unwrap();
+    p.scarf_seam = true;
+    let scarf = slice(&job(mesh, p), &Progress::default()).unwrap();
+    let (a, b) = (replay(&plain.gcode).3, replay(&scarf.gcode).3);
+    assert!((a - b).abs() / a < 0.03, "plastic used {a} vs {b}");
+    assert_ne!(plain.gcode, scarf.gcode);
+    // The fade shows as outer wall moves with less flow than the rest.
+    let mut widths: Vec<f32> = scarf.segs.iter().filter(|s| s.feature == Feature::OuterWall as u32).map(|s| s.flow).collect();
+    widths.sort_by(|x, y| x.total_cmp(y));
+    assert!(widths[0] < widths[widths.len() / 2] * 0.6, "{} vs {}", widths[0], widths[widths.len() / 2]);
+}
