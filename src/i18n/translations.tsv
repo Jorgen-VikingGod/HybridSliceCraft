@@ -453,3 +453,7 @@ Import profiles…	Profile importieren…	Importer des profils…	Importar perfi
 Read printer, filament and process presets exported from OrcaSlicer or Bambu Studio	Drucker-, Filament- und Prozessprofile lesen, die aus OrcaSlicer oder Bambu Studio exportiert wurden	Lire les préréglages d'imprimante, de filament et de procédé exportés d'OrcaSlicer ou de Bambu Studio	Leer ajustes de impresora, filamento y proceso exportados de OrcaSlicer o Bambu Studio
 Import report	Importbericht	Rapport d'importation	Informe de importación
 No presets were found in the chosen files.	In den gewählten Dateien wurden keine Profile gefunden.	Aucun préréglage trouvé dans les fichiers choisis.	No se encontraron ajustes en los archivos elegidos.
+Support enforcer	Stützen erzwingen	Forcer les supports	Forzar soportes
+Support blocker	Stützen verbieten	Bloquer les supports	Bloquear soportes
+Seam enforcer	Naht erzwingen	Forcer la couture	Forzar costura
+Seam blocker	Naht vermeiden	Éviter la couture	Evitar costura
