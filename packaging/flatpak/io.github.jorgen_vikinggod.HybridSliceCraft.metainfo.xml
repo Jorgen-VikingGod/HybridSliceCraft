@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.9.0" date="2026-11-13">
+      <description>
+        <p>Paint support enforcers, blockers, seams and fuzzy skin; import your own presets; scarf seam, mouse ears, new infill patterns, height ranges, flush volumes, no-go areas, and sending to PrusaLink and Duet printers.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.9.0</url>
+    </release>
     <release version="0.8.0" date="2026-11-11">
       <description>
         <p>Separate filaments for top and bottom surfaces, pause or filament change at a layer, machine limits, acceleration, flow and fan for each kind of line, more Z-hop types and overhang speed steps.</p>
