@@ -1014,3 +1014,44 @@ fn walls_slow_down_in_steps_by_how_much_they_hang() {
     assert!((a - b).abs() / a < 0.005, "{a} against {b}");
     assert!(tiered.total_time > plain.total_time);
 }
+
+/// The table's underside (and the top of its leg) marked with `mark`.
+fn marked_underside(mesh: &Mesh, mark: u8) -> std::sync::Arc<Vec<u8>> {
+    std::sync::Arc::new(
+        (0..mesh.t.len())
+            .map(|i| {
+                let [a, b, c] = mesh.tri(i);
+                if (a.z - 12.0).abs() < 1e-3 && (b.z - 12.0).abs() < 1e-3 && (c.z - 12.0).abs() < 1e-3 { mark } else { 0 }
+            })
+            .collect(),
+    )
+}
+
+fn support_lines(r: &FdmResult) -> usize {
+    r.segs.iter().filter(|s| s.feature == Feature::Support as u32 || s.feature == Feature::SupportInterface as u32).count()
+}
+
+#[test]
+fn painted_enforcers_make_support_even_when_supports_are_off() {
+    let mesh = centered(table());
+    let mut j = job(mesh.clone(), FdmProcess::default());
+    assert_eq!(support_lines(&slice(&j, &Progress::default()).unwrap()), 0);
+    j.objects[0].marks = Some(marked_underside(&mesh, crate::paint::SUPPORT_ENFORCER));
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(support_lines(&r) > 50, "{}", support_lines(&r));
+}
+
+#[test]
+fn painted_blockers_keep_support_out() {
+    for kind in [SupportKind::Normal, SupportKind::Tree] {
+        let mesh = centered(table());
+        let mut p = FdmProcess::default();
+        p.support = kind;
+        let mut j = job(mesh.clone(), p);
+        let plain = support_lines(&slice(&j, &Progress::default()).unwrap());
+        assert!(plain > 50);
+        j.objects[0].marks = Some(marked_underside(&mesh, crate::paint::SUPPORT_BLOCKER));
+        let blocked = support_lines(&slice(&j, &Progress::default()).unwrap());
+        assert!(blocked * 4 < plain, "{kind:?}: {plain} lines became {blocked}");
+    }
+}

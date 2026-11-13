@@ -618,11 +618,18 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
         progress.set(frac(0.0), &format!("Planning supports for {}", obj.name));
         // Support planning walks the layers one after another, so it gets its own
         // thread and runs alongside the walls, skins and infill, which use the rest.
-        let support_task = if obj.no_support || matches!(p.support, crate::profiles::SupportKind::None) {
+        let painted = match obj.marks.as_deref().filter(|_| !obj.no_support) {
+            Some(m) => support::Painted {
+                enforce: super::marks::mark_regions(&obj.mesh, m, crate::paint::SUPPORT_ENFORCER, &layers),
+                block: super::marks::mark_regions(&obj.mesh, m, crate::paint::SUPPORT_BLOCKER, &layers),
+            },
+            None => support::Painted::default(),
+        };
+        let support_task = if obj.no_support || (matches!(p.support, crate::profiles::SupportKind::None) && !painted.any_enforcer()) {
             None
         } else {
             // The groundwork is parallel, so it goes first with every core.
-            let prep = support::prepare(cover, &heights, p);
+            let prep = support::prepare(cover, &heights, p, &painted);
             lap("support groundwork done");
             let (cover_copy, heights_copy, process_copy) = (cover.to_vec(), heights.clone(), p.clone());
             Some(std::thread::spawn(move || support::generate_from(prep, &cover_copy, &heights_copy, &process_copy)))

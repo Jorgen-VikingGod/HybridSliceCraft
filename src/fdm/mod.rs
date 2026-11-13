@@ -3,6 +3,7 @@
 
 pub mod gcode;
 pub mod infill;
+pub mod marks;
 pub mod painting;
 pub mod plan;
 pub mod support;
@@ -154,6 +155,8 @@ pub struct JobObject {
     pub slices: Option<std::sync::Arc<Vec<crate::geom::Region>>>,
     /// The whole model's outlines, so skins and overhangs ignore colour borders.
     pub cover: Option<std::sync::Arc<Vec<crate::geom::Region>>>,
+    /// Support, seam and fuzzy skin marks, one number per triangle (see `paint`).
+    pub marks: Option<std::sync::Arc<Vec<u8>>>,
     /// Pieces of a painted model other than the first get no supports of their own.
     pub no_support: bool,
 }

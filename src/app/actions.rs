@@ -663,6 +663,7 @@ impl App {
                     walls: o.walls,
                     paint: o.paint.clone().filter(|p| p.len() == o.mesh.t.len()),
                     paint_depth: o.paint_depth,
+                    marks: o.marks.clone().filter(|p| p.len() == o.mesh.t.len()),
                     ..Default::default()
                 })
                 .collect();
