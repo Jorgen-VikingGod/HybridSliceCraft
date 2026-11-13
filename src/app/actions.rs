@@ -74,7 +74,8 @@ impl App {
             let floor = if resin && !o.support_points.is_empty() { lift } else { 0.0 };
             o.drop_to_plate(floor);
         }
-        if !arrange(&mut self.plates[self.active].objects, Vec2::new(bx, by), gap) {
+        let areas = self.exclude_areas();
+        if !crate::scene::arrange_avoiding(&mut self.plates[self.active].objects, Vec2::new(bx, by), gap, &areas) {
             self.toasts.push(Toast {
                 text: "Not everything fits on this plate. Parts outside it show in red.".into(),
                 kind: ToastKind::Warn,
@@ -88,6 +89,7 @@ impl App {
         let (bx, by) = self.bed();
         let resin = self.resin();
         let lift = self.resin_process.lift_from_plate;
+        let areas = self.exclude_areas();
         let objects = &mut self.plates[self.active].objects;
         let mut all_fit = true;
         for id in ids {
@@ -99,6 +101,7 @@ impl App {
                 .enumerate()
                 .filter(|(k, o)| *k != i && !ids[ids.iter().position(|x| x == id).unwrap_or(0)..].contains(&o.id))
                 .map(|(_, o)| o.world_bounds())
+                .chain(areas.iter().map(|a| (Vec3::new(a[0], a[1], 0.0), Vec3::new(a[0] + a[2], a[1] + a[3], 0.0))))
                 .collect();
             if !find_free_spot(&mut objects[i], &others, Vec2::new(bx, by), 5.0) {
                 all_fit = false;
@@ -311,7 +314,8 @@ impl App {
     pub fn arrange_now(&mut self, ctx: &egui::Context) {
         self.push_undo();
         let (bx, by) = self.bed();
-        if !arrange(&mut self.plates[self.active].objects, Vec2::new(bx, by), 5.0) {
+        let areas = self.exclude_areas();
+        if !crate::scene::arrange_avoiding(&mut self.plates[self.active].objects, Vec2::new(bx, by), 5.0, &areas) {
             self.toast(ctx, ToastKind::Warn, crate::i18n::tr("Not everything fits on this plate. Try adding another plate."));
         }
     }
@@ -568,7 +572,7 @@ impl App {
         for o in &self.plate().objects {
             h = hash_text(
                 &format!(
-                    "{} {:?} {:?} {:?} {} {:?} {} {:?} {:?} {} {} {}",
+                    "{} {:?} {:?} {:?} {} {:?} {} {:?} {:?} {} {} {} {} {:?}",
                     o.mesh_id,
                     o.pos,
                     o.rot,
@@ -589,7 +593,9 @@ impl App {
                     o.walls,
                     o.support_points.len(),
                     o.holes.len(),
-                    o.cavity_id
+                    o.cavity_id,
+                    o.paint_id,
+                    o.ranges
                 ),
                 h,
             );
@@ -661,6 +667,7 @@ impl App {
                     flow: o.flow,
                     infill: o.infill,
                     walls: o.walls,
+                    ranges: o.ranges.clone(),
                     paint: o.paint.clone().filter(|p| p.len() == o.mesh.t.len()),
                     paint_depth: o.paint_depth,
                     marks: o.marks.clone().filter(|p| p.len() == o.mesh.t.len()),
@@ -843,9 +850,10 @@ impl App {
         };
         let host = self.fdm_printer.host.clone();
         let key = self.fdm_printer.host_key.clone();
+        let kind = self.fdm_printer.host_kind;
         let name = format!("{}.gcode", self.default_name());
         self.spawn_job("Sending to the printer", move |_| {
-            let message = project::send_to_printer(&host, &key, &name, res.gcode.as_bytes())?;
+            let message = project::send_to_printer(kind, &host, &key, &name, res.gcode.as_bytes())?;
             Ok(JobOutcome::Saved(message))
         });
     }

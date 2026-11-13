@@ -530,9 +530,16 @@ impl App {
             .resizable(false)
             .default_width(380.0)
             .show(ctx, |ui| {
-                ui.label(crate::i18n::tr("Works with printers running OctoPrint or Klipper with Moonraker, over a plain http address."));
+                ui.label(crate::i18n::tr("Works with OctoPrint, Klipper with Moonraker, PrusaLink and Duet, over a plain http address."));
                 ui.add_space(4.0);
                 egui::Grid::new("send").num_columns(2).show(ui, |ui| {
+                    ui.label(crate::i18n::tr("Printer type"));
+                    egui::ComboBox::from_id_salt("host_kind").selected_text(self.fdm_printer.host_kind.label()).show_ui(ui, |ui| {
+                        for k in crate::profiles::HostKind::ALL {
+                            ui.selectable_value(&mut self.fdm_printer.host_kind, k, k.label());
+                        }
+                    });
+                    ui.end_row();
                     ui.label(crate::i18n::tr("Address"));
                     ui.add(egui::TextEdit::singleline(&mut self.fdm_printer.host).hint_text("http://192.168.1.50").desired_width(240.0));
                     ui.end_row();

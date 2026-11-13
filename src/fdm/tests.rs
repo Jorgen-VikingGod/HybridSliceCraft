@@ -1228,3 +1228,68 @@ fn thick_bridges_are_as_wide_as_the_nozzle_and_carry_more_plastic() {
     assert!(flow(&thick) > flow(&thin) * 0.9);
     assert!(feature_count(&thick, Feature::Bridge) < feature_count(&thin, Feature::Bridge) * 2);
 }
+
+fn tower_plastic(flush: Vec<f32>) -> f32 {
+    let mut j = two_nozzle_job();
+    j.process.prime_tower = true;
+    j.process.flush = flush;
+    for (tool, x) in [(0usize, 40.0f32), (1, 90.0)] {
+        j.objects.push(JobObject {
+            name: format!("cube {tool}"),
+            mesh: make_box(Vec3::splat(15.0)).transformed(&Mat4::from_translation(Vec3::new(x, 60.0, 0.0))),
+            extruder: tool,
+            flow: 1.0,
+            ..Default::default()
+        });
+    }
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.tool_changes > 10);
+    r.filament_by_feature[Feature::PrimeTower as usize]
+}
+
+#[test]
+fn flush_matrix_sets_what_each_change_purges() {
+    let uniform = tower_plastic(Vec::new());
+    let same = tower_plastic(vec![0.0, 45.0, 45.0, 0.0]);
+    assert!((uniform - same).abs() / uniform < 0.01, "a matrix of the default volume changes nothing: {uniform} {same}");
+    // Changes to filament 2 purge a lot, changes back to filament 1 hardly anything.
+    let lopsided = tower_plastic(vec![0.0, 45.0, 5.0, 0.0]);
+    assert!(lopsided < uniform * 0.8, "{lopsided} vs {uniform}");
+}
+
+#[test]
+fn parts_on_a_no_go_area_are_flagged_and_arranging_avoids_it() {
+    let mut j = job(centered(make_box(Vec3::new(20.0, 20.0, 5.0))), FdmProcess::default());
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(!r.warnings.iter().any(|w| w.contains("off limits")));
+    j.printer.exclude_areas = vec![[95.0, 95.0, 10.0, 10.0]];
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.warnings.iter().any(|w| w.contains("off limits")), "{:?}", r.warnings);
+
+    let mut objects = vec![crate::scene::PlateObject::new("a", make_box(Vec3::new(30.0, 30.0, 5.0)))];
+    let areas = [[95.0f32, 95.0, 30.0, 30.0]];
+    assert!(crate::scene::arrange_avoiding(&mut objects, glam::Vec2::new(220.0, 220.0), 5.0, &areas));
+    let (a, b) = objects[0].world_bounds();
+    assert!(!crate::scene::hits_excluded(a, b, &areas), "{a:?} {b:?}");
+}
+
+#[test]
+fn a_height_range_changes_walls_and_infill_only_between_its_heights() {
+    use crate::profiles::LayerRange;
+    let mut p = FdmProcess::default();
+    p.walls = 2;
+    p.infill_density = 10.0;
+    let mesh = centered(make_box(Vec3::new(30.0, 30.0, 20.0)));
+    let plain = slice(&job(mesh.clone(), p.clone()), &Progress::default()).unwrap();
+    let mut j = job(mesh, p);
+    j.objects[0].ranges = vec![LayerRange { from: 8.0, to: 12.0, walls: Some(5), infill: Some(60.0), pattern: None }];
+    let ranged = slice(&j, &Progress::default()).unwrap();
+    // Count inner-wall and sparse lines on the layers inside and outside the range.
+    let count = |r: &FdmResult, f: Feature, inside: bool| {
+        r.segs.iter().filter(|s| s.feature == f as u32 && ((s.a[2] > 8.0 && s.a[2] <= 12.0) == inside)).count()
+    };
+    assert!(count(&ranged, Feature::InnerWall, true) > count(&plain, Feature::InnerWall, true) * 2);
+    assert!(count(&ranged, Feature::SparseInfill, true) > count(&plain, Feature::SparseInfill, true) * 2);
+    assert_eq!(count(&ranged, Feature::InnerWall, false), count(&plain, Feature::InnerWall, false));
+    assert_eq!(count(&ranged, Feature::SparseInfill, false), count(&plain, Feature::SparseInfill, false));
+}

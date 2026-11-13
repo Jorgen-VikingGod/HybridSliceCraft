@@ -270,7 +270,7 @@ WALLS	WÄNDE	PAROIS	PAREDES
 WORTH CHECKING	PRÜFENSWERT	À VÉRIFIER	A REVISAR
 Wall loops	Wandlinien	Parois	Perímetros
 Wall thickness	Wandstärke	Épaisseur des parois	Grosor de pared
-Works with printers running OctoPrint or Klipper with Moonraker, over a plain http address.	Funktioniert mit Druckern, auf denen OctoPrint oder Klipper mit Moonraker läuft, über eine einfache http-Adresse.	Fonctionne avec les imprimantes sous OctoPrint ou Klipper avec Moonraker, via une simple adresse http.	Funciona con impresoras que ejecutan OctoPrint o Klipper con Moonraker, mediante una dirección http simple.
+Works with OctoPrint, Klipper with Moonraker, PrusaLink and Duet, over a plain http address.	Funktioniert mit OctoPrint, Klipper mit Moonraker, PrusaLink und Duet, über eine einfache http-Adresse.	Fonctionne avec OctoPrint, Klipper avec Moonraker, PrusaLink et Duet, via une simple adresse http.	Funciona con OctoPrint, Klipper con Moonraker, PrusaLink y Duet, mediante una dirección http simple.
 Dark theme	Dunkles Design	Thème sombre	Tema oscuro
 Light theme	Helles Design	Thème clair	Tema claro
 Light	Licht	Lumière	Luz
@@ -487,3 +487,15 @@ Polyholes	Polylöcher	Polytrous	Polyagujeros
 Redraw small round holes as polygons that print to size.	Kleine runde Löcher als Polygone neu zeichnen, die maßhaltig drucken.	Redessiner les petits trous ronds en polygones qui s'impriment à la bonne taille.	Redibujar los agujeros redondos pequeños como polígonos que se imprimen al tamaño correcto.
 Polyhole up to	Polyloch bis	Polytrou jusqu'à	Polyagujero hasta
 Holes wider than this stay as they are.	Breitere Löcher bleiben unverändert.	Les trous plus larges restent tels quels.	Los agujeros más anchos se quedan como están.
+Printer type	Druckertyp	Type d'imprimante	Tipo de impresora
+Flush volumes	Spülvolumen	Volumes de purge	Volúmenes de purga
+Plastic purged when changing from the filament in the row to the one in the column, in mm³.	Beim Wechsel vom Filament der Zeile zu dem der Spalte ausgespülter Kunststoff in mm³.	Plastique purgé lors du passage du filament de la ligne à celui de la colonne, en mm³.	Plástico purgado al pasar del filamento de la fila al de la columna, en mm³.
+Use the same for every change	Für jeden Wechsel gleich	Identique pour chaque changement	Igual para cada cambio
+No-go areas	Sperrbereiche	Zones interdites	Zonas prohibidas
+Add area	Bereich hinzufügen	Ajouter une zone	Añadir zona
+A part of the bed nothing may sit on, in mm from the front left corner	Ein Teil des Druckbetts, auf dem nichts stehen darf, in mm von der vorderen linken Ecke	Une partie du plateau où rien ne doit se trouver, en mm depuis le coin avant gauche	Una parte de la cama donde no puede haber nada, en mm desde la esquina frontal izquierda
+Height ranges	Höhenbereiche	Plages de hauteur	Rangos de altura
+Infill	Füllung	Remplissage	Relleno
+As the print settings	Wie in den Druckeinstellungen	Comme dans les réglages	Como en los ajustes
+Add a height range	Höhenbereich hinzufügen	Ajouter une plage de hauteur	Añadir un rango de altura
+Different walls or infill between two heights of this model	Andere Wände oder Füllung zwischen zwei Höhen dieses Modells	Parois ou remplissage différents entre deux hauteurs de ce modèle	Perímetros o relleno distintos entre dos alturas de este modelo

@@ -12,6 +12,47 @@ pub enum Firmware {
     RepRap,
 }
 
+/// Settings that change for one model between two heights, e.g. a stronger
+/// part of a tall bracket.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct LayerRange {
+    /// Heights above the plate in mm; the range covers layers from `from` up to `to`.
+    pub from: f32,
+    pub to: f32,
+    pub walls: Option<u32>,
+    /// Sparse infill density in percent.
+    pub infill: Option<f32>,
+    pub pattern: Option<InfillPattern>,
+}
+
+impl Default for LayerRange {
+    fn default() -> Self {
+        Self { from: 0.0, to: 10.0, walls: None, infill: None, pattern: None }
+    }
+}
+
+/// What kind of print server a network printer runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum HostKind {
+    /// OctoPrint, or Moonraker (Klipper), which takes the same upload.
+    #[default]
+    OctoPrint,
+    PrusaLink,
+    /// Duet boards (RepRapFirmware) with their web interface.
+    Duet,
+}
+
+impl HostKind {
+    pub const ALL: [HostKind; 3] = [HostKind::OctoPrint, HostKind::PrusaLink, HostKind::Duet];
+    pub fn label(self) -> &'static str {
+        match self {
+            HostKind::OctoPrint => "OctoPrint / Moonraker",
+            HostKind::PrusaLink => "PrusaLink",
+            HostKind::Duet => "Duet",
+        }
+    }
+}
+
 /// How the nozzle lifts over a long travel move.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ZHopType {
@@ -71,6 +112,8 @@ pub struct FdmPrinter {
     pub height: f32,
     pub origin_center: bool,
     pub round_bed: bool,
+    /// Parts of the bed nothing may sit on (a clip, a wiper), as x, y, width, depth in mm.
+    pub exclude_areas: Vec<[f32; 4]>,
     pub nozzle: f32,
     pub extruders: u32,
     /// Nozzle size of each tool when they differ; empty means all use `nozzle`.
@@ -115,6 +158,7 @@ pub struct FdmPrinter {
     pub filament_change_gcode: String,
     /// Address of a network printer ("http://192.168.1.50"), Moonraker or OctoPrint.
     pub host: String,
+    pub host_kind: HostKind,
     pub host_key: String,
 }
 
@@ -127,6 +171,7 @@ impl Default for FdmPrinter {
             height: 250.0,
             origin_center: false,
             round_bed: false,
+            exclude_areas: Vec::new(),
             nozzle: 0.4,
             extruders: 1,
             tool_nozzles: Vec::new(),
@@ -160,6 +205,7 @@ impl Default for FdmPrinter {
             pause_gcode: String::new(),
             filament_change_gcode: String::new(),
             host: String::new(),
+            host_kind: HostKind::OctoPrint,
             host_key: String::new(),
         }
     }
@@ -703,11 +749,34 @@ pub struct FdmProcess {
     pub tower_y: f32,
     pub tower_width: f32,
     pub purge_volume: f32,
+    /// Purge volume for each change from one filament (row) to another (column),
+    /// as a square of mm³ values; empty uses `purge_volume` for every change.
+    pub flush: Vec<f32>,
     pub sequence: Sequence,
     // Retraction behaviour
     pub retract_min_travel: f32,
     pub avoid_crossing_walls: bool,
     pub bridge_flow: f32,
+}
+
+impl FdmProcess {
+    /// What a change from one filament to another purges, in mm³.
+    pub fn flush_between(&self, from: usize, to: usize, filaments: usize) -> f32 {
+        if filaments > 1 && self.flush.len() == filaments * filaments && from < filaments && to < filaments {
+            self.flush[from * filaments + to]
+        } else {
+            self.purge_volume
+        }
+    }
+
+    /// The most any change purges, which sizes the prime tower.
+    pub fn flush_max(&self, filaments: usize) -> f32 {
+        if filaments > 1 && self.flush.len() == filaments * filaments {
+            self.flush.iter().cloned().fold(self.purge_volume.min(1.0), f32::max)
+        } else {
+            self.purge_volume
+        }
+    }
 }
 
 impl Default for FdmProcess {
@@ -821,6 +890,7 @@ impl Default for FdmProcess {
             tower_y: 170.0,
             tower_width: 30.0,
             purge_volume: 45.0,
+            flush: Vec::new(),
             sequence: Sequence::ByLayer,
             retract_min_travel: 1.5,
             avoid_crossing_walls: true,

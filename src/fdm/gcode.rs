@@ -43,10 +43,12 @@ struct Tower {
     depth: f64,
     enabled: bool,
     last_change_layer: i64,
+    /// The most any change purges: a change of this size gets the densest purge lines.
+    volume_max: f64,
 }
 
 impl Tower {
-    fn emit(&self, w: &mut Writer, z: f64, h: f64, layer: usize, purge: bool) {
+    fn emit(&self, w: &mut Writer, z: f64, h: f64, layer: usize, purge: Option<f64>) {
         if !self.enabled || layer as i64 > self.last_change_layer {
             return;
         }
@@ -56,7 +58,10 @@ impl Tower {
         let ring = geom::rect(self.min, max);
         let wall = ExPath::closed(geom::path_to_mm(&ring), lw, Feature::PrimeTower);
         w.emit_path(&wall, z, h, 1.0, None);
-        let spacing = if purge { s } else { s * 5.0 };
+        let spacing = match purge {
+            Some(v) => s * (self.volume_max / v.max(1.0)).clamp(1.0, 5.0),
+            None => s * 5.0,
+        };
         let (y0, y1) = (self.min.y + s, max.y - s);
         let mut y = y0;
         let mut flip = layer % 2 == 0;
@@ -121,7 +126,7 @@ fn place_tower(job: &FdmJob, plan: &Plan, tools: &[usize], warnings: &mut Vec<St
     let lw = p.line_width as f64;
     let depth = {
         let s = bead_spacing(lw, base_h);
-        let line = p.purge_volume as f64 / bead_area(lw, base_h);
+        let line = p.flush_max(job.filaments.len()) as f64 / bead_area(lw, base_h);
         let raw = line * s / (p.tower_width as f64).max(5.0);
         (raw * tools.len().saturating_sub(1).max(1) as f64 + s * 2.0).clamp(6.0, 120.0)
     };
@@ -135,6 +140,7 @@ fn place_tower(job: &FdmJob, plan: &Plan, tools: &[usize], warnings: &mut Vec<St
         depth,
         enabled: multi && p.prime_tower && p.sequence == Sequence::ByLayer,
         last_change_layer,
+        volume_max: p.flush_max(job.filaments.len()) as f64,
     };
     if tower.enabled {
         // Keep the tower off the parts by moving it when it would collide.
@@ -489,13 +495,14 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
                     }
                     let _ = write!(raw, ";TOOL:{tool}");
                     w.moves.push(Mv::Raw(raw));
+                    let from_tool = w.tool;
                     w.tool = *tool;
                     w.tool_changes += 1;
                     w.wipe_trail.clear();
                     // Purge the old colour on the tower before printing.
                     if tower.enabled {
                         w.current_feature = None;
-                        tower.emit(&mut w, z, h, li, true);
+                        tower.emit(&mut w, z, h, li, Some(job.process.flush_between(from_tool, *tool, job.filaments.len()) as f64));
                         tower_done = true;
                     }
                 }
@@ -562,7 +569,7 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
             // Even layers without a change keep the tower growing evenly.
             if tower.enabled && !tower_done {
                 w.current_feature = None;
-                tower.emit(&mut w, z, h, li, false);
+                tower.emit(&mut w, z, h, li, None);
             }
 
             drop(_t_moves);

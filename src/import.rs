@@ -35,7 +35,7 @@ const META: &[&str] = &[
     "print_settings_id", "filament_settings_id", "printer_settings_id", "default_print_profile", "default_filament_profile",
     "printer_model", "printer_variant", "printer_technology", "thumbnails", "bed_model", "bed_texture", "hotend_model",
     "model_id", "family", "filament_vendor", "filament_notes", "printer_notes", "print_extruder_id", "print_extruder_variant",
-    "filament_extruder_variant", "is_custom_defined", "host_type", "print_host", "printhost_apikey", "printhost_user",
+    "filament_extruder_variant", "is_custom_defined", "printhost_user",
     "printhost_password", "printhost_cafile", "printhost_ssl_ignore_revoke", "printhost_authorization_type", "update_time",
     "user_id", "machine_tech", "machine_load_filament_time", "machine_unload_filament_time", "machine_tool_change_time",
 ];
@@ -297,6 +297,23 @@ fn printer(r: &mut Reader, name: &str) -> FdmPrinter {
         p.origin_center = x0 < -1.0 && y0 < -1.0;
         p.round_bed = area.len() > 12;
     }
+    let blocked: Vec<(f32, f32)> = r
+        .list("bed_exclude_area")
+        .iter()
+        .filter_map(|s| {
+            let (x, y) = s.split_once('x')?;
+            Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
+        })
+        .collect();
+    if blocked.len() >= 3 {
+        // Orca gives the outline of one area; its bounding box is what we keep.
+        let (x0, x1) = blocked.iter().fold((f32::MAX, f32::MIN), |a, q| (a.0.min(q.0), a.1.max(q.0)));
+        let (y0, y1) = blocked.iter().fold((f32::MAX, f32::MIN), |a, q| (a.0.min(q.1), a.1.max(q.1)));
+        // Orca measures from the corner of the printable area.
+        let (ox, oy) = area.iter().fold((f32::MAX, f32::MAX), |a, q| (a.0.min(q.0), a.1.min(q.1)));
+        let (ox, oy) = if area.is_empty() { (0.0, 0.0) } else { (ox, oy) };
+        p.exclude_areas.push([x0 - ox, y0 - oy, x1 - x0, y1 - y0]);
+    }
     set!(r, p.height, "printable_height", num);
     let nozzles: Vec<f32> = r.list("nozzle_diameter").iter().filter_map(|s| parse_num(s)).filter(|n| *n > 0.0).collect();
     if let Some(&first) = nozzles.first() {
@@ -342,6 +359,19 @@ fn printer(r: &mut Reader, name: &str) -> FdmPrinter {
     set!(r, p.retract_layer_change, "retract_when_changing_layer", flag);
     set!(r, p.wipe_on_retract, "wipe_distance", num);
     set!(r, p.relative_e, "use_relative_e_distances", flag);
+    if let Some(h) = r.text("print_host").filter(|h| !h.is_empty()) {
+        p.host = h;
+    }
+    if let Some(k) = r.text("printhost_apikey") {
+        p.host_key = k;
+    }
+    if let Some(t) = r.text("host_type") {
+        p.host_kind = match t.as_str() {
+            "prusalink" | "prusaconnect" => HostKind::PrusaLink,
+            "duet" => HostKind::Duet,
+            _ => HostKind::OctoPrint,
+        };
+    }
     if let Some(g) = r.text("machine_start_gcode") {
         p.start_gcode = translate_gcode(&g);
     }

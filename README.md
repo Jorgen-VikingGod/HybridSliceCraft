@@ -23,12 +23,14 @@ A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast des
 - **Paint more than colour**: mark support enforcers and blockers (supports appear where you paint them, even with supports off, and stay out of blocked areas), where the seam should or should not go, and where the skin should be fuzzy
 - Scarf seam (the outer wall fades in and out at the seam), mouse-ear brim pads at sharp corners, and a grid style for supports
 - Looser top and bottom surfaces, thick round-strand bridges, and slicing aids: separate hole size correction, closing small cracks in a model's skin, and polyholes that make small round holes print to size
+- **Height ranges**: give a model other walls, infill density or infill pattern between two heights
+- A flush volume for each pair of filaments (the prime tower purges what the change needs), and no-go areas on the bed that arranging avoids
 - Input shaper settings and object labels so a failed object can be skipped mid-print (Klipper, Marlin)
 - Snapmaker U1 printer presets (four tool heads, five nozzle choices), with start and end scripts from OrcaSlicer's profile
 - Arc fitting (G2/G3), pressure advance, Marlin, Klipper and RepRapFirmware output
 - Preview by line type, speed, flow, layer height, width, fan, temperature, layer time or filament
 - Calibration tests: temperature tower, flow, max flow tower, speed ripple tower, retraction, pressure advance, first layer
-- Sending to OctoPrint or Moonraker printers over the local network
+- Sending to OctoPrint, Moonraker, PrusaLink or Duet printers over the local network
 
 ![Painting: the bear painted with two filaments, ready to slice](docs/fdm-painted.png)
 

@@ -2,7 +2,7 @@
 //! finished files to network printers.
 
 use crate::mesh::{parse_stl, Mesh};
-use crate::profiles::{FdmPrinter, FdmProcess, Filament, ResinMaterial, ResinPrinter, ResinProcess};
+use crate::profiles::{FdmPrinter, FdmProcess, Filament, HostKind, ResinMaterial, ResinPrinter, ResinProcess};
 use crate::resin::supports::SupportPoint;
 use crate::scene::{DrainHole, Plate, PlateObject};
 use glam::{Quat, Vec3};
@@ -33,6 +33,8 @@ struct SavedObject {
     flow: f32,
     infill: Option<f32>,
     walls: Option<u32>,
+    #[serde(default)]
+    ranges: Vec<crate::profiles::LayerRange>,
     visible: bool,
     support_points: Vec<SupportPoint>,
     holes: Vec<DrainHole>,
@@ -129,6 +131,7 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
                 flow: o.flow,
                 infill: o.infill,
                 walls: o.walls,
+                ranges: o.ranges.clone(),
                 visible: o.visible,
                 support_points: o.support_points.clone(),
                 holes: o.holes.clone(),
@@ -215,6 +218,7 @@ pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
             o.flow = s.flow;
             o.infill = s.infill;
             o.walls = s.walls;
+            o.ranges = s.ranges;
             o.visible = s.visible;
             o.support_points = s.support_points;
             o.holes = s.holes;
@@ -340,10 +344,14 @@ pub fn render_thumbnail(meshes: &[Arc<Mesh>], width: u32, height: u32, tint: [u8
 
 // ------------------------------------------------------------------ network
 
-/// Upload a file to a printer on the local network. Works with OctoPrint and
-/// with Moonraker (Klipper), which accepts the same request.
-pub fn send_to_printer(host: &str, api_key: &str, filename: &str, content: &[u8]) -> Result<String, String> {
-    use std::io::BufRead;
+/// A printer on the local network, as far as an upload needs to know it.
+struct Connection {
+    stream: std::net::TcpStream,
+    host: String,
+    base: String,
+}
+
+fn connect(host: &str) -> Result<Connection, String> {
     use std::net::{TcpStream, ToSocketAddrs};
     use std::time::Duration;
     let trimmed = host.trim().trim_end_matches('/');
@@ -368,42 +376,106 @@ pub fn send_to_printer(host: &str, api_key: &str, filename: &str, content: &[u8]
         .map_err(|e| format!("couldn't find the printer at {host_part}: {e}"))?
         .next()
         .ok_or_else(|| format!("couldn't find the printer at {host_part}"))?;
-    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(8))
+    let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(8))
         .map_err(|e| format!("couldn't reach the printer at {host_part}: {e}"))?;
     stream.set_write_timeout(Some(Duration::from_secs(120))).ok();
     stream.set_read_timeout(Some(Duration::from_secs(120))).ok();
-    let boundary = "----HybridSliceCraftUploadBoundary7a3f";
-    let safe_name: String = filename
-        .chars()
-        .map(|c| if c == '"' || c == '\r' || c == '\n' { '_' } else { c })
-        .collect();
-    let mut head = Vec::new();
-    write!(
-        head,
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{safe_name}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
-    )
-    .ok();
-    let tail = format!("\r\n--{boundary}--\r\n");
-    let length = head.len() + content.len() + tail.len();
-    let mut request = format!(
-        "POST {base_path}/api/files/local HTTP/1.1\r\nHost: {host_part}\r\nContent-Type: multipart/form-data; boundary={boundary}\r\nContent-Length: {length}\r\nConnection: close\r\n"
-    );
-    if !api_key.is_empty() {
-        request.push_str(&format!("X-Api-Key: {api_key}\r\n"));
-    }
-    request.push_str("\r\n");
-    stream.write_all(request.as_bytes()).map_err(|e| e.to_string())?;
-    stream.write_all(&head).map_err(|e| e.to_string())?;
-    stream.write_all(content).map_err(|e| format!("the connection dropped during upload: {e}"))?;
-    stream.write_all(tail.as_bytes()).map_err(|e| e.to_string())?;
+    Ok(Connection { stream, host: host_part.to_string(), base: base_path.to_string() })
+}
+
+/// Reads the status code and the start of the body.
+fn read_answer(stream: std::net::TcpStream) -> Result<(u32, String), String> {
+    use std::io::{BufRead, Read};
     let mut reader = std::io::BufReader::new(stream);
     let mut status = String::new();
     reader.read_line(&mut status).map_err(|e| format!("the printer didn't answer: {e}"))?;
     let code: u32 = status.split_whitespace().nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
+    let mut rest = Vec::new();
+    let _ = reader.take(64 * 1024).read_to_end(&mut rest);
+    let text = String::from_utf8_lossy(&rest).into_owned();
+    // The headers end at the first empty line; the status line is already gone.
+    let body = match text.strip_prefix("\r\n") {
+        Some(b) => b.to_string(),
+        None => text.split("\r\n\r\n").nth(1).unwrap_or("").to_string(),
+    };
+    Ok((code, body))
+}
+
+fn url_encode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// Upload a file to a printer on the local network: OctoPrint and Moonraker
+/// (Klipper) take the same request, PrusaLink and Duet each have their own.
+pub fn send_to_printer(kind: HostKind, host: &str, api_key: &str, filename: &str, content: &[u8]) -> Result<String, String> {
+    let mut conn = connect(host)?;
+    let safe_name: String = filename
+        .chars()
+        .map(|c| if c == '"' || c == '\r' || c == '\n' || c == '/' { '_' } else { c })
+        .collect();
+    let (host_part, base_path) = (conn.host.clone(), conn.base.clone());
+    match kind {
+        HostKind::OctoPrint => {
+            let boundary = "----HybridSliceCraftUploadBoundary7a3f";
+            let mut head = Vec::new();
+            write!(
+                head,
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{safe_name}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+            )
+            .ok();
+            let tail = format!("\r\n--{boundary}--\r\n");
+            let length = head.len() + content.len() + tail.len();
+            let mut request = format!(
+                "POST {base_path}/api/files/local HTTP/1.1\r\nHost: {host_part}\r\nContent-Type: multipart/form-data; boundary={boundary}\r\nContent-Length: {length}\r\nConnection: close\r\n"
+            );
+            if !api_key.is_empty() {
+                request.push_str(&format!("X-Api-Key: {api_key}\r\n"));
+            }
+            request.push_str("\r\n");
+            conn.stream.write_all(request.as_bytes()).map_err(|e| e.to_string())?;
+            conn.stream.write_all(&head).map_err(|e| e.to_string())?;
+            conn.stream.write_all(content).map_err(|e| format!("the connection dropped during upload: {e}"))?;
+            conn.stream.write_all(tail.as_bytes()).map_err(|e| e.to_string())?;
+        }
+        HostKind::PrusaLink => {
+            let mut request = format!(
+                "PUT {base_path}/api/v1/files/usb/{} HTTP/1.1\r\nHost: {host_part}\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nOverwrite: ?1\r\nPrint-After-Upload: ?0\r\nConnection: close\r\n",
+                url_encode(&safe_name),
+                content.len()
+            );
+            if !api_key.is_empty() {
+                request.push_str(&format!("X-Api-Key: {api_key}\r\n"));
+            }
+            request.push_str("\r\n");
+            conn.stream.write_all(request.as_bytes()).map_err(|e| e.to_string())?;
+            conn.stream.write_all(content).map_err(|e| format!("the connection dropped during upload: {e}"))?;
+        }
+        HostKind::Duet => {
+            let request = format!(
+                "POST {base_path}/rr_upload?name={} HTTP/1.1\r\nHost: {host_part}\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                url_encode(&format!("0:/gcodes/{safe_name}")),
+                content.len()
+            );
+            conn.stream.write_all(request.as_bytes()).map_err(|e| e.to_string())?;
+            conn.stream.write_all(content).map_err(|e| format!("the connection dropped during upload: {e}"))?;
+        }
+    }
+    let (code, body) = read_answer(conn.stream)?;
     match code {
-        200..=299 => Ok(format!("Sent {safe_name} to the printer.")),
+        200..=299 => {
+            // Duet answers 200 even when it could not store the file.
+            if kind == HostKind::Duet && !body.contains("\"err\":0") {
+                return Err("The printer could not store the file. Is there an SD card in it?".into());
+            }
+            Ok(format!("Sent {safe_name} to the printer."))
+        }
         401 | 403 => Err("The printer refused the upload. Check the API key.".into()),
-        404 => Err("The printer doesn't accept uploads at this address. Is it OctoPrint or Moonraker?".into()),
+        404 => Err("The printer doesn't accept uploads at this address. Is the printer type right?".into()),
         0 => Err("The printer sent back something unreadable.".into()),
         other => Err(format!("The printer answered with error {other}.")),
     }
@@ -506,7 +578,7 @@ mod tests {
                 loop {
                     let n = s.read(&mut buf).unwrap();
                     got.extend_from_slice(&buf[..n]);
-                    if n == 0 || got.windows(4).any(|w| w == b"--\r\n") {
+                    if n == 0 || got.windows(4).any(|w| w == b"--\r\n") || got.windows(3).any(|w| w == b"END") {
                         break;
                     }
                 }
@@ -516,7 +588,7 @@ mod tests {
             (port, t)
         };
         let (port, t) = serve("HTTP/1.1 201 Created\r\n\r\n");
-        let ok = send_to_printer(&format!("http://127.0.0.1:{port}"), "secret", "a.gcode", b"G1 X1\n");
+        let ok = send_to_printer(HostKind::OctoPrint, &format!("http://127.0.0.1:{port}"), "secret", "a.gcode", b"G1 X1\n");
         assert!(ok.is_ok(), "{ok:?}");
         let req = t.join().unwrap();
         assert!(req.starts_with("POST /api/files/local"));
@@ -525,10 +597,29 @@ mod tests {
         assert!(req.contains("G1 X1"));
 
         let (port, t) = serve("HTTP/1.1 403 Forbidden\r\n\r\n");
-        let refused = send_to_printer(&format!("127.0.0.1:{port}"), "", "a.gcode", b"x");
+        let refused = send_to_printer(HostKind::OctoPrint, &format!("127.0.0.1:{port}"), "", "a.gcode", b"x");
         assert!(refused.unwrap_err().contains("API key"));
         t.join().unwrap();
-        assert!(send_to_printer("", "", "a", b"x").is_err());
-        assert!(send_to_printer("https://x", "", "a", b"x").is_err());
+        assert!(send_to_printer(HostKind::OctoPrint, "", "", "a", b"x").is_err());
+        assert!(send_to_printer(HostKind::OctoPrint, "https://x", "", "a", b"x").is_err());
+
+        // PrusaLink takes the raw file with PUT.
+        let (port, t) = serve("HTTP/1.1 201 Created\r\n\r\n");
+        let ok = send_to_printer(HostKind::PrusaLink, &format!("http://127.0.0.1:{port}"), "k", "my part.gcode", b"G1 X1\nEND");
+        assert!(ok.is_ok(), "{ok:?}");
+        let req = t.join().unwrap();
+        assert!(req.starts_with("PUT /api/v1/files/usb/my%20part.gcode"), "{req}");
+        assert!(req.contains("X-Api-Key: k") && req.contains("G1 X1"));
+
+        // Duet answers 200 with a JSON verdict.
+        let (port, t) = serve("HTTP/1.1 200 OK\r\n\r\n{\"err\":0}");
+        let ok = send_to_printer(HostKind::Duet, &format!("http://127.0.0.1:{port}"), "", "a.gcode", b"G1 X1\nEND");
+        assert!(ok.is_ok(), "{ok:?}");
+        let req = t.join().unwrap();
+        assert!(req.starts_with("POST /rr_upload?name=0%3A%2Fgcodes%2Fa.gcode"), "{req}");
+        let (port, t) = serve("HTTP/1.1 200 OK\r\n\r\n{\"err\":1}");
+        let bad = send_to_printer(HostKind::Duet, &format!("http://127.0.0.1:{port}"), "", "a.gcode", b"G1 X1\nEND");
+        assert!(bad.unwrap_err().contains("store"));
+        t.join().unwrap();
     }
 }
