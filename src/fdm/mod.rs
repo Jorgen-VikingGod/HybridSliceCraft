@@ -146,6 +146,8 @@ pub struct JobObject {
     pub flow: f32,
     pub infill: Option<f32>,
     pub walls: Option<u32>,
+    /// Settings that change between two heights of this model.
+    pub ranges: Vec<crate::profiles::LayerRange>,
     /// Filament painted on the surface, one number per triangle (see `paint`).
     pub paint: Option<std::sync::Arc<Vec<u8>>>,
     /// How far painted colour reaches into the part, in mm.
@@ -258,6 +260,11 @@ pub fn bead_spacing(w: f64, h: f64) -> f64 {
 }
 
 impl JobObject {
+    /// The settings range that covers a layer's middle height, the last one listed winning.
+    pub fn range_at(&self, z_mid: f64) -> Option<&crate::profiles::LayerRange> {
+        self.ranges.iter().rev().find(|r| z_mid >= r.from as f64 - 1e-6 && z_mid <= r.to as f64 + 1e-6)
+    }
+
     /// The tool that prints this kind of extrusion, as an index into the filaments.
     pub fn tool_for(&self, feature: Feature, last_tool: usize) -> usize {
         let t = match feature {

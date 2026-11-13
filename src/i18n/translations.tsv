@@ -494,3 +494,8 @@ Use the same for every change	Für jeden Wechsel gleich	Identique pour chaque ch
 No-go areas	Sperrbereiche	Zones interdites	Zonas prohibidas
 Add area	Bereich hinzufügen	Ajouter une zone	Añadir zona
 A part of the bed nothing may sit on, in mm from the front left corner	Ein Teil des Druckbetts, auf dem nichts stehen darf, in mm von der vorderen linken Ecke	Une partie du plateau où rien ne doit se trouver, en mm depuis le coin avant gauche	Una parte de la cama donde no puede haber nada, en mm desde la esquina frontal izquierda
+Height ranges	Höhenbereiche	Plages de hauteur	Rangos de altura
+Infill	Füllung	Remplissage	Relleno
+As the print settings	Wie in den Druckeinstellungen	Comme dans les réglages	Como en los ajustes
+Add a height range	Höhenbereich hinzufügen	Ajouter une plage de hauteur	Añadir un rango de altura
+Different walls or infill between two heights of this model	Andere Wände oder Füllung zwischen zwei Höhen dieses Modells	Parois ou remplissage différents entre deux hauteurs de ce modèle	Perímetros o relleno distintos entre dos alturas de este modelo

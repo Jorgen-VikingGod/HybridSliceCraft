@@ -572,7 +572,7 @@ impl App {
         for o in &self.plate().objects {
             h = hash_text(
                 &format!(
-                    "{} {:?} {:?} {:?} {} {:?} {} {:?} {:?} {} {} {}",
+                    "{} {:?} {:?} {:?} {} {:?} {} {:?} {:?} {} {} {} {} {:?}",
                     o.mesh_id,
                     o.pos,
                     o.rot,
@@ -593,7 +593,9 @@ impl App {
                     o.walls,
                     o.support_points.len(),
                     o.holes.len(),
-                    o.cavity_id
+                    o.cavity_id,
+                    o.paint_id,
+                    o.ranges
                 ),
                 h,
             );
@@ -665,6 +667,7 @@ impl App {
                     flow: o.flow,
                     infill: o.infill,
                     walls: o.walls,
+                    ranges: o.ranges.clone(),
                     paint: o.paint.clone().filter(|p| p.len() == o.mesh.t.len()),
                     paint_depth: o.paint_depth,
                     marks: o.marks.clone().filter(|p| p.len() == o.mesh.t.len()),

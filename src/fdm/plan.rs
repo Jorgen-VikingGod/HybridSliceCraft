@@ -864,7 +864,8 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             let bare = geom::diff(&reg, &cover[i + 1]);
                             geom::region_area(&bare) > 0.9 * geom::region_area(&reg)
                         });
-                        let count = if open_top { wall_count.min(1) } else { wall_count };
+                        let layer_walls = obj.range_at(zs_mid[i]).and_then(|r| r.walls).map(|w| w as usize).unwrap_or(wall_count);
+                        let count = if open_top { layer_walls.min(1) } else { layer_walls };
                         let _t = super::span("build_walls");
                         let wr = build_walls(&reg, g, job, count, below.as_ref(), wall_marks.as_ref(), k as u64 + 7);
                         (reg, wr)
@@ -881,7 +882,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
         progress.set(frac(0.45), &format!("Filling {}", obj.name));
         let top_n = p.top_layers as usize;
         let bottom_n = p.bottom_layers as usize;
-        let density = obj.infill.unwrap_or(p.infill_density) as f64 / 100.0;
+        let density_base = obj.infill.unwrap_or(p.infill_density) as f64 / 100.0;
         let base_angle = (p.infill_angle as f64).to_radians();
         let overlap = p.infill_overlap as f64 / 100.0;
         let lightning = p.infill_pattern == InfillPattern::Lightning;
@@ -925,6 +926,9 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                         &cover[k as usize]
                     }
                 };
+                let range = obj.range_at(zs_mid[i]);
+                let density = range.and_then(|r| r.infill).map(|v| v as f64 / 100.0).unwrap_or(density_base);
+                let pattern = range.and_then(|r| r.pattern).unwrap_or(p.infill_pattern);
                 let _t = super::span("stage2 covered/topmost/bare regions");
                 // Everything that stays covered for the next `top_n` layers isn't skin.
                 let mut covered_up = slices[i].clone();
@@ -1057,7 +1061,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             };
                             // The first layer is solid, so a second tool only ever fills above it.
                             let wi = g.w_sparse;
-                            let lines = infill::sparse(p.infill_pattern, &target, density, wi, z, i, base_angle, p.infill_anchor as f64);
+                            let lines = infill::sparse(pattern, &target, density, wi, z, i, base_angle, p.infill_anchor as f64);
                             for l in lines {
                                 fill.push(ExPath::open(l, wi, Feature::SparseInfill));
                             }

@@ -397,6 +397,63 @@ impl App {
                 });
             }
         });
+        // Settings that change between two heights.
+        ui.add_space(4.0);
+        ui.label(RichText::new(crate::i18n::tr("Height ranges")).small().color(ui_dim()));
+        let mut remove = None;
+        for (i, r) in o.ranges.iter_mut().enumerate() {
+            egui::Frame::new().stroke(egui::Stroke::new(1.0, ui_dim().gamma_multiply(0.4))).corner_radius(4.0).inner_margin(4.0).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    changed |= ui.add(egui::DragValue::new(&mut r.from).range(0.0..=2000.0).speed(0.1).suffix(" mm").max_decimals(2)).changed();
+                    ui.label("–");
+                    changed |= ui.add(egui::DragValue::new(&mut r.to).range(0.0..=2000.0).speed(0.1).suffix(" mm").max_decimals(2)).changed();
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui.small_button("✕").clicked() {
+                            remove = Some(i);
+                        }
+                    });
+                });
+                ui.horizontal(|ui| {
+                    let mut on = r.walls.is_some();
+                    if ui.checkbox(&mut on, crate::i18n::tr("Wall loops")).changed() {
+                        r.walls = if on { Some(self.fdm_process.walls) } else { None };
+                        changed = true;
+                    }
+                    if let Some(v) = &mut r.walls {
+                        changed |= ui.add(egui::DragValue::new(v).range(0..=30)).changed();
+                    }
+                });
+                ui.horizontal(|ui| {
+                    let mut on = r.infill.is_some();
+                    if ui.checkbox(&mut on, crate::i18n::tr("Infill")).changed() {
+                        r.infill = if on { Some(self.fdm_process.infill_density) } else { None };
+                        changed = true;
+                    }
+                    if let Some(v) = &mut r.infill {
+                        changed |= ui.add(egui::DragValue::new(v).range(0.0..=100.0).suffix(" %")).changed();
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label(crate::i18n::tr("Infill pattern"));
+                    let shown = r.pattern.map(|p| crate::i18n::tr(p.label()).to_string()).unwrap_or_else(|| crate::i18n::tr("As the print settings").to_string());
+                    egui::ComboBox::from_id_salt(("range_pattern", o.id, i)).selected_text(shown).show_ui(ui, |ui| {
+                        changed |= ui.selectable_value(&mut r.pattern, None, crate::i18n::tr("As the print settings")).changed();
+                        for pat in crate::profiles::InfillPattern::ALL {
+                            changed |= ui.selectable_value(&mut r.pattern, Some(pat), crate::i18n::tr(pat.label())).changed();
+                        }
+                    });
+                });
+            });
+        }
+        if let Some(i) = remove {
+            o.ranges.remove(i);
+            changed = true;
+        }
+        if ui.small_button(crate::i18n::tr("Add a height range")).on_hover_text(crate::i18n::tr("Different walls or infill between two heights of this model")).clicked() {
+            let top = o.world_bounds().1.z;
+            o.ranges.push(crate::profiles::LayerRange { from: 0.0, to: top, ..Default::default() });
+            changed = true;
+        }
         ui.horizontal(|ui| {
             ui.label(crate::i18n::tr("Flow"));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

@@ -1272,3 +1272,24 @@ fn parts_on_a_no_go_area_are_flagged_and_arranging_avoids_it() {
     let (a, b) = objects[0].world_bounds();
     assert!(!crate::scene::hits_excluded(a, b, &areas), "{a:?} {b:?}");
 }
+
+#[test]
+fn a_height_range_changes_walls_and_infill_only_between_its_heights() {
+    use crate::profiles::LayerRange;
+    let mut p = FdmProcess::default();
+    p.walls = 2;
+    p.infill_density = 10.0;
+    let mesh = centered(make_box(Vec3::new(30.0, 30.0, 20.0)));
+    let plain = slice(&job(mesh.clone(), p.clone()), &Progress::default()).unwrap();
+    let mut j = job(mesh, p);
+    j.objects[0].ranges = vec![LayerRange { from: 8.0, to: 12.0, walls: Some(5), infill: Some(60.0), pattern: None }];
+    let ranged = slice(&j, &Progress::default()).unwrap();
+    // Count inner-wall and sparse lines on the layers inside and outside the range.
+    let count = |r: &FdmResult, f: Feature, inside: bool| {
+        r.segs.iter().filter(|s| s.feature == f as u32 && ((s.a[2] > 8.0 && s.a[2] <= 12.0) == inside)).count()
+    };
+    assert!(count(&ranged, Feature::InnerWall, true) > count(&plain, Feature::InnerWall, true) * 2);
+    assert!(count(&ranged, Feature::SparseInfill, true) > count(&plain, Feature::SparseInfill, true) * 2);
+    assert_eq!(count(&ranged, Feature::InnerWall, false), count(&plain, Feature::InnerWall, false));
+    assert_eq!(count(&ranged, Feature::SparseInfill, false), count(&plain, Feature::SparseInfill, false));
+}

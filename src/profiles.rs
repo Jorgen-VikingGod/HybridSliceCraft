@@ -12,6 +12,25 @@ pub enum Firmware {
     RepRap,
 }
 
+/// Settings that change for one model between two heights, e.g. a stronger
+/// part of a tall bracket.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct LayerRange {
+    /// Heights above the plate in mm; the range covers layers from `from` up to `to`.
+    pub from: f32,
+    pub to: f32,
+    pub walls: Option<u32>,
+    /// Sparse infill density in percent.
+    pub infill: Option<f32>,
+    pub pattern: Option<InfillPattern>,
+}
+
+impl Default for LayerRange {
+    fn default() -> Self {
+        Self { from: 0.0, to: 10.0, walls: None, infill: None, pattern: None }
+    }
+}
+
 /// What kind of print server a network printer runs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum HostKind {

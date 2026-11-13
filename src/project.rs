@@ -33,6 +33,8 @@ struct SavedObject {
     flow: f32,
     infill: Option<f32>,
     walls: Option<u32>,
+    #[serde(default)]
+    ranges: Vec<crate::profiles::LayerRange>,
     visible: bool,
     support_points: Vec<SupportPoint>,
     holes: Vec<DrainHole>,
@@ -129,6 +131,7 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
                 flow: o.flow,
                 infill: o.infill,
                 walls: o.walls,
+                ranges: o.ranges.clone(),
                 visible: o.visible,
                 support_points: o.support_points.clone(),
                 holes: o.holes.clone(),
@@ -215,6 +218,7 @@ pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
             o.flow = s.flow;
             o.infill = s.infill;
             o.walls = s.walls;
+            o.ranges = s.ranges;
             o.visible = s.visible;
             o.support_points = s.support_points;
             o.holes = s.holes;

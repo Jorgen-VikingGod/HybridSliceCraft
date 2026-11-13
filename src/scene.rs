@@ -69,6 +69,8 @@ pub struct PlateObject {
     pub flow: f32,
     pub infill: Option<f32>,
     pub walls: Option<u32>,
+    /// Settings that change between two heights of this model.
+    pub ranges: Vec<crate::profiles::LayerRange>,
     /// Filament painted on the surface: one number per triangle of `mesh`.
     /// 0 is unpainted, `k` is filament slot `k - 1`. Dropped if it stops matching the mesh.
     pub paint: Option<Arc<Vec<u8>>>,
@@ -116,6 +118,7 @@ impl PlateObject {
             flow: 1.0,
             infill: None,
             walls: None,
+            ranges: Vec::new(),
             paint: None,
             paint_id: 0,
             paint_depth: 2.4,
