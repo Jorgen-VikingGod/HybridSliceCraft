@@ -58,7 +58,7 @@ A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast des
 
 ## Also
 
-- Opens STL, OBJ, 3MF and PLY; repairs, cuts, splits, mirrors, lays flat and auto-orients models (from the Orient card, the toolbar, or the O key)
+- Opens STL, OBJ, 3MF, PLY and STEP (.step, .stp) files; repairs, cuts, splits, mirrors, lays flat and auto-orients models (from the Orient card, the toolbar, or the O key)
 - Several plates, undo and redo, project files, saved presets
 - **Import your own OrcaSlicer or Bambu Studio presets** (printer, filament and process, as JSON files or their export bundles). Settings that have no counterpart here are listed in a report, never dropped silently.
 - The 3D view draws on the graphics card through Vulkan, Metal, DirectX 12 or OpenGL. Resin layers are drawn on whichever is faster, the graphics card or the processor, timed on each print.

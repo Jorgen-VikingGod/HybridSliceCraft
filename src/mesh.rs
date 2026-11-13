@@ -717,6 +717,7 @@ pub fn load(path: &Path) -> Result<Mesh, String> {
         "obj" => parse_obj(&bytes)?,
         "3mf" => parse_3mf(&bytes)?,
         "ply" => parse_ply(&bytes)?,
+        "step" | "stp" => crate::step::parse_step(&bytes)?,
         other => return Err(format!("the .{other} format isn't supported yet")),
     };
     if mesh.t.is_empty() {
