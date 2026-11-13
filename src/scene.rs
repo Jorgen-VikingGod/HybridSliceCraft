@@ -349,6 +349,41 @@ pub fn world_bounds_of(objects: &[PlateObject]) -> Option<(Vec3, Vec3)> {
 
 /// Shelf-packing: tallest footprints first, in rows across the plate.
 /// Returns false when not everything fits.
+/// Whether a box standing on the plate touches any of the bed's no-go areas.
+pub fn hits_excluded(lo: Vec3, hi: Vec3, areas: &[[f32; 4]]) -> bool {
+    areas.iter().any(|a| lo.x < a[0] + a[2] && hi.x > a[0] && lo.y < a[1] + a[3] && hi.y > a[1])
+}
+
+/// `arrange`, then, if anything landed on a no-go area, place the models one by
+/// one around those areas and each other instead.
+pub fn arrange_avoiding(objects: &mut [PlateObject], bed: Vec2, gap: f32, areas: &[[f32; 4]]) -> bool {
+    let fits = arrange(objects, bed, gap);
+    if areas.is_empty() || !objects.iter().any(|o| {
+        let (a, b) = o.world_bounds();
+        hits_excluded(a, b, areas)
+    }) {
+        return fits;
+    }
+    let mut taken: Vec<(Vec3, Vec3)> = areas
+        .iter()
+        .map(|a| (Vec3::new(a[0], a[1], 0.0), Vec3::new(a[0] + a[2], a[1] + a[3], 0.0)))
+        .collect();
+    let mut order: Vec<usize> = (0..objects.len()).collect();
+    order.sort_by(|a, b| {
+        let area = |i: usize| {
+            let (p, q) = objects[i].world_bounds();
+            (q.x - p.x) * (q.y - p.y)
+        };
+        area(*b).total_cmp(&area(*a))
+    });
+    let mut all = true;
+    for i in order {
+        all &= find_free_spot(&mut objects[i], &taken, bed, gap);
+        taken.push(objects[i].world_bounds());
+    }
+    all
+}
+
 pub fn arrange(objects: &mut [PlateObject], bed: Vec2, gap: f32) -> bool {
     if objects.is_empty() {
         return true;

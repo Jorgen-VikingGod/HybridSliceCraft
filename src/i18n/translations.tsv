@@ -491,3 +491,6 @@ Printer type	Druckertyp	Type d'imprimante	Tipo de impresora
 Flush volumes	Spülvolumen	Volumes de purge	Volúmenes de purga
 Plastic purged when changing from the filament in the row to the one in the column, in mm³.	Beim Wechsel vom Filament der Zeile zu dem der Spalte ausgespülter Kunststoff in mm³.	Plastique purgé lors du passage du filament de la ligne à celui de la colonne, en mm³.	Plástico purgado al pasar del filamento de la fila al de la columna, en mm³.
 Use the same for every change	Für jeden Wechsel gleich	Identique pour chaque changement	Igual para cada cambio
+No-go areas	Sperrbereiche	Zones interdites	Zonas prohibidas
+Add area	Bereich hinzufügen	Ajouter une zone	Añadir zona
+A part of the bed nothing may sit on, in mm from the front left corner	Ein Teil des Druckbetts, auf dem nichts stehen darf, in mm von der vorderen linken Ecke	Une partie du plateau où rien ne doit se trouver, en mm depuis le coin avant gauche	Una parte de la cama donde no puede haber nada, en mm desde la esquina frontal izquierda

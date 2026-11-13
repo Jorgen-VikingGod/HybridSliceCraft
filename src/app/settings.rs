@@ -857,6 +857,27 @@ fn fdm_printer_editor(ui: &mut egui::Ui, p: &mut FdmPrinter) {
         line(ui, "Origin at centre", |ui| {
             ui.checkbox(&mut p.origin_center, "");
         });
+        line(ui, "No-go areas", |ui| {
+            ui.vertical(|ui| {
+                let mut remove = None;
+                for (i, a) in p.exclude_areas.iter_mut().enumerate() {
+                    ui.horizontal(|ui| {
+                        for (k, hint) in ["x", "y", "width", "depth"].iter().enumerate() {
+                            ui.add(egui::DragValue::new(&mut a[k]).range(0.0..=2000.0).speed(0.5).max_decimals(1)).on_hover_text(*hint);
+                        }
+                        if ui.small_button("✕").clicked() {
+                            remove = Some(i);
+                        }
+                    });
+                }
+                if let Some(i) = remove {
+                    p.exclude_areas.remove(i);
+                }
+                if ui.small_button(crate::i18n::tr("Add area")).on_hover_text(crate::i18n::tr("A part of the bed nothing may sit on, in mm from the front left corner")).clicked() {
+                    p.exclude_areas.push([0.0, 0.0, 20.0, 20.0]);
+                }
+            });
+        });
         line(ui, "Nozzle", |ui| {
             ui.add(num(&mut p.nozzle, 0.1, 2.0, "mm"));
         });

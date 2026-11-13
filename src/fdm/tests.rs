@@ -1256,3 +1256,19 @@ fn flush_matrix_sets_what_each_change_purges() {
     let lopsided = tower_plastic(vec![0.0, 45.0, 5.0, 0.0]);
     assert!(lopsided < uniform * 0.8, "{lopsided} vs {uniform}");
 }
+
+#[test]
+fn parts_on_a_no_go_area_are_flagged_and_arranging_avoids_it() {
+    let mut j = job(centered(make_box(Vec3::new(20.0, 20.0, 5.0))), FdmProcess::default());
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(!r.warnings.iter().any(|w| w.contains("off limits")));
+    j.printer.exclude_areas = vec![[95.0, 95.0, 10.0, 10.0]];
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.warnings.iter().any(|w| w.contains("off limits")), "{:?}", r.warnings);
+
+    let mut objects = vec![crate::scene::PlateObject::new("a", make_box(Vec3::new(30.0, 30.0, 5.0)))];
+    let areas = [[95.0f32, 95.0, 30.0, 30.0]];
+    assert!(crate::scene::arrange_avoiding(&mut objects, glam::Vec2::new(220.0, 220.0), 5.0, &areas));
+    let (a, b) = objects[0].world_bounds();
+    assert!(!crate::scene::hits_excluded(a, b, &areas), "{a:?} {b:?}");
+}

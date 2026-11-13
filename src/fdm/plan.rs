@@ -761,6 +761,13 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
         ));
     }
 
+    for o in &job.objects {
+        let (lo, hi) = o.mesh.bounds();
+        if crate::scene::hits_excluded(lo, hi, &job.printer.exclude_areas) {
+            warnings.push(format!("{} sits on a part of the bed that is marked as off limits.", o.name));
+        }
+    }
+
     let spiral_from = (p.spiral_vase).then_some(p.bottom_layers as usize);
     let walls_default = if p.spiral_vase { 1 } else { p.walls as usize };
 

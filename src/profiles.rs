@@ -93,6 +93,8 @@ pub struct FdmPrinter {
     pub height: f32,
     pub origin_center: bool,
     pub round_bed: bool,
+    /// Parts of the bed nothing may sit on (a clip, a wiper), as x, y, width, depth in mm.
+    pub exclude_areas: Vec<[f32; 4]>,
     pub nozzle: f32,
     pub extruders: u32,
     /// Nozzle size of each tool when they differ; empty means all use `nozzle`.
@@ -150,6 +152,7 @@ impl Default for FdmPrinter {
             height: 250.0,
             origin_center: false,
             round_bed: false,
+            exclude_areas: Vec::new(),
             nozzle: 0.4,
             extruders: 1,
             tool_nozzles: Vec::new(),

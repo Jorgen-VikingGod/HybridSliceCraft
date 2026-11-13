@@ -1003,6 +1003,7 @@ impl App {
         let accent = self.accent();
         let round = !self.resin() && self.fdm_printer.round_bed;
         let height = self.build_height();
+        let exclude = self.exclude_areas();
         let mut lines: Vec<LineVertex> = Vec::with_capacity(256);
         // Build volume outline.
         let wire = [90u8, 100, 118, 150];
@@ -1018,6 +1019,14 @@ impl App {
         } else {
             push_box(&mut lines, Vec3::ZERO, Vec3::new(bx, by, height), wire);
         }
+        // No-go areas on the bed: a red outline with a cross.
+        for a in &exclude {
+            let (lo, hi) = (Vec3::new(a[0], a[1], 0.05), Vec3::new(a[0] + a[2], a[1] + a[3], 0.05));
+            let red = [225u8, 70, 70, 220];
+            push_box(&mut lines, lo, Vec3::new(hi.x, hi.y, 0.05), red);
+            push_line(&mut lines, lo, hi, red);
+            push_line(&mut lines, Vec3::new(lo.x, hi.y, 0.05), Vec3::new(hi.x, lo.y, 0.05), red);
+        }
         let mut objects = Vec::new();
         let preview = self.stage == Stage::Preview;
         let show_models = !preview || self.resin();
@@ -1029,7 +1038,8 @@ impl App {
                     continue;
                 }
                 let (a, b) = o.world_bounds();
-                let inside = a.x >= -0.01 && a.y >= -0.01 && b.x <= bx + 0.01 && b.y <= by + 0.01 && b.z <= height + 0.01;
+                let inside = a.x >= -0.01 && a.y >= -0.01 && b.x <= bx + 0.01 && b.y <= by + 0.01 && b.z <= height + 0.01
+                    && !crate::scene::hits_excluded(a, b, &exclude);
                 let base = if self.resin() {
                     self.resin_mat.color
                 } else {

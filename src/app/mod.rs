@@ -546,6 +546,10 @@ impl App {
             (self.fdm_printer.bed_x, self.fdm_printer.bed_y)
         }
     }
+    /// Parts of the bed nothing may sit on.
+    pub fn exclude_areas(&self) -> Vec<[f32; 4]> {
+        if self.resin() { Vec::new() } else { self.fdm_printer.exclude_areas.clone() }
+    }
     pub fn build_height(&self) -> f32 {
         if self.resin() {
             self.resin_printer.height

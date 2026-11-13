@@ -297,6 +297,23 @@ fn printer(r: &mut Reader, name: &str) -> FdmPrinter {
         p.origin_center = x0 < -1.0 && y0 < -1.0;
         p.round_bed = area.len() > 12;
     }
+    let blocked: Vec<(f32, f32)> = r
+        .list("bed_exclude_area")
+        .iter()
+        .filter_map(|s| {
+            let (x, y) = s.split_once('x')?;
+            Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
+        })
+        .collect();
+    if blocked.len() >= 3 {
+        // Orca gives the outline of one area; its bounding box is what we keep.
+        let (x0, x1) = blocked.iter().fold((f32::MAX, f32::MIN), |a, q| (a.0.min(q.0), a.1.max(q.0)));
+        let (y0, y1) = blocked.iter().fold((f32::MAX, f32::MIN), |a, q| (a.0.min(q.1), a.1.max(q.1)));
+        // Orca measures from the corner of the printable area.
+        let (ox, oy) = area.iter().fold((f32::MAX, f32::MAX), |a, q| (a.0.min(q.0), a.1.min(q.1)));
+        let (ox, oy) = if area.is_empty() { (0.0, 0.0) } else { (ox, oy) };
+        p.exclude_areas.push([x0 - ox, y0 - oy, x1 - x0, y1 - y0]);
+    }
     set!(r, p.height, "printable_height", num);
     let nozzles: Vec<f32> = r.list("nozzle_diameter").iter().filter_map(|s| parse_num(s)).filter(|n| *n > 0.0).collect();
     if let Some(&first) = nozzles.first() {
