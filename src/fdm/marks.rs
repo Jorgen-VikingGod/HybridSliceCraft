@@ -10,9 +10,14 @@ use rayon::prelude::*;
 /// What a layer's slab of height sees of the triangles carrying `mark`: each
 /// triangle is cut to the slab and flattened onto the plate, and the pieces are
 /// joined. Layer `i` covers heights from `z - height` up to `z`.
-pub fn mark_regions(mesh: &Mesh, marks: &[u8], mark: u8, layers: &[Layer]) -> Vec<Region> {
+///
+/// A steep wall flattens to a line, which covers no area. With `reach` above
+/// zero those lines are thickened by that many mm, so the wall's outline on the
+/// layer falls inside the region.
+pub fn mark_regions(mesh: &Mesh, marks: &[u8], mark: u8, layers: &[Layer], reach: f64) -> Vec<Region> {
     let n = layers.len();
     let mut per_layer: Vec<Region> = vec![Vec::new(); n];
+    let mut lines: Vec<Vec<(DVec2, DVec2)>> = vec![Vec::new(); if reach > 0.0 { n } else { 0 }];
     if marks.len() != mesh.t.len() || !marks.iter().any(|&m| m == mark) {
         return per_layer;
     }
@@ -30,34 +35,45 @@ pub fn mark_regions(mesh: &Mesh, marks: &[u8], mark: u8, layers: &[Layer]) -> Ve
             if lo > zmax + 1e-9 {
                 break;
             }
-            if let Some(path) = slab_piece(&tri, lo, hi) {
-                per_layer[i].push(path);
+            if let Some((pts, area)) = slab_piece(&tri, lo, hi) {
+                if reach > 0.0 {
+                    let k = pts.len();
+                    lines[i].extend((0..k).map(|e| (pts[e], pts[(e + 1) % k])));
+                }
+                if area.abs() >= 1e-9 {
+                    per_layer[i].push(geom::path_from(&pts));
+                }
             }
         }
     }
     per_layer
         .into_par_iter()
-        .map(|r| if r.is_empty() { r } else { geom::remove_small(&geom::union(&r), 0.01) })
+        .enumerate()
+        .map(|(i, r)| {
+            let mut out = if r.is_empty() { r } else { geom::remove_small(&geom::union(&r), 0.01) };
+            if reach > 0.0 && !lines[i].is_empty() {
+                out = geom::union2(&out, &geom::stroke(&lines[i], reach));
+            }
+            out
+        })
         .collect()
 }
 
-/// The part of a triangle between two heights, flattened, and wound the same way every time.
-fn slab_piece(tri: &[glam::DVec3; 3], lo: f64, hi: f64) -> Option<clipper2_rust::Path64> {
+/// The part of a triangle between two heights, flattened and wound the same
+/// way every time, with its area (zero for a vertical triangle).
+fn slab_piece(tri: &[glam::DVec3; 3], lo: f64, hi: f64) -> Option<(Vec<DVec2>, f64)> {
     let mut poly: Vec<glam::DVec3> = tri.to_vec();
     poly = clip(&poly, lo, true);
     poly = clip(&poly, hi, false);
-    if poly.len() < 3 {
+    if poly.len() < 2 {
         return None;
     }
     let mut pts: Vec<DVec2> = poly.iter().map(|p| DVec2::new(p.x, p.y)).collect();
     let area: f64 = (0..pts.len()).map(|k| pts[k].perp_dot(pts[(k + 1) % pts.len()])).sum::<f64>() * 0.5;
-    if area.abs() < 1e-9 {
-        return None;
-    }
     if area < 0.0 {
         pts.reverse();
     }
-    Some(geom::path_from(&pts))
+    Some((pts, area.abs()))
 }
 
 /// Keep the part of a polygon above (`keep_above`) or below the height `z`.
@@ -98,7 +114,7 @@ mod tests {
             .collect();
         assert!(marks.iter().any(|&x| x == 1));
         let layers: Vec<Layer> = (1..=10).map(|k| Layer { z: k as f64, height: 1.0 }).collect();
-        let r = mark_regions(&m, &marks, 1, &layers);
+        let r = mark_regions(&m, &marks, 1, &layers, 0.0);
         for (i, reg) in r.iter().enumerate() {
             let area = geom::region_area(reg);
             if i == 9 {
@@ -114,11 +130,39 @@ mod tests {
         let m = make_box(glam::Vec3::splat(10.0));
         let marks = vec![1u8; m.t.len()];
         let layers: Vec<Layer> = (1..=10).map(|k| Layer { z: k as f64, height: 1.0 }).collect();
-        let r = mark_regions(&m, &marks, 1, &layers);
+        let r = mark_regions(&m, &marks, 1, &layers, 0.0);
         // The top and bottom faces cover the full square on their layers, and
         // the side walls add nothing beyond it.
         assert!((geom::region_area(&r[9]) - 100.0).abs() < 1.0);
         assert!((geom::region_area(&r[0]) - 100.0).abs() < 1.0);
         assert!(geom::region_area(&r[4]) < 1e-3);
+    }
+}
+
+#[cfg(test)]
+mod wall_tests {
+    use super::*;
+    use crate::geom::EdgeIndex;
+    use crate::mesh::make_box;
+
+    #[test]
+    fn a_marked_wall_is_found_when_given_some_reach() {
+        let m = make_box(glam::Vec3::splat(10.0));
+        // Only the wall at x = 10.
+        let marks: Vec<u8> = (0..m.t.len())
+            .map(|i| {
+                let [a, b, c] = m.tri(i);
+                u8::from(a.x > 9.9 && b.x > 9.9 && c.x > 9.9)
+            })
+            .collect();
+        let layers: Vec<Layer> = (1..=10).map(|k| Layer { z: k as f64, height: 1.0 }).collect();
+        assert!(mark_regions(&m, &marks, 1, &layers, 0.0).iter().all(|r| r.is_empty()), "no area without reach");
+        let r = mark_regions(&m, &marks, 1, &layers, 0.3);
+        for reg in &r {
+            let idx = EdgeIndex::new(reg);
+            assert!(idx.inside(DVec2::new(10.0, 5.0)));
+            assert!(!idx.inside(DVec2::new(5.0, 5.0)));
+            assert!(!idx.inside(DVec2::new(0.0, 5.0)));
+        }
     }
 }

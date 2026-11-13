@@ -1055,3 +1055,101 @@ fn painted_blockers_keep_support_out() {
         assert!(blocked * 4 < plain, "{kind:?}: {plain} lines became {blocked}");
     }
 }
+
+/// Where each outer wall loop starts: the nozzle position when its ";TYPE" line comes.
+fn outer_wall_starts(gcode: &str) -> Vec<(f64, f64)> {
+    let (mut x, mut y) = (0.0, 0.0);
+    let mut out = Vec::new();
+    for l in gcode.lines() {
+        if l.starts_with(";TYPE:Outer wall") {
+            out.push((x, y));
+        } else if l.starts_with("G0 ") || l.starts_with("G1 ") {
+            for word in l.split_whitespace() {
+                if let Some(v) = word.strip_prefix('X') {
+                    x = v.parse().unwrap_or(x);
+                } else if let Some(v) = word.strip_prefix('Y') {
+                    y = v.parse().unwrap_or(y);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// A 30 mm cube with the triangles on one side marked.
+fn cube_with_marked_side(mark: u8, side: fn(Vec3) -> bool) -> (Mesh, std::sync::Arc<Vec<u8>>) {
+    let mesh = centered(make_box(Vec3::new(30.0, 30.0, 10.0)));
+    let marks = (0..mesh.t.len())
+        .map(|i| {
+            let [a, b, c] = mesh.tri(i);
+            if side(a) && side(b) && side(c) { mark } else { 0 }
+        })
+        .collect();
+    (mesh, std::sync::Arc::new(marks))
+}
+
+#[test]
+fn painted_seam_enforcer_pulls_the_seam_to_that_side() {
+    // The cube spans 90 to 120 mm each way; a back seam sits in its back right corner.
+    let mut p = FdmProcess::default();
+    p.seam = SeamMode::Back;
+    let mut j = job(centered(make_box(Vec3::new(30.0, 30.0, 10.0))), p);
+    let plain = outer_wall_starts(&slice(&j, &Progress::default()).unwrap().gcode);
+    assert!(plain.len() > 20);
+    assert!(plain.iter().filter(|s| s.0 < 100.0).count() < plain.len() / 2, "the seam shouldn't already sit on the left");
+    let (mesh, marks) = cube_with_marked_side(crate::paint::SEAM_ENFORCER, |v| v.x < 90.1);
+    j.objects[0].mesh = mesh;
+    j.objects[0].marks = Some(marks);
+    let marked = outer_wall_starts(&slice(&j, &Progress::default()).unwrap().gcode);
+    let on_left = marked.iter().filter(|s| s.0 < 92.0).count();
+    assert!(on_left * 10 >= marked.len() * 9, "{on_left} of {} seams on the painted side", marked.len());
+}
+
+#[test]
+fn painted_seam_blocker_keeps_the_seam_off_that_side() {
+    let mut p = FdmProcess::default();
+    p.seam = SeamMode::Back;
+    let mut j = job(centered(make_box(Vec3::new(30.0, 30.0, 10.0))), p);
+    let plain = outer_wall_starts(&slice(&j, &Progress::default()).unwrap().gcode);
+    assert!(plain.iter().filter(|s| s.1 > 118.0).count() * 10 >= plain.len() * 8, "the back seam should sit at the back");
+    let (mesh, marks) = cube_with_marked_side(crate::paint::SEAM_BLOCKER, |v| v.y > 119.9);
+    j.objects[0].mesh = mesh;
+    j.objects[0].marks = Some(marks);
+    let marked = outer_wall_starts(&slice(&j, &Progress::default()).unwrap().gcode);
+    assert!(marked.iter().filter(|s| s.1 > 118.0).count() * 10 <= marked.len(), "seams on the blocked side: {:?}", &marked[..5]);
+}
+
+#[test]
+fn painted_fuzzy_skin_roughens_only_the_painted_side() {
+    let (mesh, marks) = cube_with_marked_side(crate::paint::FUZZY, |v| v.x > 119.9);
+    let mut j = job(mesh, FdmProcess::default());
+    j.objects[0].marks = Some(marks);
+    let g = slice(&j, &Progress::default()).unwrap().gcode;
+    // Outer wall points near the painted right wall wobble; the left wall stays straight.
+    let mut x = 0.0;
+    let (mut right, mut left) = (Vec::new(), Vec::new());
+    let mut in_outer = false;
+    for l in g.lines() {
+        if l.starts_with(";TYPE:") {
+            in_outer = l.starts_with(";TYPE:Outer wall");
+        }
+        if l.starts_with("G1 ") && l.contains(" E") {
+            for w in l.split_whitespace() {
+                if let Some(v) = w.strip_prefix('X') {
+                    x = v.parse().unwrap_or(x);
+                }
+            }
+            if in_outer {
+                if x > 119.5 {
+                    right.push(x);
+                } else if x < 90.3 {
+                    left.push(x);
+                }
+            }
+        }
+    }
+    let spread = |v: &[f64]| v.iter().cloned().fold(f64::MIN, f64::max) - v.iter().cloned().fold(f64::MAX, f64::min);
+    assert!(!right.is_empty() && !left.is_empty());
+    assert!(spread(&left) < 0.1, "unpainted side moved by {}", spread(&left));
+    assert!(spread(&right) > 0.1, "painted side only moved by {}", spread(&right));
+}

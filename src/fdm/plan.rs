@@ -174,7 +174,7 @@ impl Xorshift {
     }
 }
 
-fn fuzzy(points: &[DVec2], amount: f64, seed: u64) -> Polyline {
+fn fuzzy(points: &[DVec2], amount: f64, seed: u64, only_in: Option<&EdgeIndex>) -> Polyline {
     let mut rng = Xorshift(seed | 1);
     let mut out = Vec::with_capacity(points.len() * 3);
     let n = points.len();
@@ -187,7 +187,9 @@ fn fuzzy(points: &[DVec2], amount: f64, seed: u64) -> Polyline {
         let steps = (len / 0.6).ceil().max(1.0) as usize;
         for k in 0..steps {
             let t = (k as f64 + rng.next() * 0.5) / steps as f64;
-            out.push(a.lerp(b, t) + normal * (rng.next() - 0.5) * amount);
+            let on = a.lerp(b, t);
+            let jitter = normal * (rng.next() - 0.5) * amount;
+            out.push(if only_in.map_or(true, |m| m.inside(on)) { on + jitter } else { on });
         }
     }
     out
@@ -341,6 +343,45 @@ struct LayerGeom {
     nozzle_in: f64,
 }
 
+/// Where the user painted the seam and fuzzy skin on one layer.
+struct WallMarks {
+    seam_enforce: EdgeIndex,
+    seam_block: EdgeIndex,
+    fuzzy: EdgeIndex,
+}
+
+/// The painted areas of every layer, found once per model.
+struct LayerMarks {
+    seam_enforce: Vec<Region>,
+    seam_block: Vec<Region>,
+    fuzzy: Vec<Region>,
+}
+
+/// How far from a painted wall its outline still counts as painted, in mm.
+const MARK_REACH_MM: f64 = 0.5;
+
+impl LayerMarks {
+    fn new(obj: &super::JobObject, layers: &[Layer]) -> Option<Self> {
+        let m = obj.marks.as_deref()?;
+        let find = |mark| super::marks::mark_regions(&obj.mesh, m, mark, layers, MARK_REACH_MM);
+        let out = Self {
+            seam_enforce: find(crate::paint::SEAM_ENFORCER),
+            seam_block: find(crate::paint::SEAM_BLOCKER),
+            fuzzy: find(crate::paint::FUZZY),
+        };
+        let any = |v: &Vec<Region>| v.iter().any(|r| !r.is_empty());
+        (any(&out.seam_enforce) || any(&out.seam_block) || any(&out.fuzzy)).then_some(out)
+    }
+
+    fn layer(&self, i: usize) -> WallMarks {
+        WallMarks {
+            seam_enforce: EdgeIndex::new(&self.seam_enforce[i]),
+            seam_block: EdgeIndex::new(&self.seam_block[i]),
+            fuzzy: EdgeIndex::new(&self.fuzzy[i]),
+        }
+    }
+}
+
 struct WallResult {
     walls: Vec<Vec<ExPath>>,
     thin: Vec<ExPath>,
@@ -354,6 +395,7 @@ fn build_walls(
     job: &FdmJob,
     wall_count: usize,
     below: Option<&Below>,
+    marks: Option<&WallMarks>,
     seed: u64,
 ) -> WallResult {
     let p = &job.process;
@@ -419,8 +461,14 @@ fn build_walls(
                 FuzzyMode::Outline => !hole,
                 FuzzyMode::Holes => hole,
             };
-            if k == 0 && p.fuzzy_skin && rough {
-                pts = fuzzy(&pts, p.fuzzy_thickness as f64, seed ^ (g.index as u64).wrapping_mul(2654435761));
+            if k == 0 {
+                let mask = marks.map(|m| &m.fuzzy).filter(|m| !m.is_empty());
+                if p.fuzzy_skin && rough {
+                    pts = fuzzy(&pts, p.fuzzy_thickness as f64, seed ^ (g.index as u64).wrapping_mul(2654435761), None);
+                } else if mask.is_some() {
+                    // Painted rough: only where the paint is.
+                    pts = fuzzy(&pts, p.fuzzy_thickness as f64, seed ^ (g.index as u64).wrapping_mul(2654435761), mask);
+                }
             }
             let mut ex = ExPath::closed(Vec::new(), width, feature);
             if let Some(b) = below {
@@ -430,6 +478,15 @@ fn build_walls(
                 ex.tier = tiers;
             } else {
                 ex.pts = pts;
+            }
+            if k == 0 {
+                if let Some(m) = marks.filter(|m| !m.seam_enforce.is_empty() || !m.seam_block.is_empty()) {
+                    ex.seam = ex
+                        .pts
+                        .iter()
+                        .map(|&q| if m.seam_block.inside(q) { -1 } else if m.seam_enforce.inside(q) { 1 } else { 0 })
+                        .collect();
+                }
             }
             loops.push(ex);
         }
@@ -620,8 +677,8 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
         // thread and runs alongside the walls, skins and infill, which use the rest.
         let painted = match obj.marks.as_deref().filter(|_| !obj.no_support) {
             Some(m) => support::Painted {
-                enforce: super::marks::mark_regions(&obj.mesh, m, crate::paint::SUPPORT_ENFORCER, &layers),
-                block: super::marks::mark_regions(&obj.mesh, m, crate::paint::SUPPORT_BLOCKER, &layers),
+                enforce: super::marks::mark_regions(&obj.mesh, m, crate::paint::SUPPORT_ENFORCER, &layers, 0.0),
+                block: super::marks::mark_regions(&obj.mesh, m, crate::paint::SUPPORT_BLOCKER, &layers, 0.0),
             },
             None => support::Painted::default(),
         };
@@ -671,6 +728,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                 nozzle_in,
             }
         };
+        let layer_marks = LayerMarks::new(obj, &layers);
         struct Stage1 {
             islands: Vec<(Region, WallResult)>,
         }
@@ -688,6 +746,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                 } else {
                     None
                 };
+                let wall_marks = layer_marks.as_ref().map(|m| m.layer(i));
                 let islands = geom::islands(&slices[i])
                     .into_iter()
                     .enumerate()
@@ -700,7 +759,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                         });
                         let count = if open_top { wall_count.min(1) } else { wall_count };
                         let _t = super::span("build_walls");
-                        let wr = build_walls(&reg, g, job, count, below.as_ref(), k as u64 + 7);
+                        let wr = build_walls(&reg, g, job, count, below.as_ref(), wall_marks.as_ref(), k as u64 + 7);
                         (reg, wr)
                     })
                     .collect();

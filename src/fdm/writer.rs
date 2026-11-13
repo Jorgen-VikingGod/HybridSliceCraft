@@ -313,12 +313,28 @@ impl<'a> Writer<'a> {
         }
     }
 
-    fn pick_seam(&mut self, pts: &[DVec2], is_outer: bool) -> usize {
+    fn pick_seam(&mut self, pts: &[DVec2], is_outer: bool, painted: &[i8]) -> usize {
         let n = pts.len();
         if n == 0 {
             return 0;
         }
         let here = DVec2::new(self.pos.x, self.pos.y);
+        // Where the user painted the seam: the corner nearest the last one among
+        // the enforced points, or failing that the points not blocked.
+        if is_outer && painted.len() == n {
+            let anchor = if self.job.process.seam == SeamMode::Aligned { self.seam_anchor.unwrap_or(here) } else { here };
+            let pick = |want: fn(i8) -> bool| {
+                (0..n).filter(|&i| want(painted[i])).min_by(|&a, &b| pts[a].distance_squared(anchor).total_cmp(&pts[b].distance_squared(anchor)))
+            };
+            if let Some(i) = pick(|v| v > 0) {
+                return i;
+            }
+            if painted.iter().any(|&v| v < 0) && painted.iter().any(|&v| v >= 0) {
+                let allowed: Vec<usize> = (0..n).filter(|&i| painted[i] >= 0).collect();
+                let best = self.pick_seam_among(pts, &allowed, anchor);
+                return best;
+            }
+        }
         let mode = if is_outer { self.job.process.seam } else { SeamMode::Nearest };
         match mode {
             SeamMode::Nearest if !is_outer && self.job.process.stagger_inner_seams => {
@@ -366,6 +382,26 @@ impl<'a> Writer<'a> {
         }
     }
 
+    /// The best seam among some allowed points: the same corner preference as
+    /// the normal Aligned choice, measured from the anchor.
+    fn pick_seam_among(&self, pts: &[DVec2], allowed: &[usize], anchor: DVec2) -> usize {
+        let n = pts.len();
+        let mut best = allowed[0];
+        let mut bs = f64::MAX;
+        for &i in allowed {
+            let a = pts[(i + n - 1) % n];
+            let b = pts[i];
+            let c = pts[(i + 1) % n];
+            let turn = (b - a).normalize_or_zero().perp_dot((c - b).normalize_or_zero());
+            let score = b.distance(anchor) - if turn < -0.3 { 4.0 } else if turn > 0.3 { 2.0 } else { 0.0 };
+            if score < bs {
+                bs = score;
+                best = i;
+            }
+        }
+        best
+    }
+
     pub fn emit_path(&mut self, path: &ExPath, z: f64, h: f64, flow: f64, comb: Option<&EdgeIndex>) {
         self.tier_speed = None;
         if path.pts.len() < 2 {
@@ -373,7 +409,7 @@ impl<'a> Writer<'a> {
         }
         if path.closed {
             let is_outer = path.feature == Feature::OuterWall;
-            let seam = self.pick_seam(&path.pts, is_outer);
+            let seam = self.pick_seam(&path.pts, is_outer, &path.seam);
             let n = path.pts.len();
             self.travel_to(path.pts[seam], z, comb);
             let total = path.length();

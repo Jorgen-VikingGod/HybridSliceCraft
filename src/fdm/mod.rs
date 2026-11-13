@@ -318,6 +318,9 @@ pub struct ExPath {
     /// then 1 to 4 for up to a quarter, half, three quarters and all of the line
     /// hanging in the air. Empty when that is off.
     pub tier: Vec<u8>,
+    /// Per point of a wall loop, when the user painted the seam: 1 where the
+    /// seam should go, -1 where it should not, 0 elsewhere. Empty without paint.
+    pub seam: Vec<i8>,
 }
 
 impl ExPath {
@@ -330,6 +333,7 @@ impl ExPath {
             flow_mult: 1.0,
             overhang: Vec::new(),
             tier: Vec::new(),
+            seam: Vec::new(),
         }
     }
     pub fn closed(pts: Vec<DVec2>, width: f64, feature: Feature) -> Self {
@@ -341,6 +345,7 @@ impl ExPath {
             flow_mult: 1.0,
             overhang: Vec::new(),
             tier: Vec::new(),
+            seam: Vec::new(),
         }
     }
     pub fn length(&self) -> f64 {
