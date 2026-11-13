@@ -613,6 +613,8 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.int(ui, "Bottom layers", "", &mut p.bottom_layers, b.bottom_layers, 0..=50, false);
             r.pick(ui, "Top pattern", "", &mut p.top_pattern, b.top_pattern, &SurfacePattern::ALL, SurfacePattern::label, true);
             r.pick(ui, "Bottom pattern", "", &mut p.bottom_pattern, b.bottom_pattern, &SurfacePattern::ALL, SurfacePattern::label, true);
+            r.num(ui, "Top surface density", "Fill the top surface less than solid to save time; 100 is solid.", &mut p.top_density, b.top_density, 10.0..=100.0, "%", 0, true);
+            r.num(ui, "Bottom surface density", "Fill the bottom surface less than solid; 100 is solid.", &mut p.bottom_density, b.bottom_density, 10.0..=100.0, "%", 0, true);
             group(ui, r, "INFILL");
             r.num(ui, "Infill density", "How full the inside is. 15% suits most decorative prints.", &mut p.infill_density, b.infill_density, 0.0..=100.0, "%", 0, false);
             r.pick(ui, "Infill pattern", "", &mut p.infill_pattern, b.infill_pattern, &InfillPattern::ALL, InfillPattern::label, false);
@@ -673,6 +675,7 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.num(ui, "Tree tip radius", "", &mut p.tree_tip_radius, b.tree_tip_radius, 0.2..=5.0, "mm", 2, true);
             group(ui, r, "BRIDGES");
             r.num(ui, "Bridge flow", "", &mut p.bridge_flow, b.bridge_flow, 0.3..=1.5, "", 2, true);
+            r.flag(ui, "Thick bridges", "Print bridges as round strands as wide as the nozzle, which sag less over long gaps.", &mut p.thick_bridges, b.thick_bridges, true);
         }
         _ => {
             group(ui, r, "BED ADHESION");

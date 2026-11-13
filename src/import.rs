@@ -538,6 +538,9 @@ fn process(r: &mut Reader, name: &str) -> FdmProcess {
         p.bottom_pattern = s;
     }
     set!(r, p.spiral_vase, "spiral_mode", flag);
+    set!(r, p.top_density, "top_surface_density", num);
+    set!(r, p.bottom_density, "bottom_surface_density", num);
+    set!(r, p.thick_bridges, "thick_bridges", flag);
     // Speed
     set!(r, p.speed_first_layer, "initial_layer_speed", num);
     set!(r, p.speed_outer, "outer_wall_speed", num);

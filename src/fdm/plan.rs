@@ -510,12 +510,14 @@ fn solid_fill(
     angle: f64,
     feature: Feature,
     start: DVec2,
+    density: f64,
     out: &mut Vec<ExPath>,
 ) {
     if region.is_empty() {
         return;
     }
-    let s = bead_spacing(w, h);
+    // Below full density the lines simply sit further apart.
+    let s = bead_spacing(w, h) / density.clamp(0.05, 1.0);
     match pattern {
         SurfacePattern::Concentric => {
             let mut lines: Vec<Polyline> = Vec::new();
@@ -943,19 +945,28 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                         if !bridge_fill.is_empty() {
                             let a = best_bridge_angle(&bridge_area);
                             let mut bridge = Vec::new();
+                            // Thick bridges are round strands as wide as the nozzle,
+                            // laid side by side with no squish between them.
+                            let (bw, bh) = if p.thick_bridges { (g.nozzle_in, 0.0) } else { (w, h) };
                             solid_fill(
                                 &bridge_fill,
                                 &bound_solid,
                                 SurfacePattern::Rectilinear,
-                                w,
-                                h,
+                                bw,
+                                bh,
                                 a,
                                 Feature::Bridge,
                                 center,
+                                1.0,
                                 &mut bridge,
                             );
+                            let mult = if p.thick_bridges {
+                                std::f64::consts::FRAC_PI_4 * bw * bw / super::bead_area(bw, h)
+                            } else {
+                                1.0
+                            };
                             for b in &mut bridge {
-                                b.flow_mult = p.bridge_flow as f64;
+                                b.flow_mult = p.bridge_flow as f64 * mult;
                             }
                             fill.extend(bridge);
                         }
@@ -970,6 +981,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             angle,
                             solid_feature,
                             center,
+                            if is_bottom { p.bottom_density as f64 / 100.0 } else { 1.0 },
                             &mut fill,
                         );
                         drop(_t);
@@ -1002,6 +1014,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                             angle,
                             Feature::TopSurface,
                             center,
+                            p.top_density as f64 / 100.0,
                             &mut fill,
                         );
                         drop(_t);

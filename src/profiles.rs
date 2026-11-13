@@ -623,6 +623,11 @@ pub struct FdmProcess {
     pub top_pattern: SurfacePattern,
     pub bottom_pattern: SurfacePattern,
     pub spiral_vase: bool,
+    /// How tightly the top and bottom surfaces are filled, in percent of solid.
+    pub top_density: f32,
+    pub bottom_density: f32,
+    /// Print bridges as round strands as wide as the nozzle, which sag less over long gaps.
+    pub thick_bridges: bool,
     // Speed (mm/s)
     pub speed_first_layer: f32,
     pub speed_outer: f32,
@@ -743,6 +748,9 @@ impl Default for FdmProcess {
             top_pattern: SurfacePattern::Monotonic,
             bottom_pattern: SurfacePattern::Monotonic,
             spiral_vase: false,
+            top_density: 100.0,
+            bottom_density: 100.0,
+            thick_bridges: false,
             speed_first_layer: 35.0,
             speed_outer: 120.0,
             speed_inner: 180.0,
