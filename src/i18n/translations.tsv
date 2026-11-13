@@ -488,3 +488,6 @@ Redraw small round holes as polygons that print to size.	Kleine runde Löcher al
 Polyhole up to	Polyloch bis	Polytrou jusqu'à	Polyagujero hasta
 Holes wider than this stay as they are.	Breitere Löcher bleiben unverändert.	Les trous plus larges restent tels quels.	Los agujeros más anchos se quedan como están.
 Printer type	Druckertyp	Type d'imprimante	Tipo de impresora
+Flush volumes	Spülvolumen	Volumes de purge	Volúmenes de purga
+Plastic purged when changing from the filament in the row to the one in the column, in mm³.	Beim Wechsel vom Filament der Zeile zu dem der Spalte ausgespülter Kunststoff in mm³.	Plastique purgé lors du passage du filament de la ligne à celui de la colonne, en mm³.	Plástico purgado al pasar del filamento de la fila al de la columna, en mm³.
+Use the same for every change	Für jeden Wechsel gleich	Identique pour chaque changement	Igual para cada cambio

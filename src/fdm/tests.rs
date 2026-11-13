@@ -1228,3 +1228,31 @@ fn thick_bridges_are_as_wide_as_the_nozzle_and_carry_more_plastic() {
     assert!(flow(&thick) > flow(&thin) * 0.9);
     assert!(feature_count(&thick, Feature::Bridge) < feature_count(&thin, Feature::Bridge) * 2);
 }
+
+fn tower_plastic(flush: Vec<f32>) -> f32 {
+    let mut j = two_nozzle_job();
+    j.process.prime_tower = true;
+    j.process.flush = flush;
+    for (tool, x) in [(0usize, 40.0f32), (1, 90.0)] {
+        j.objects.push(JobObject {
+            name: format!("cube {tool}"),
+            mesh: make_box(Vec3::splat(15.0)).transformed(&Mat4::from_translation(Vec3::new(x, 60.0, 0.0))),
+            extruder: tool,
+            flow: 1.0,
+            ..Default::default()
+        });
+    }
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.tool_changes > 10);
+    r.filament_by_feature[Feature::PrimeTower as usize]
+}
+
+#[test]
+fn flush_matrix_sets_what_each_change_purges() {
+    let uniform = tower_plastic(Vec::new());
+    let same = tower_plastic(vec![0.0, 45.0, 45.0, 0.0]);
+    assert!((uniform - same).abs() / uniform < 0.01, "a matrix of the default volume changes nothing: {uniform} {same}");
+    // Changes to filament 2 purge a lot, changes back to filament 1 hardly anything.
+    let lopsided = tower_plastic(vec![0.0, 45.0, 5.0, 0.0]);
+    assert!(lopsided < uniform * 0.8, "{lopsided} vs {uniform}");
+}

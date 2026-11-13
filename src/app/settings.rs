@@ -13,6 +13,8 @@ struct Rows {
     shown: usize,
     /// Heading to print just before the next row that's shown.
     pending: Option<String>,
+    /// How many filaments the print uses, for the flush table.
+    filaments: usize,
 }
 
 impl Rows {
@@ -185,6 +187,7 @@ impl App {
             advanced: self.advanced,
             shown: 0,
             pending: None,
+            filaments: self.filaments.len(),
         };
         let searching = !rows.filter.is_empty();
         if self.resin() {
@@ -694,6 +697,7 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.flag(ui, "Prime tower", "A small tower to clear old colour after each change.", &mut p.prime_tower, b.prime_tower, false);
             r.num(ui, "Tower width", "", &mut p.tower_width, b.tower_width, 5.0..=100.0, "mm", 0, true);
             r.num(ui, "Purge per change", "", &mut p.purge_volume, b.purge_volume, 0.0..=500.0, "mm³", 0, true);
+            flush_table(ui, r, p);
             r.num(ui, "Tower X", "", &mut p.tower_x, b.tower_x, 0.0..=1000.0, "mm", 0, true);
             r.num(ui, "Tower Y", "", &mut p.tower_y, b.tower_y, 0.0..=1000.0, "mm", 0, true);
             group(ui, r, "FLOW RATIOS");
@@ -785,6 +789,41 @@ fn resin_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut ResinProcess, 
             r.num(ui, "Drain hole size", "Hollow prints need holes for resin to escape.", &mut p.drain_diameter, b.drain_diameter, 0.5..=15.0, "mm", 1, false);
         }
     }
+}
+
+/// Purge volume for each pair of filaments.
+fn flush_table(ui: &mut egui::Ui, r: &mut Rows, p: &mut FdmProcess) {
+    if !r.visible("Flush volumes", true) {
+        return;
+    }
+    let n = r.filaments.max(2);
+    ui.collapsing(crate::i18n::tr("Flush volumes"), |ui| {
+        ui.label(RichText::new(crate::i18n::tr("Plastic purged when changing from the filament in the row to the one in the column, in mm³.")).small().color(ui_dim()));
+        if p.flush.len() != n * n {
+            p.flush = vec![p.purge_volume; n * n];
+        }
+        egui::Grid::new("flush").num_columns(n + 1).show(ui, |ui| {
+            ui.label("");
+            for j in 0..n {
+                ui.label(format!("{}", j + 1));
+            }
+            ui.end_row();
+            for i in 0..n {
+                ui.label(format!("{}", i + 1));
+                for j in 0..n {
+                    if i == j {
+                        ui.label("–");
+                    } else {
+                        ui.add(egui::DragValue::new(&mut p.flush[i * n + j]).range(0.0..=2000.0).speed(1.0).max_decimals(0));
+                    }
+                }
+                ui.end_row();
+            }
+        });
+        if ui.button(crate::i18n::tr("Use the same for every change")).clicked() {
+            p.flush.clear();
+        }
+    });
 }
 
 fn line(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui)) {

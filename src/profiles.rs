@@ -727,11 +727,34 @@ pub struct FdmProcess {
     pub tower_y: f32,
     pub tower_width: f32,
     pub purge_volume: f32,
+    /// Purge volume for each change from one filament (row) to another (column),
+    /// as a square of mm³ values; empty uses `purge_volume` for every change.
+    pub flush: Vec<f32>,
     pub sequence: Sequence,
     // Retraction behaviour
     pub retract_min_travel: f32,
     pub avoid_crossing_walls: bool,
     pub bridge_flow: f32,
+}
+
+impl FdmProcess {
+    /// What a change from one filament to another purges, in mm³.
+    pub fn flush_between(&self, from: usize, to: usize, filaments: usize) -> f32 {
+        if filaments > 1 && self.flush.len() == filaments * filaments && from < filaments && to < filaments {
+            self.flush[from * filaments + to]
+        } else {
+            self.purge_volume
+        }
+    }
+
+    /// The most any change purges, which sizes the prime tower.
+    pub fn flush_max(&self, filaments: usize) -> f32 {
+        if filaments > 1 && self.flush.len() == filaments * filaments {
+            self.flush.iter().cloned().fold(self.purge_volume.min(1.0), f32::max)
+        } else {
+            self.purge_volume
+        }
+    }
 }
 
 impl Default for FdmProcess {
@@ -845,6 +868,7 @@ impl Default for FdmProcess {
             tower_y: 170.0,
             tower_width: 30.0,
             purge_volume: 45.0,
+            flush: Vec::new(),
             sequence: Sequence::ByLayer,
             retract_min_travel: 1.5,
             avoid_crossing_walls: true,
