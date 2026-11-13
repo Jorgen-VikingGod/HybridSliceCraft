@@ -479,3 +479,11 @@ Bottom surface density	Dichte der Unterseite	Densité de la surface inférieure	
 Fill the bottom surface less than solid; 100 is solid.	Die Unterseite weniger als vollständig füllen; 100 ist vollständig.	Remplir la surface inférieure moins que plein ; 100 est plein.	Rellenar la superficie inferior menos que sólida; 100 es sólida.
 Thick bridges	Dicke Brücken	Ponts épais	Puentes gruesos
 Print bridges as round strands as wide as the nozzle, which sag less over long gaps.	Brücken als runde Stränge in Düsenbreite drucken; sie hängen über lange Lücken weniger durch.	Imprimer les ponts en brins ronds de la largeur de la buse, qui s'affaissent moins sur les longs vides.	Imprimir los puentes como hebras redondas del ancho de la boquilla, que se hunden menos en huecos largos.
+Hole size correction	Lochkorrektur	Correction des trous	Corrección de agujeros
+Make holes bigger (positive) or smaller (negative) on their own.	Löcher für sich größer (positiv) oder kleiner (negativ) machen.	Agrandir (positif) ou réduire (négatif) les trous seuls.	Agrandar (positivo) o reducir (negativo) solo los agujeros.
+Close gaps up to	Lücken schließen bis	Fermer les fentes jusqu'à	Cerrar huecos hasta
+Closes cracks in the model's skin up to this wide while slicing.	Schließt beim Slicen Risse in der Modellhaut bis zu dieser Breite.	Ferme à la découpe les fissures de la peau du modèle jusqu'à cette largeur.	Cierra al segmentar las grietas de la piel del modelo hasta este ancho.
+Polyholes	Polylöcher	Polytrous	Polyagujeros
+Redraw small round holes as polygons that print to size.	Kleine runde Löcher als Polygone neu zeichnen, die maßhaltig drucken.	Redessiner les petits trous ronds en polygones qui s'impriment à la bonne taille.	Redibujar los agujeros redondos pequeños como polígonos que se imprimen al tamaño correcto.
+Polyhole up to	Polyloch bis	Polytrou jusqu'à	Polyagujero hasta
+Holes wider than this stay as they are.	Breitere Löcher bleiben unverändert.	Les trous plus larges restent tels quels.	Los agujeros más anchos se quedan como están.

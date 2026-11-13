@@ -460,6 +460,9 @@ fn process(r: &mut Reader, name: &str) -> FdmProcess {
         p.first_layer_line_width = w;
     }
     set!(r, p.xy_compensation, "xy_contour_compensation", num);
+    set!(r, p.xy_hole_compensation, "xy_hole_compensation", num);
+    set!(r, p.slice_closing_radius, "slice_closing_radius", num);
+    set!(r, p.polyholes, "hole_to_polyhole", flag);
     set!(r, p.elephant_foot, "elefant_foot_compensation", num);
     if let Some(s) = r.text("seam_position") {
         p.seam = match s.as_str() {

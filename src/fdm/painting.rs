@@ -17,7 +17,6 @@ pub fn split_painted(job: &FdmJob) -> FdmJob {
     let p = &job.process;
     let (layers, _) = plan::layer_stack(job);
     let zs_mid: Vec<f64> = layers.iter().map(|l| l.z - l.height * 0.5).collect();
-    let (xy, foot) = (p.xy_compensation as f64, p.elephant_foot as f64);
     let last_tool = job.filaments.len().saturating_sub(1);
     let mut out = job.clone();
     out.objects.clear();
@@ -27,7 +26,7 @@ pub fn split_painted(job: &FdmJob) -> FdmJob {
             continue;
         }
         let paint = o.paint.as_ref().unwrap();
-        let (whole, _) = plan::object_slices(&o.mesh, &zs_mid, xy, foot);
+        let (whole, _) = plan::object_slices(&o.mesh, &zs_mid, p, job.printer.nozzle_for(o.extruder) as f64);
         let depth = (o.paint_depth as f64).clamp(0.3, 50.0);
         let per_layer = crate::paint::colour_regions(&o.mesh, paint, &zs_mid, &whole, depth);
         let cover = Arc::new(whole);

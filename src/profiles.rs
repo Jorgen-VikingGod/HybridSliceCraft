@@ -582,6 +582,13 @@ pub struct FdmProcess {
     pub first_layer_line_width: f32,
     pub xy_compensation: f32,
     pub elephant_foot: f32,
+    /// Move holes on their own, in mm: positive makes them bigger.
+    pub xy_hole_compensation: f32,
+    /// Close gaps in the model's skin up to this wide, in mm.
+    pub slice_closing_radius: f32,
+    /// Redraw small round holes as polygons that print to size.
+    pub polyholes: bool,
+    pub polyhole_max: f32,
     pub seam: SeamMode,
     pub seam_gap: f32,
     /// Fade the outer wall in and out over a stretch at the seam so it leaves no bump.
@@ -716,6 +723,10 @@ impl Default for FdmProcess {
             first_layer_line_width: 0.5,
             xy_compensation: 0.0,
             elephant_foot: 0.1,
+            xy_hole_compensation: 0.0,
+            slice_closing_radius: 0.0,
+            polyholes: false,
+            polyhole_max: 10.0,
             seam: SeamMode::Aligned,
             seam_gap: 0.05,
             scarf_seam: false,
