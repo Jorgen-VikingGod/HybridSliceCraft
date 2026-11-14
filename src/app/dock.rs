@@ -223,6 +223,7 @@ impl App {
             .show(ui, |ui| self.dock_side(ui, false));
         self.editor_windows(ui.ctx());
         self.import_report_window(ui.ctx());
+        self.mix_window(ui.ctx());
         // A drag dropped outside both panels just ends.
         let ctx = ui.ctx().clone();
         if ctx.input(|i| i.pointer.any_released()) {

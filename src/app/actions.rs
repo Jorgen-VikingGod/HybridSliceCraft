@@ -601,6 +601,7 @@ impl App {
             );
         }
         h = hash_text(&format!("{:?}", self.plate().layer_actions), h);
+        h = hash_text(&format!("{:?}", self.mixes), h);
         if self.resin() {
             if let Ok(t) = serde_json::to_string(&(&self.resin_printer, &self.resin_process, &self.resin_mat)) {
                 h = hash_text(&t, h);
@@ -642,6 +643,7 @@ impl App {
             objects: Vec::new(),
             printer: self.fdm_printer.clone(),
             filaments: self.filaments.clone(),
+            mixes: self.mixes.clone(),
             process: self.fdm_process.clone(),
             z_changes: self.plate().z_changes.clone(),
             layer_actions: self.plate().layer_actions.clone(),
@@ -910,6 +912,7 @@ impl App {
             fdm_printer: self.fdm_printer.clone(),
             fdm_process: self.fdm_process.clone(),
             filaments: self.filaments.clone(),
+            mixes: self.mixes.clone(),
             resin_printer: self.resin_printer.clone(),
             resin_process: self.resin_process.clone(),
             resin: self.resin_mat.clone(),
@@ -946,6 +949,7 @@ impl App {
                 self.fdm_process = s.fdm_process;
                 if !s.filaments.is_empty() {
                     self.filaments = s.filaments;
+                    self.mixes = s.mixes;
                 }
                 self.resin_printer = s.resin_printer;
                 self.resin_process_base = s.resin_process.clone();
@@ -1057,6 +1061,7 @@ struct Session {
     fdm_process: Option<FdmProcess>,
     fdm_process_base: Option<FdmProcess>,
     filaments: Vec<Filament>,
+    mixes: Vec<crate::mixing::MixedFilament>,
     resin_printer: Option<ResinPrinter>,
     resin_process: Option<ResinProcess>,
     resin_process_base: Option<ResinProcess>,
@@ -1075,6 +1080,7 @@ impl App {
             fdm_process: Some(self.fdm_process.clone()),
             fdm_process_base: Some(self.fdm_process_base.clone()),
             filaments: self.filaments.clone(),
+            mixes: self.mixes.clone(),
             resin_printer: Some(self.resin_printer.clone()),
             resin_process: Some(self.resin_process.clone()),
             resin_process_base: Some(self.resin_process_base.clone()),
@@ -1112,6 +1118,7 @@ impl App {
         if !s.filaments.is_empty() {
             self.filaments = s.filaments;
         }
+        self.mixes = s.mixes;
         if let Some(v) = s.resin_printer {
             self.resin_printer = v;
         }

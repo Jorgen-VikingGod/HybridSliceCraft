@@ -13,6 +13,7 @@ mod import;
 mod keys;
 mod i18n;
 mod mesh;
+mod mixing;
 mod paint;
 mod prefs;
 mod profiles;

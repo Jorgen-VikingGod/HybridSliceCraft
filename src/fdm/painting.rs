@@ -33,25 +33,50 @@ pub fn split_painted(job: &FdmJob) -> FdmJob {
         let mut values: Vec<u8> = per_layer.iter().flat_map(|l| l.iter().map(|(v, _)| *v)).collect();
         values.sort_unstable();
         values.dedup();
-        for (n, v) in values.iter().enumerate() {
-            let slices: Vec<Region> = per_layer
-                .iter()
-                .map(|l| l.iter().find(|(x, _)| x == v).map(|(_, r)| r.clone()).unwrap_or_default())
-                .collect();
-            let tool = if *v == 0 { o.extruder } else { (*v as usize - 1).min(last_tool) };
+        // What each piece prints: a plain filament prints all its layers; a mixed
+        // filament gives one piece per tool, each keeping only its own layers.
+        struct Piece {
+            tool: usize,
+            base: bool,
+            slices: Vec<Region>,
+        }
+        let mut pieces: Vec<Piece> = Vec::new();
+        for v in &values {
+            let region_at = |i: usize| per_layer[i].iter().find(|(x, _)| x == v).map(|(_, r)| r.clone()).unwrap_or_default();
+            let mix = crate::mixing::mix_index(*v).and_then(|k| job.mixes.get(k)).filter(|m| !m.cycle.is_empty());
+            match mix {
+                Some(m) => {
+                    for t in m.tools() {
+                        let tool = t.min(last_tool);
+                        let slices: Vec<Region> = (0..per_layer.len())
+                            .map(|i| if m.tool_at(i).min(last_tool) == tool { region_at(i) } else { Vec::new() })
+                            .collect();
+                        pieces.push(Piece { tool, base: false, slices });
+                    }
+                }
+                None => {
+                    // A mix that no longer exists prints in the model's own filament.
+                    let base = *v == 0 || crate::mixing::mix_index(*v).is_some();
+                    let tool = if base { o.extruder } else { (*v as usize - 1).min(last_tool) };
+                    pieces.push(Piece { tool, base, slices: (0..per_layer.len()).map(region_at).collect() });
+                }
+            }
+        }
+        for (n, piece) in pieces.into_iter().enumerate() {
+            let (tool, base) = (piece.tool, piece.base);
             out.objects.push(JobObject {
                 name: format!("{} (filament {})", o.name, tool + 1),
                 extruder: tool,
                 // A painted colour prints everything of its piece.
-                infill_extruder: if *v == 0 { o.infill_extruder } else { None },
-                inner_wall_extruder: if *v == 0 { o.inner_wall_extruder } else { None },
-                solid_infill_extruder: if *v == 0 { o.solid_infill_extruder } else { None },
-                top_surface_extruder: if *v == 0 { o.top_surface_extruder } else { None },
-                bottom_surface_extruder: if *v == 0 { o.bottom_surface_extruder } else { None },
-                support_extruder: if *v == 0 { o.support_extruder } else { None },
-                support_interface_extruder: if *v == 0 { o.support_interface_extruder } else { None },
+                infill_extruder: if base { o.infill_extruder } else { None },
+                inner_wall_extruder: if base { o.inner_wall_extruder } else { None },
+                solid_infill_extruder: if base { o.solid_infill_extruder } else { None },
+                top_surface_extruder: if base { o.top_surface_extruder } else { None },
+                bottom_surface_extruder: if base { o.bottom_surface_extruder } else { None },
+                support_extruder: if base { o.support_extruder } else { None },
+                support_interface_extruder: if base { o.support_interface_extruder } else { None },
                 paint: None,
-                slices: Some(Arc::new(slices)),
+                slices: Some(Arc::new(piece.slices)),
                 cover: Some(cover.clone()),
                 // One piece holds up the whole model; the others would only
                 // wall themselves in against their colour neighbours.

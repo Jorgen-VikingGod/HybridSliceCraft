@@ -21,6 +21,7 @@ fn job(mesh: Mesh, process: FdmProcess) -> FdmJob {
         }],
         printer: cat.fdm_printers[0].clone(),
         filaments: vec![cat.filaments[0].clone()],
+        mixes: Vec::new(),
         process,
         z_changes: Vec::new(),
         layer_actions: Vec::new(),
@@ -1292,4 +1293,84 @@ fn a_height_range_changes_walls_and_infill_only_between_its_heights() {
     assert!(count(&ranged, Feature::SparseInfill, true) > count(&plain, Feature::SparseInfill, true) * 2);
     assert_eq!(count(&ranged, Feature::InnerWall, false), count(&plain, Feature::InnerWall, false));
     assert_eq!(count(&ranged, Feature::SparseInfill, false), count(&plain, Feature::SparseInfill, false));
+}
+
+/// A 20 mm box painted all over with one mixed filament, on a two-tool printer.
+fn mixed_box(cycle: Vec<u8>, layer_height: f32) -> FdmJob {
+    use crate::mixing::{paint_value, MixedFilament};
+    use std::sync::Arc;
+    let mesh = centered(make_box(Vec3::new(20.0, 20.0, 6.0)));
+    let paint = vec![paint_value(0); mesh.t.len()];
+    let mut p = FdmProcess::default();
+    p.layer_height = layer_height;
+    p.first_layer_height = layer_height;
+    let mut j = job(mesh, p);
+    j.printer.extruders = 2;
+    j.filaments = vec![Filament::default(), Filament::default()];
+    j.mixes = vec![MixedFilament { name: "test".into(), cycle, target: None }];
+    j.objects[0].paint = Some(Arc::new(paint));
+    // Paint reaches through the whole box so every layer is mixed.
+    j.objects[0].paint_depth = 30.0;
+    j
+}
+
+#[test]
+fn a_mixed_filament_alternates_tools_layer_by_layer() {
+    let r = slice(&mixed_box(vec![0, 1], 0.2), &Progress::default()).unwrap();
+    // Every wall line sits on a layer whose tool is the one the cycle picks.
+    let walls: Vec<_> = r.segs.iter().filter(|s| s.feature == Feature::OuterWall as u32).collect();
+    assert!(walls.len() > 50);
+    for s in &walls {
+        assert_eq!(s.tool as usize, s.layer as usize % 2, "layer {} printed with tool {}", s.layer, s.tool);
+    }
+    assert!(r.tool_changes >= 20, "about one change per layer, got {}", r.tool_changes);
+    assert!(r.segs.iter().any(|s| s.feature == Feature::PrimeTower as u32), "the prime tower cleans the nozzle");
+}
+
+#[test]
+fn mixed_layers_use_about_the_same_plastic_as_plain_ones() {
+    let mixed = slice(&mixed_box(vec![0, 1], 0.2), &Progress::default()).unwrap();
+    let mut plain_job = mixed_box(vec![0, 1], 0.2);
+    plain_job.objects[0].paint = None;
+    let plain = slice(&plain_job, &Progress::default()).unwrap();
+    let part = |r: &FdmResult| -> f32 {
+        Feature::ALL
+            .iter()
+            .filter(|f| !matches!(f, Feature::PrimeTower | Feature::Travel))
+            .map(|f| r.filament_by_feature[*f as usize])
+            .sum()
+    };
+    let (a, b) = (part(&plain), part(&mixed));
+    assert!(b > a * 0.9 && b < a * 1.2, "{a} vs {b}");
+}
+
+#[test]
+fn a_three_layer_cycle_follows_its_pattern_and_a_missing_mix_falls_back() {
+    let r = slice(&mixed_box(vec![0, 1, 1], 0.2), &Progress::default()).unwrap();
+    for s in r.segs.iter().filter(|s| s.feature == Feature::OuterWall as u32) {
+        let want = [0u32, 1, 1][s.layer as usize % 3];
+        assert_eq!(s.tool, want, "layer {}", s.layer);
+    }
+    // A painted value whose mix was deleted prints in the model's own filament.
+    let mut j = mixed_box(vec![0, 1], 0.2);
+    j.mixes.clear();
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.segs.iter().filter(|s| s.feature == Feature::OuterWall as u32).all(|s| s.tool == 0));
+}
+
+#[test]
+fn tall_stacks_and_adaptive_layers_are_warned_about() {
+    let has = |j: &FdmJob, text: &str| slice(j, &Progress::default()).unwrap().warnings.iter().any(|w| w.contains(text));
+    assert!(!has(&mixed_box(vec![0, 1], 0.1), "stripes"), "a 0.2 mm stack is fine");
+    assert!(has(&mixed_box(vec![0, 1, 1, 0, 1], 0.1), "stripes"), "five layers of 0.1 mm is 0.5 mm");
+    let mut j = mixed_box(vec![0, 1], 0.1);
+    j.process.adaptive_layers = true;
+    assert!(has(&j, "adaptive layer"));
+    let mut j = mixed_box(vec![0, 1], 0.1);
+    j.printer.extruders = 1;
+    assert!(has(&j, "tool heads"));
+    // Plain prints never mention mixing.
+    let mut j = mixed_box(vec![0, 1], 0.1);
+    j.objects[0].paint = None;
+    assert!(!slice(&j, &Progress::default()).unwrap().warnings.iter().any(|w| w.to_lowercase().contains("mix")));
 }
