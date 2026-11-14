@@ -2,6 +2,8 @@
 
 A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast desktop program.
 
+**[Read the manual](docs/manual.md)**: every feature explained, with pictures, examples and hints.
+
 ## Filament (FDM)
 
 ![Filament preview: the starter bear sliced, coloured by line type](docs/fdm-preview.png)

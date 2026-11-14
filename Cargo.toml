@@ -48,7 +48,7 @@ pollster = "0.4"
 ahash = "0.8"
 # STEP files (Apache-2.0): read the solid's faces and cut them into triangles.
 truck-stepio = "0.3"
-truck-meshalgo = "0.4"
+truck-meshalgo = { version = "0.4", default-features = false, features = ["analyzers", "filters", "tessellation"] }
 truck-topology = "0.6"
 ruststep = "0.4"
 

@@ -42,6 +42,13 @@ Options:
   --supports                Add resin supports automatically on startup
   --hollow                  Hollow the first model on startup
   --cut-view                Start with the cut-through view on (resin)
+  For pictures in the manual:
+  --tool <name>             Start with a tool chosen: move, rotate, scale, lay-flat, cut, paint, measure, support-point, drain-hole
+  --tab <0-4>               Start on this tab of the print settings
+  --window <name>           Open a window: printer, material, send, note, mixes
+  --scheme <name>           Colour the preview by this (Feature, Speed, Flow, Layer height, Filament...)
+  --demo-paint              Paint the front of the model with the second filament, or the first mix
+  --demo-mixes              Add the 50/50 mixed filaments
   --zoom <factor>           Start zoomed in on the models
   --export <file>           After slicing, save to this file and quit
                             (.gcode, or .sl1, .zip, .ctb, .goo, .pwmx and other Anycubic types in resin mode)
@@ -121,6 +128,15 @@ fn parse_args() -> Result<StartOptions, String> {
             "--hollow" => o.hollow = true,
             "--printer" => o.printer = Some(it.next().ok_or("--printer needs a name")?),
             "--cut-view" => o.show_cut = true,
+            "--tool" => o.tool = Some(it.next().ok_or("--tool needs a name")?),
+            "--tab" => {
+                let v = it.next().ok_or("--tab needs a number")?;
+                o.tab = Some(v.parse().map_err(|_| format!("--tab needs a number, not {v}"))?);
+            }
+            "--window" => o.window = Some(it.next().ok_or("--window needs a name")?),
+            "--scheme" => o.scheme = Some(it.next().ok_or("--scheme needs a name")?),
+            "--demo-paint" => o.demo_paint = true,
+            "--demo-mixes" => o.demo_mixes = true,
             "--zoom" => {
                 let v = it.next().ok_or("--zoom needs a number")?;
                 o.zoom = v.parse().map_err(|_| format!("--zoom needs a number, not {v}"))?;

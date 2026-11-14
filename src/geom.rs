@@ -153,17 +153,6 @@ pub fn path_area_mm2(p: &Path64) -> f64 {
     area(p) / (SCALE * SCALE)
 }
 
-pub fn path_length_mm(p: &Path64) -> f64 {
-    let n = p.len();
-    if n < 2 {
-        return 0.0;
-    }
-    let mut l = 0.0;
-    for i in 0..n {
-        l += from_pt(&p[i]).distance(from_pt(&p[(i + 1) % n]));
-    }
-    l
-}
 
 /// One connected piece of a region: an outer loop and the holes inside it.
 #[derive(Clone, Debug, Default)]

@@ -289,7 +289,7 @@ fn mark_overhang(pts: Vec<DVec2>, below: &Below) -> (Vec<DVec2>, Vec<bool>, Vec<
     let mut flags = Vec::with_capacity(n);
     let mut tiers = Vec::new();
     let with_tiers = below.tiers.is_some();
-    let mut push = |flags: &mut Vec<bool>, tiers: &mut Vec<u8>, c: u8| {
+    let push = |flags: &mut Vec<bool>, tiers: &mut Vec<u8>, c: u8| {
         flags.push(c & 1 == 1);
         if with_tiers {
             tiers.push(c >> 1);

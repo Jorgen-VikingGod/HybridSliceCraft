@@ -402,6 +402,7 @@ pub fn fill_all(paint: &mut Vec<u8>, triangles: usize, value: u8) {
 }
 
 /// Highest paint value in use, i.e. how many filament slots the painting needs.
+#[cfg(test)]
 pub fn slots_used(paint: &[u8]) -> usize {
     paint.iter().copied().max().unwrap_or(0) as usize
 }

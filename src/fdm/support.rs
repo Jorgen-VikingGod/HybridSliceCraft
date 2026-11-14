@@ -92,10 +92,6 @@ pub fn generate_from(prep: Prepared, slices: &[Region], heights: &[f64], p: &Fdm
     }
 }
 
-pub fn generate(slices: &[Region], heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
-    generate_from(prepare(slices, heights, p, &Painted::default()), slices, heights, p)
-}
-
 fn clearance(slices: &[Region], xy: f64) -> Vec<Region> {
     slices
         .par_iter()

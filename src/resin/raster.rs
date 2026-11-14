@@ -163,6 +163,7 @@ impl LayerImage {
         RunIter { data: &self.data, pos: 0 }
     }
 
+    #[cfg(test)]
     pub fn from_rows(width: u32, pixels: &[u8]) -> Self {
         let mut w = RleWriter::new(width);
         encode_into(&mut w, pixels);
@@ -481,7 +482,8 @@ fn add_span(ev: &mut Vec<(u32, f32)>, x0: f32, x1: f32, w: usize, lo: &mut usize
 pub struct IslandInfo {
     pub bbox: [u32; 4],
     pub area_px: u64,
-    /// One pixel known to be inside the island.
+    /// One pixel known to be inside the island, for naming where a problem is in tests.
+    #[cfg(test)]
     pub seed: (u32, u32),
 }
 
@@ -534,6 +536,7 @@ pub fn find_islands(
             let e = info[id].get_or_insert(IslandInfo {
                 bbox: [s.0, y as u32, s.1, y as u32 + 1],
                 area_px: 0,
+                #[cfg(test)]
                 seed: ((s.0 + s.1) / 2, y as u32),
             });
             e.area_px += (s.1 - s.0) as u64;

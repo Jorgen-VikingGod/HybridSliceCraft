@@ -20,6 +20,7 @@ pub struct Planes {
 }
 
 impl Planes {
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.starts.len() - 1
     }

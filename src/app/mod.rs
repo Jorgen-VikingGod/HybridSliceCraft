@@ -166,7 +166,6 @@ pub enum JobOutcome {
 }
 
 pub struct RunningJob {
-    pub label: String,
     pub progress: Progress,
     pub rx: Receiver<Result<JobOutcome, String>>,
     pub cancelled: bool,
@@ -307,8 +306,6 @@ pub struct App {
     pub show_shortcuts: bool,
     pub show_note: bool,
     pub show_send: bool,
-    pub save_name: String,
-    pub save_kind: u8,
     pub project_path: Option<PathBuf>,
     pub resin_format: crate::resin::export::ResinFormat,
     pub last_export_gcode: Option<PathBuf>,
@@ -336,6 +333,13 @@ pub struct StartOptions {
     pub hollow: bool,
     pub show_cut: bool,
     pub printer: Option<String>,
+    // The rest set up the window for pictures in the manual.
+    pub tool: Option<String>,
+    pub tab: Option<usize>,
+    pub window: Option<String>,
+    pub scheme: Option<String>,
+    pub demo_paint: bool,
+    pub demo_mixes: bool,
 }
 
 impl App {
@@ -466,8 +470,6 @@ impl App {
             show_shortcuts: false,
             show_note: false,
             show_send: false,
-            save_name: String::new(),
-            save_kind: 0,
             project_path: None,
             resin_format: crate::resin::export::ResinFormat::Sl1,
             last_export_gcode: None,
@@ -487,7 +489,9 @@ impl App {
             || opts.export.is_some()
             || opts.hollow
             || opts.auto_supports
-            || opts.printer.is_some();
+            || opts.printer.is_some()
+            || opts.tool.is_some()
+            || opts.window.is_some();
         if !automated {
             app.load_session();
         }
@@ -527,12 +531,64 @@ impl App {
                 app.fdm_process.support = SupportKind::Tree;
             }
         }
+        app.apply_picture_options(&opts);
         if opts.show_cut {
             let top = world_bounds_of(&app.plate().objects).map(|(_, b)| b.z).unwrap_or(10.0);
             app.section_z = Some(top * 0.5);
         }
         app.frame_all();
         app
+    }
+
+    /// Settings used to set the window up for the pictures in the manual.
+    fn apply_picture_options(&mut self, opts: &StartOptions) {
+        if let Some(t) = &opts.tool {
+            self.tool = match t.as_str() {
+                "rotate" => Tool::Rotate,
+                "scale" => Tool::Scale,
+                "lay-flat" => Tool::LayFlat,
+                "cut" => Tool::Cut,
+                "support-point" => Tool::SupportPoint,
+                "drain-hole" => Tool::DrainHole,
+                "measure" => Tool::Measure,
+                "paint" => Tool::Paint,
+                _ => Tool::Move,
+            };
+        }
+        if let Some(t) = opts.tab {
+            self.settings_tab = t;
+        }
+        if let Some(s) = &opts.scheme {
+            if let Some(c) = ColorScheme::ALL.iter().find(|c| c.label().to_lowercase() == s.to_lowercase()) {
+                self.scheme = *c;
+            }
+        }
+        if opts.demo_mixes {
+            // The panel fills the filament slots later; make them now to see every pair.
+            let slots = (self.fdm_printer.extruders as usize).clamp(2, 4);
+            while self.filaments.len() < slots {
+                let next = self.cat.filaments.get(self.filaments.len() % self.cat.filaments.len().max(1)).cloned().unwrap_or_default();
+                self.filaments.push(next);
+            }
+            self.mixes = crate::mixing::auto_pairs(slots);
+        }
+        if opts.demo_paint {
+            // The front of the model in the second filament, or in the first mix when there is one.
+            let value = if self.mixes.is_empty() { 2 } else { crate::mixing::paint_value(0) };
+            if let Some(o) = self.plates[self.active].objects.first_mut() {
+                let paint: Vec<u8> = (0..o.mesh.t.len()).map(|i| if o.mesh.tri_normal(i).y < -0.5 { value } else { 0 }).collect();
+                o.paint = Some(Arc::new(paint));
+                o.refresh_paint();
+            }
+        }
+        match opts.window.as_deref() {
+            Some("printer") => self.show_printer = true,
+            Some("material") => self.show_material = true,
+            Some("send") => self.show_send = true,
+            Some("note") => self.show_note = true,
+            Some("mixes") => self.open_mix_editor(None),
+            _ => {}
+        }
     }
 
     pub fn plate(&self) -> &Plate {
@@ -613,7 +669,6 @@ impl App {
         match spawned {
             Ok(_) => {
                 self.job = Some(RunningJob {
-                    label: label.to_string(),
                     progress,
                     rx,
                     cancelled: false,

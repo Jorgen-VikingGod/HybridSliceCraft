@@ -2,7 +2,6 @@
 
 use super::theme::*;
 use super::*;
-use crate::fdm::gcode::format_time;
 use crate::shapes;
 use egui::{Align, Color32, Layout, RichText, Sense, Stroke, StrokeKind, Vec2};
 
@@ -561,15 +560,6 @@ impl App {
             self.send_to_printer(ctx);
             self.show_send = false;
         }
-    }
-
-    pub fn format_print_time(&self) -> String {
-        let seconds = if self.resin() {
-            self.resin_result.as_ref().map(|r| r.total_time)
-        } else {
-            self.fdm_result.as_ref().map(|r| r.total_time)
-        };
-        seconds.map(format_time).unwrap_or_else(|| "–".into())
     }
 }
 
