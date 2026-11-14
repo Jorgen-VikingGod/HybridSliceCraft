@@ -432,8 +432,13 @@ pub fn dialog(
             rule(ui, width);
             // Scrolling content, leaving room for the title and footer.
             let max_h = (screen.height() * 0.9 - 120.0).max(120.0);
-            egui::ScrollArea::vertical().max_height(max_h).auto_shrink([false, true]).show(ui, |ui| {
-                ui.spacing_mut().scroll.floating = false;
+            ui.spacing_mut().scroll.floating = false;
+            ui.spacing_mut().scroll.bar_width = 9.0;
+            egui::ScrollArea::vertical()
+                .max_height(max_h)
+                .auto_shrink([false, true])
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
+                .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 5.0;
                 egui::Frame::new().inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
                     ui.set_width(width - 32.0 - ui.spacing().scroll.bar_width - 4.0);
