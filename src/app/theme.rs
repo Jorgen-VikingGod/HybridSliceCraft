@@ -386,6 +386,9 @@ pub fn dialog(
     body: impl FnOnce(&mut egui::Ui),
     footer: impl FnOnce(&mut egui::Ui),
 ) {
+    if !*open {
+        return;
+    }
     let screen = ctx.content_rect();
     let width = width.min(screen.width() - 24.0).max(240.0);
     let mut close = false;
