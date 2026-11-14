@@ -69,6 +69,8 @@ impl App {
             0
         } else if let Some(m) = self.paint_kind.mark() {
             m
+        } else if let Some(k) = self.paint_mix.filter(|k| *k < self.mixes.len()) {
+            crate::mixing::paint_value(k)
         } else {
             (self.paint_slot as u8).saturating_add(1)
         }
@@ -745,7 +747,10 @@ impl App {
                     .collect();
                 let slot = match self.paint_kind.mark() {
                     Some(m) => super::mark_colour(m),
-                    None => self.filaments.get(self.paint_slot).map(|f| f.color).unwrap_or([255, 255, 255]),
+                    None => match self.paint_mix.and_then(|k| self.mixes.get(k)) {
+                        Some(m) => self.mix_colour(m),
+                        None => self.filaments.get(self.paint_slot).map(|f| f.color).unwrap_or([255, 255, 255]),
+                    },
                 };
                 let col = if self.paint_mode == PaintMode::Erase { Color32::WHITE } else { Color32::from_rgb(slot[0], slot[1], slot[2]) };
                 painter.add(egui::Shape::line(ring.clone(), Stroke::new(3.5, Color32::BLACK)));
@@ -1055,7 +1060,12 @@ impl App {
                     // Painted: one piece of the model for each filament.
                     for v in &o.paint_values {
                         let mut c = color;
-                        if *v > crate::paint::MARK_BASE {
+                        if let Some(m) = crate::mixing::mix_index(*v).and_then(|k| self.mixes.get(k)).filter(|_| inside) {
+                            let rgb = self.mix_colour(m);
+                            c = [rgb[0] as f32 / 255.0, rgb[1] as f32 / 255.0, rgb[2] as f32 / 255.0, 1.0];
+                        } else if crate::mixing::mix_index(*v).is_some() {
+                            // A mix that was removed shows the model's own colour.
+                        } else if *v > crate::paint::MARK_BASE {
                             let m = super::mark_colour(*v - crate::paint::MARK_BASE);
                             c = [m[0] as f32 / 255.0, m[1] as f32 / 255.0, m[2] as f32 / 255.0, 1.0];
                         } else if *v > 0 && inside {
@@ -1247,7 +1257,7 @@ impl App {
                             let (r, resp) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::click());
                             let c = Color32::from_rgb(f.color[0], f.color[1], f.color[2]);
                             ui.painter().rect_filled(r, 5.0, c);
-                            let on = self.paint_slot == i && self.paint_mode != PaintMode::Erase;
+                            let on = self.paint_slot == i && self.paint_mix.is_none() && self.paint_mode != PaintMode::Erase;
                             let ink = if f.color.iter().map(|v| *v as u32).sum::<u32>() > 380 { Color32::BLACK } else { Color32::WHITE };
                             ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, format!("{}", i + 1), egui::FontId::proportional(13.0), ink);
                             if on {
@@ -1255,12 +1265,35 @@ impl App {
                             }
                             if resp.on_hover_text(&f.name).clicked() {
                                 self.paint_slot = i;
+                                self.paint_mix = None;
                                 if self.paint_mode == PaintMode::Erase {
                                     self.paint_mode = PaintMode::Brush;
                                 }
                             }
                         }
                     });
+                    if self.paint_kind == super::PaintKind::Filament && !self.mixes.is_empty() {
+                        ui.horizontal_wrapped(|ui| {
+                            for (k, m) in self.mixes.iter().enumerate() {
+                                let col = self.mix_colour(m);
+                                let (r, resp) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::click());
+                                // Two stripes: the mix is made of alternating layers.
+                                ui.painter().rect_filled(r, 5.0, Color32::from_rgb(col[0], col[1], col[2]));
+                                let on = self.paint_mix == Some(k) && self.paint_mode != PaintMode::Erase;
+                                if on {
+                                    ui.painter().rect_stroke(r.expand(2.0), 6.0, Stroke::new(2.0, Color32::WHITE), StrokeKind::Outside);
+                                }
+                                let ink = if col.iter().map(|v| *v as u32).sum::<u32>() > 380 { Color32::BLACK } else { Color32::WHITE };
+                                ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "≈", egui::FontId::proportional(15.0), ink);
+                                if resp.on_hover_text(format!("{} {}", m.name, m.text())).clicked() {
+                                    self.paint_mix = Some(k);
+                                    if self.paint_mode == PaintMode::Erase {
+                                        self.paint_mode = PaintMode::Brush;
+                                    }
+                                }
+                            }
+                        });
+                    }
                     if self.paint_mode == PaintMode::Fill {
                         ui.horizontal(|ui| {
                             ui.label(crate::i18n::tr("Stop at creases over"));

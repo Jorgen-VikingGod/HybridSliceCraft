@@ -271,6 +271,7 @@ impl App {
                 }
             });
         }
+        self.mixes_card(ui);
         subheading(ui, "Print quality");
         ui.horizontal(|ui| {
             let names: Vec<String> = self.cat.fdm_processes.iter().map(|p| p.name.clone()).collect();
@@ -865,7 +866,7 @@ fn fdm_printer_editor(ui: &mut egui::Ui, p: &mut FdmPrinter) {
                         for (k, hint) in ["x", "y", "width", "depth"].iter().enumerate() {
                             ui.add(egui::DragValue::new(&mut a[k]).range(0.0..=2000.0).speed(0.5).max_decimals(1)).on_hover_text(*hint);
                         }
-                        if ui.small_button("✕").clicked() {
+                        if ui.small_button("×").clicked() {
                             remove = Some(i);
                         }
                     });

@@ -601,6 +601,7 @@ impl App {
             );
         }
         h = hash_text(&format!("{:?}", self.plate().layer_actions), h);
+        h = hash_text(&format!("{:?}", self.mixes), h);
         if self.resin() {
             if let Ok(t) = serde_json::to_string(&(&self.resin_printer, &self.resin_process, &self.resin_mat)) {
                 h = hash_text(&t, h);

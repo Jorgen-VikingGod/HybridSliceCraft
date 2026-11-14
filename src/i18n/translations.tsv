@@ -499,3 +499,31 @@ Infill	Füllung	Remplissage	Relleno
 As the print settings	Wie in den Druckeinstellungen	Comme dans les réglages	Como en los ajustes
 Add a height range	Höhenbereich hinzufügen	Ajouter une plage de hauteur	Añadir un rango de altura
 Different walls or infill between two heights of this model	Andere Wände oder Füllung zwischen zwei Höhen dieses Modells	Parois ou remplissage différents entre deux hauteurs de ce modèle	Perímetros o relleno distintos entre dos alturas de este modelo
+Mixed filaments	Gemischte Filamente	Filaments mélangés	Filamentos mezclados
+Colours made by alternating filaments layer by layer. Paint them on a model like any filament.	Farben, die durch schichtweises Abwechseln von Filamenten entstehen. Sie lassen sich wie ein Filament auf ein Modell malen.	Couleurs obtenues en alternant les filaments couche par couche. Elles se peignent sur un modèle comme un filament.	Colores obtenidos alternando filamentos capa por capa. Se pintan en un modelo como cualquier filamento.
+Remove this mix	Diese Mischung entfernen	Supprimer ce mélange	Quitar esta mezcla
+Add a mix	Mischung hinzufügen	Ajouter un mélange	Añadir una mezcla
+Add all 50/50 blends	Alle 50/50-Mischungen hinzufügen	Ajouter tous les mélanges 50/50	Añadir todas las mezclas 50/50
+One mix for every pair of the filaments in use	Eine Mischung für jedes Paar der verwendeten Filamente	Un mélange pour chaque paire de filaments utilisés	Una mezcla por cada par de filamentos en uso
+Mix	Mischung	Mélange	Mezcla
+Mixed filament	Gemischtes Filament	Filament mélangé	Filamento mezclado
+Name	Name	Nom	Nombre
+Ratio	Verhältnis	Proportion	Proporción
+Cycle	Abfolge	Cycle	Ciclo
+Match	Treffer	Correspondance	Coincidencia
+How much of the layers each filament gets. Two or three filaments blend best.	Wie viele der Schichten jedes Filament bekommt. Zwei oder drei Filamente mischen sich am besten.	Part des couches pour chaque filament. Deux ou trois filaments se mélangent le mieux.	Qué parte de las capas recibe cada filamento. Dos o tres filamentos se mezclan mejor.
+The filament printing each layer, repeated from the bottom up.	Das Filament jeder Schicht, von unten nach oben wiederholt.	Le filament de chaque couche, répété de bas en haut.	El filamento de cada capa, repetido de abajo arriba.
+Remove last	Letztes entfernen	Retirer le dernier	Quitar el último
+Pick a colour and find the blend of your filaments that looks closest to it.	Wähle eine Farbe und finde die Mischung deiner Filamente, die ihr am nächsten kommt.	Choisissez une couleur et trouvez le mélange de vos filaments qui s'en approche le plus.	Elige un color y encuentra la mezcla de tus filamentos que más se le parezca.
+Least share per filament	Mindestanteil je Filament	Part minimale par filament	Parte mínima por filamento
+Find the closest blend	Nächste Mischung finden	Trouver le mélange le plus proche	Buscar la mezcla más cercana
+No blend of these filaments gets close to this colour.	Keine Mischung dieser Filamente kommt dieser Farbe nahe.	Aucun mélange de ces filaments ne s'approche de cette couleur.	Ninguna mezcla de estos filamentos se acerca a este color.
+A closer blend needs a filament in a very small share; the least share raised it.	Eine nähere Mischung bräuchte ein Filament mit sehr kleinem Anteil; der Mindestanteil hat ihn erhöht.	Un mélange plus proche demande un filament en très faible part ; la part minimale l'a relevée.	Una mezcla más cercana necesita un filamento en una parte muy pequeña; la parte mínima la subió.
+Use this blend	Diese Mischung verwenden	Utiliser ce mélange	Usar esta mezcla
+Mixing needs at least two filaments.	Zum Mischen braucht es mindestens zwei Filamente.	Le mélange demande au moins deux filaments.	Mezclar necesita al menos dos filamentos.
+Estimated colour; real filaments blend differently.	Geschätzte Farbe; echte Filamente mischen sich anders.	Couleur estimée ; les vrais filaments se mélangent différemment.	Color estimado; los filamentos reales se mezclan de otra forma.
+Pattern height	Höhe der Abfolge	Hauteur du motif	Altura del patrón
+visible as stripes; use thinner layers or a shorter pattern	als Streifen sichtbar; dünnere Schichten oder eine kürzere Abfolge verwenden	visible en rayures ; utilisez des couches plus fines ou un motif plus court	visible como rayas; usa capas más finas o un patrón más corto
+Mixed filaments need at least two filaments on the printer.	Gemischte Filamente brauchen mindestens zwei Filamente am Drucker.	Les filaments mélangés demandent au moins deux filaments sur l'imprimante.	Los filamentos mezclados necesitan al menos dos filamentos en la impresora.
+Mixed filaments change filament on almost every layer. A printer with several tool heads does this much faster and wastes less.	Gemischte Filamente wechseln fast jede Schicht das Filament. Ein Drucker mit mehreren Werkzeugköpfen macht das viel schneller und verschwendet weniger.	Les filaments mélangés changent de filament presque à chaque couche. Une imprimante à plusieurs têtes le fait bien plus vite et gaspille moins.	Los filamentos mezclados cambian de filamento casi en cada capa. Una impresora con varios cabezales lo hace mucho más rápido y desperdicia menos.
+Mixed filaments repeat by layer, so uneven layer heights make the colour uneven. Turn off adaptive layer heights.	Gemischte Filamente wiederholen sich schichtweise; ungleiche Schichthöhen machen die Farbe ungleichmäßig. Adaptive Schichthöhen ausschalten.	Les filaments mélangés se répètent par couche ; des hauteurs de couche inégales rendent la couleur inégale. Désactivez les hauteurs de couche adaptatives.	Los filamentos mezclados se repiten por capa; alturas de capa desiguales hacen el color desigual. Desactiva las alturas de capa adaptativas.

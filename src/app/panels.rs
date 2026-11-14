@@ -408,7 +408,7 @@ impl App {
                     ui.label("–");
                     changed |= ui.add(egui::DragValue::new(&mut r.to).range(0.0..=2000.0).speed(0.1).suffix(" mm").max_decimals(2)).changed();
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.small_button("✕").clicked() {
+                        if ui.small_button("×").clicked() {
                             remove = Some(i);
                         }
                     });
@@ -689,7 +689,7 @@ impl App {
                 };
                 ui.label(RichText::new(format!("{:.2} mm  {what}", a.z)).small());
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.small_button("✕").clicked() {
+                    if ui.small_button("×").clicked() {
                         remove = Some(i);
                     }
                 });

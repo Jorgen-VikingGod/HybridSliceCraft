@@ -3,6 +3,7 @@
 
 mod actions;
 mod dock;
+mod mixes;
 mod panels;
 mod preview;
 mod settings;
@@ -247,6 +248,9 @@ pub struct App {
     pub paint_kind: PaintKind,
     /// Colours made by alternating filaments layer by layer.
     pub mixes: Vec<crate::mixing::MixedFilament>,
+    /// The mix the paint brush uses, instead of a single filament.
+    pub paint_mix: Option<usize>,
+    pub mix_edit: mixes::MixEdit,
     pub paint_radius: f32,
     pub paint_angle: f32,
     /// True while a brush stroke is being dragged, and where its last dab landed.
@@ -411,6 +415,8 @@ impl App {
             paint_mode: PaintMode::Brush,
             paint_kind: PaintKind::Filament,
             mixes: Vec::new(),
+            paint_mix: None,
+            mix_edit: Default::default(),
             paint_radius: 3.0,
             paint_angle: 30.0,
             painting: false,
