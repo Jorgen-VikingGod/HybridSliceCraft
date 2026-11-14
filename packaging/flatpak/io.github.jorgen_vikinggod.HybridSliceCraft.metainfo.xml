@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.11.1" date="2026-11-14">
+      <description>
+        <p>A manual with pictures, examples and hints for every feature, and the program's code tidied up.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.11.1</url>
+    </release>
     <release version="0.11.0" date="2026-11-14">
       <description>
         <p>Mixed filaments: colours made by alternating filaments layer by layer, made from a ratio, a pattern or a colour match, and painted on a model like any filament.</p>
