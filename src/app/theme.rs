@@ -490,7 +490,7 @@ pub fn scroll_shadows<R>(ui: &egui::Ui, out: &egui::scroll_area::ScrollAreaOutpu
     if max <= 0.5 {
         return;
     }
-    let offset = out.state.offset().y;
+    let offset = out.state.clamped_offset().y;
     let strength = if theme() == Theme::Dark { 120 } else { 50 };
     let h = 14.0f32.min(rect.height() / 3.0);
     let painter = ui.painter().with_clip_rect(rect);
