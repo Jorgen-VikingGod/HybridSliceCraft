@@ -792,6 +792,10 @@ impl eframe::App for App {
         }
         self.drive_screenshot(&ctx);
 
+        // The window is transparent so its corners can be round; fill the rest.
+        if frame::enabled() {
+            ui.painter().rect_filled(ctx.content_rect(), frame::window_corners(&ctx), theme::ui_bg());
+        }
         let title = match &self.project_path {
             Some(p) => format!("{} – HybridSliceCraft", p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()),
             None => "HybridSliceCraft".to_string(),

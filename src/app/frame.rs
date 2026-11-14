@@ -38,6 +38,15 @@ pub fn bottom_corners(ctx: &egui::Context) -> CornerRadius {
     }
 }
 
+/// Rounding of the whole window.
+pub fn window_corners(ctx: &egui::Context) -> CornerRadius {
+    if enabled() && !maximized(ctx) {
+        CornerRadius::same(RADIUS)
+    } else {
+        CornerRadius::ZERO
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Button {
     Minimize,
