@@ -418,6 +418,45 @@ pub(crate) fn report_spans() {
     }
 }
 
+/// Things that make mixed filaments look worse than they could, for the mixes the paint uses.
+fn mix_warnings(job: &FdmJob) -> Vec<String> {
+    use crate::mixing::{mix_index, stack_height};
+    let mut used: Vec<usize> = job
+        .objects
+        .iter()
+        .filter_map(|o| o.paint.as_ref())
+        .flat_map(|p| p.iter().filter_map(|&v| mix_index(v)))
+        .filter(|&k| k < job.mixes.len())
+        .collect();
+    used.sort_unstable();
+    used.dedup();
+    let mut out = Vec::new();
+    if used.is_empty() {
+        return out;
+    }
+    let p = &job.process;
+    if job.filaments.len() < 2 {
+        out.push("Mixed filaments need at least two filaments on the printer.".into());
+    } else if job.printer.extruders < 2 {
+        out.push("Mixed filaments change filament on almost every layer. A printer with several tool heads does this much faster and wastes less.".into());
+    }
+    if p.adaptive_layers {
+        out.push("Mixed filaments repeat by layer, so uneven layer heights make the colour uneven. Turn off adaptive layer heights.".into());
+    }
+    for &k in &used {
+        let m = &job.mixes[k];
+        let h = stack_height(&m.cycle, p.layer_height);
+        if h > 0.25 {
+            out.push(format!(
+                "The mix {} repeats every {:.2} mm, which is thick enough to see as stripes. Thinner layers or a shorter pattern blend better.",
+                m.text(),
+                h
+            ));
+        }
+    }
+    out
+}
+
 pub fn slice(job: &FdmJob, progress: &Progress) -> Result<FdmResult, String> {
     let started = std::time::Instant::now();
     if job.objects.iter().all(|o| o.mesh.is_empty()) {
@@ -436,6 +475,7 @@ pub fn slice(job: &FdmJob, progress: &Progress) -> Result<FdmResult, String> {
     if p.layer_height as f64 > p.line_width as f64 {
         return Err("Layer height can't be larger than the line width.".into());
     }
+    let mix_warnings = mix_warnings(job);
     let split;
     let job = if job.objects.iter().any(|o| o.paint.is_some()) {
         progress.set(0.03, "Splitting the painted colours");
@@ -453,6 +493,7 @@ pub fn slice(job: &FdmJob, progress: &Progress) -> Result<FdmResult, String> {
     let mut result = gcode::write(job, &plan, progress)?;
     lap(&started, "printer instructions written");
     report_spans();
+    result.warnings.extend(mix_warnings);
     result.warnings.extend(plan.warnings.iter().cloned());
     result.slice_seconds = started.elapsed().as_secs_f32();
     Ok(result)

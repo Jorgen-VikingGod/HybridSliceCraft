@@ -1357,3 +1357,20 @@ fn a_three_layer_cycle_follows_its_pattern_and_a_missing_mix_falls_back() {
     let r = slice(&j, &Progress::default()).unwrap();
     assert!(r.segs.iter().filter(|s| s.feature == Feature::OuterWall as u32).all(|s| s.tool == 0));
 }
+
+#[test]
+fn tall_stacks_and_adaptive_layers_are_warned_about() {
+    let has = |j: &FdmJob, text: &str| slice(j, &Progress::default()).unwrap().warnings.iter().any(|w| w.contains(text));
+    assert!(!has(&mixed_box(vec![0, 1], 0.1), "stripes"), "a 0.2 mm stack is fine");
+    assert!(has(&mixed_box(vec![0, 1, 1, 0, 1], 0.1), "stripes"), "five layers of 0.1 mm is 0.5 mm");
+    let mut j = mixed_box(vec![0, 1], 0.1);
+    j.process.adaptive_layers = true;
+    assert!(has(&j, "adaptive layer"));
+    let mut j = mixed_box(vec![0, 1], 0.1);
+    j.printer.extruders = 1;
+    assert!(has(&j, "tool heads"));
+    // Plain prints never mention mixing.
+    let mut j = mixed_box(vec![0, 1], 0.1);
+    j.objects[0].paint = None;
+    assert!(!slice(&j, &Progress::default()).unwrap().warnings.iter().any(|w| w.to_lowercase().contains("mix")));
+}
