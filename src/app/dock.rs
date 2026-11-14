@@ -236,7 +236,7 @@ impl App {
         let panel_rect = ui.max_rect();
         let mut card_rects: Vec<(usize, Rect)> = Vec::new();
         let mut actions: Vec<CardAction> = Vec::new();
-        egui::ScrollArea::vertical()
+        let scroll = egui::ScrollArea::vertical()
             .id_salt(if left { "dock_left_scroll" } else { "dock_right_scroll" })
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -266,6 +266,7 @@ impl App {
                 }
                 ui.add_space(14.0);
             });
+        scroll_shadows(ui, &scroll);
 
         // While a card is dragged, show where it would land in this panel.
         if let Some(payload) = egui::DragAndDrop::payload::<Section>(&ctx) {

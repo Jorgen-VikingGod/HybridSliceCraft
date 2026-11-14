@@ -460,6 +460,7 @@ pub fn dialog(
                     body(ui);
                 });
             });
+            scroll_shadows(ui, &out);
             let more = out.content_size.y > out.inner_rect.height() + 0.5;
             ctx.data_mut(|d| d.insert_temp(overflow_id, more));
             rule(ui, width);
@@ -479,6 +480,41 @@ pub fn dialog(
         });
     if close {
         *open = false;
+    }
+}
+
+/// Fades the top and/or bottom edge of a scroll area when there is more content beyond it.
+pub fn scroll_shadows<R>(ui: &egui::Ui, out: &egui::scroll_area::ScrollAreaOutput<R>) {
+    let rect = out.inner_rect;
+    let max = (out.content_size.y - rect.height()).max(0.0);
+    if max <= 0.5 {
+        return;
+    }
+    let offset = out.state.offset().y;
+    let strength = if theme() == Theme::Dark { 120 } else { 50 };
+    let h = 14.0f32.min(rect.height() / 3.0);
+    let painter = ui.painter().with_clip_rect(rect);
+    let shade = |top: bool| {
+        let (strong, clear) = (Color32::from_black_alpha(strength), Color32::TRANSPARENT);
+        let (y0, y1, c0, c1) = if top {
+            (rect.top(), rect.top() + h, strong, clear)
+        } else {
+            (rect.bottom() - h, rect.bottom(), clear, strong)
+        };
+        let mut mesh = egui::Mesh::default();
+        mesh.colored_vertex(Pos2::new(rect.left(), y0), c0);
+        mesh.colored_vertex(Pos2::new(rect.right(), y0), c0);
+        mesh.colored_vertex(Pos2::new(rect.right(), y1), c1);
+        mesh.colored_vertex(Pos2::new(rect.left(), y1), c1);
+        mesh.add_triangle(0, 1, 2);
+        mesh.add_triangle(0, 2, 3);
+        painter.add(egui::Shape::mesh(mesh));
+    };
+    if offset > 0.5 {
+        shade(true);
+    }
+    if offset < max - 0.5 {
+        shade(false);
     }
 }
 
