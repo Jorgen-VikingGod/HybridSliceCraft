@@ -564,11 +564,13 @@ impl App {
             }
         }
         if opts.demo_mixes {
-            self.mixes = crate::mixing::auto_pairs(self.filaments.len().max(2).min(4));
-            if self.filaments.len() < 2 {
-                let second = self.cat.filaments.get(1).cloned().unwrap_or_default();
-                self.filaments.push(second);
+            // The panel fills the filament slots later; make them now to see every pair.
+            let slots = (self.fdm_printer.extruders as usize).clamp(2, 4);
+            while self.filaments.len() < slots {
+                let next = self.cat.filaments.get(self.filaments.len() % self.cat.filaments.len().max(1)).cloned().unwrap_or_default();
+                self.filaments.push(next);
             }
+            self.mixes = crate::mixing::auto_pairs(slots);
         }
         if opts.demo_paint {
             // The front of the model in the second filament, or in the first mix when there is one.
