@@ -12,6 +12,7 @@ mod geom;
 mod import;
 mod keys;
 mod i18n;
+mod mcp;
 mod mesh;
 mod mixing;
 mod paint;
@@ -64,6 +65,7 @@ Options:
     --export <file>           Also save the print (.goo, .ctb, .sl1, .zip, Anycubic types) and time it
   --bench-fdm <model>       No window: slice the model for the first filament printer and print timings
     (takes --layer-height, --runs, --export <file.gcode>, --scale <factor>, --supports and --tree for tree supports)
+  --mcp                     Run as an MCP server for AI agents (JSON-RPC on standard input and output, no window)
   --help                    Show this help
 ";
 
@@ -202,6 +204,11 @@ fn attach_parent_console() {
 }
 
 fn main() {
+    // An agent talks to the program through its standard input and output, so
+    // neither the window nor the console may get in the way.
+    if std::env::args().any(|a| a == "--mcp") {
+        std::process::exit(mcp::run());
+    }
     #[cfg(windows)]
     attach_parent_console();
     if let Some(b) = parse_bench() {

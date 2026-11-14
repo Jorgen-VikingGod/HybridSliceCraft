@@ -44,6 +44,7 @@ HybridSliceCraft slices models for **filament (FDM)** printers and **resin (MSLA
   - [Exposure test piece](#exposure-test-piece)
   - [The preview and cut view](#the-resin-preview-and-cut-view)
   - [Saving the print](#saving-the-print)
+- [Use with AI agents (MCP)](#use-with-ai-agents-mcp)
 - [Tips for both](#tips-for-both)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Command line](#command-line)
@@ -471,6 +472,51 @@ The **cut view** slices the model open so you can look at supports, walls and th
 
 ---
 
+# Use with AI agents (MCP)
+
+HybridSliceCraft can run as an **MCP server** (Model Context Protocol), so an AI agent, such as Claude or another assistant that supports MCP, can slice models for you. It runs without a window and talks over standard input and output.
+
+**Start it** with `hybridslicecraft --mcp`. In the settings of your agent program add it as a server. For example, for programs that read a `mcpServers` list (Claude Desktop, Cursor and others):
+
+```json
+{
+  "mcpServers": {
+    "hybridslicecraft": { "command": "hybridslicecraft", "args": ["--mcp"] }
+  }
+}
+```
+
+For Claude Code: `claude mcp add hybridslicecraft -- hybridslicecraft --mcp`. If the program isn't on your PATH, give the full path to it instead (for example `C:\Program Files\HybridSliceCraft\hybridslicecraft.exe`, or the AppImage file).
+
+**What the agent can do**
+
+| Tool | What it does |
+| --- | --- |
+| `list_catalog` | Lists the printers, filaments, resins and print profiles, including your own and imported ones. |
+| `describe_settings` | Lists every setting of a group (print profile, printer, filament, resin profile, resin printer, resin material) with its default and the allowed values of choice settings. |
+| `inspect_model` | Reads a model file: size, volume, triangles, and whether it is solid and watertight. |
+| `slice_filament` | Slices models (or a calibration model) for a filament printer and writes the G-code. Returns print time, filament use, cost, warnings and a `slice_id`. |
+| `slice_resin` | Slices models for a resin printer and writes SL1, PNG zip, CTB, GOO or an Anycubic file. Can add supports, hollow the model and add drain holes. Returns time, resin use, floating parts and trapped resin. |
+| `render_layer` | A picture of one layer of a slice: filament layers from above with the line types coloured, resin layers as the exposure picture. |
+
+The manual you are reading is also offered to the agent as the resource `hybridslicecraft://manual`.
+
+**Examples to ask for**
+
+- "Slice `bracket.stl` for the Snapmaker U1 with 4 walls, 25% gyroid infill and tree supports, and tell me the print time."
+- "Slice this miniature for my Anycubic Photon Mono 4 at 0.05 mm with supports, hollowed with a drain hole, save it as `.pwmx`, and show me layer 400."
+- "Print a temperature tower for the PETG Clear Blue filament."
+- "Which of these three models fits on my printer's bed?" (the agent uses `inspect_model` and the printer list.)
+
+**Good to know**
+
+- Settings are changed by name, for example `{"walls": 4, "infill_pattern": "Gyroid"}`. A wrong name or value comes back as a message that says what is allowed, so the agent can correct itself.
+- Models without a position are arranged on the bed automatically; with `fit_to_bed` too-large models are shrunk. Models can be placed (`x`, `y`), turned (`rotate_z`), scaled and copied.
+- The server reads and writes only the files the agent names. G-code and print files go to a temporary folder unless `output_path` is given.
+- Nothing is sent to a printer by this server; the agent gets the file and you decide what to do with it.
+- A Flatpak install can't see files outside its sandbox, so use the `.deb`, AppImage, `.msi` or `.dmg` for agents.
+- As always, print a small test first.
+
 # Tips for both
 
 - Slice often and look at the preview; most problems are visible there.
@@ -503,4 +549,5 @@ Run `hybridslicecraft --help` for every option. Useful ones:
 - `hybridslicecraft model.stl --printer "Snapmaker U1" --export out.gcode` slices and saves without opening the window.
 - `--resin` starts in resin mode; `--slice` slices at start; `--supports`, `--hollow` and `--cut-view` set up a resin model.
 - `--bench-fdm model.stl` and `--bench-resin model.stl` time the slicers.
+- `--mcp` runs the program as an MCP server for AI agents, with no window (see [Use with AI agents](#use-with-ai-agents-mcp)).
 - `--screenshot file.png` saves a picture of the window; with `--tool`, `--tab`, `--window`, `--scheme`, `--demo-paint` and `--demo-mixes` it can open the tool, tab or window you want, which is how the pictures in this manual were made.
