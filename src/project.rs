@@ -57,6 +57,7 @@ struct SavedProject {
     fdm_printer: FdmPrinter,
     fdm_process: FdmProcess,
     filaments: Vec<Filament>,
+    mixes: Vec<crate::mixing::MixedFilament>,
     resin_printer: ResinPrinter,
     resin_process: ResinProcess,
     resin: ResinMaterial,
@@ -67,6 +68,7 @@ pub struct ProjectSettings {
     pub fdm_printer: FdmPrinter,
     pub fdm_process: FdmProcess,
     pub filaments: Vec<Filament>,
+    pub mixes: Vec<crate::mixing::MixedFilament>,
     pub resin_printer: ResinPrinter,
     pub resin_process: ResinProcess,
     pub resin: ResinMaterial,
@@ -150,6 +152,7 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
         fdm_printer: s.fdm_printer.clone(),
         fdm_process: s.fdm_process.clone(),
         filaments: s.filaments.clone(),
+        mixes: s.mixes.clone(),
         resin_printer: s.resin_printer.clone(),
         resin_process: s.resin_process.clone(),
         resin: s.resin.clone(),
@@ -243,6 +246,7 @@ pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
             fdm_printer: project.fdm_printer,
             fdm_process: project.fdm_process,
             filaments: project.filaments,
+            mixes: project.mixes,
             resin_printer: project.resin_printer,
             resin_process: project.resin_process,
             resin: project.resin,
@@ -519,6 +523,7 @@ mod tests {
             fdm_printer: FdmPrinter::default(),
             fdm_process: FdmProcess { layer_height: 0.15, ..Default::default() },
             filaments: vec![Filament::default()],
+            mixes: vec![crate::mixing::MixedFilament { name: "1+2".into(), cycle: vec![0, 1, 1], target: Some([200, 100, 50]) }],
             resin_printer: ResinPrinter::default(),
             resin_process: ResinProcess::default(),
             resin: ResinMaterial::default(),
@@ -528,6 +533,9 @@ mod tests {
         let path = dir.join("p.hscproject");
         save(&path, &[plate], &settings).unwrap();
         let (plates, loaded) = load(&path).unwrap();
+        assert_eq!(loaded.mixes.len(), 1);
+        assert_eq!(loaded.mixes[0].cycle, vec![0, 1, 1]);
+        assert_eq!(loaded.mixes[0].target, Some([200, 100, 50]));
         let back = &plates[0].objects[0];
         assert_eq!(back.name, "Thing");
         assert_eq!(back.extruder, 1);
