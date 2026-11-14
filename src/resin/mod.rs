@@ -78,7 +78,6 @@ pub struct LayerStat {
     pub z: f32,
     pub area_mm2: f32,
     pub exposure: f32,
-    pub time: f32,
     pub islands: Vec<IslandInfo>,
 }
 
@@ -243,7 +242,7 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
     let bottom = p.bottom_layers as usize;
 
     let segments_of = |i: usize| -> (Vec<[f32; 4]>, Vec<[f32; 4]>) {
-        let mut pos = if foot > 0.0 && i < bottom {
+        let pos = if foot > 0.0 && i < bottom {
             compensated_segments(&job.solid, &buckets.by_plane[i], zs[i], foot)
         } else {
             let mut s = Vec::with_capacity(buckets.by_plane[i].len());
@@ -267,7 +266,7 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
     let sub_segments = |i: usize, j: usize| -> (Vec<[f32; 4]>, Vec<[f32; 4]>) {
         let (zs_sub, b, nb) = sub.as_ref().expect("only used for Z smoothing");
         let s = i * k + j;
-        let mut pos = if foot > 0.0 && i < bottom {
+        let pos = if foot > 0.0 && i < bottom {
             compensated_segments(&job.solid, &b.by_plane[s], zs_sub[s], foot)
         } else {
             let mut v = Vec::with_capacity(b.by_plane[s].len());
@@ -439,7 +438,6 @@ pub fn slice(job: &ResinJob, gpu: Option<&gpu::GpuRaster>, progress: &Progress) 
             z: ((i + 1) as f64 * h) as f32,
             area_mm2: area,
             exposure,
-            time: t,
             islands: isl,
         });
     }

@@ -16,14 +16,12 @@ pub struct Mesh {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MeshReport {
     pub triangles: usize,
-    pub vertices: usize,
     pub open_edges: usize,
     pub non_manifold_edges: usize,
     /// Edges whose two faces disagree about which way is out.
     pub flipped_edges: usize,
     pub shells: usize,
     pub volume: f32,
-    pub area: f32,
 }
 
 impl MeshReport {
@@ -103,6 +101,7 @@ impl Mesh {
         total as f32
     }
 
+    #[cfg(test)]
     pub fn surface_area(&self) -> f32 {
         let total: f64 = self
             .t
@@ -190,13 +189,11 @@ impl Mesh {
         }
         MeshReport {
             triangles: self.t.len(),
-            vertices: self.v.len(),
             open_edges: open,
             non_manifold_edges: nonman,
             flipped_edges: flipped,
             shells: self.shell_labels().1,
             volume: self.volume(),
-            area: self.surface_area(),
         }
     }
 
@@ -1130,8 +1127,6 @@ pub fn parse_3mf(bytes: &[u8]) -> Result<Mesh, String> {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Hit {
-    pub t: f32,
-    pub tri: u32,
     pub point: Vec3,
     pub normal: Vec3,
 }
@@ -1271,8 +1266,6 @@ impl Bvh {
                     if t > 1e-4 && t < limit {
                         limit = t;
                         best = Some(Hit {
-                            t,
-                            tri: ti,
                             point: origin + dir * t,
                             normal: e1.cross(e2).normalize_or_zero(),
                         });
@@ -1387,33 +1380,6 @@ pub fn make_sphere(center: Vec3, r: f32, segs: usize, rings: usize) -> Mesh {
     m
 }
 
-/// Hollow extruded polygon prism, handy for calibration shapes.
-pub fn make_prism(outline: &[glam::DVec2], z0: f32, z1: f32) -> Mesh {
-    let n = outline.len() as u32;
-    let mut m = Mesh::default();
-    for p in outline {
-        m.v.push(Vec3::new(p.x as f32, p.y as f32, z0));
-    }
-    for p in outline {
-        m.v.push(Vec3::new(p.x as f32, p.y as f32, z1));
-    }
-    for i in 0..n {
-        let j = (i + 1) % n;
-        m.t.push([i, j, n + j]);
-        m.t.push([i, n + j, n + i]);
-    }
-    let island = crate::geom::Island {
-        outer: crate::geom::path_from(outline),
-        holes: Vec::new(),
-    };
-    let (_, tris) = triangulate(&island);
-    for t in tris {
-        m.t.push([n + t[0], n + t[1], n + t[2]]);
-        m.t.push([t[0], t[2], t[1]]);
-    }
-    m
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1425,7 +1391,7 @@ mod tests {
         assert!(r.is_clean());
         assert_eq!(r.shells, 1);
         assert!((r.volume - 1000.0).abs() < 1e-3);
-        assert!((r.area - 600.0).abs() < 1e-3);
+        assert!((m.surface_area() - 600.0).abs() < 1e-3);
     }
 
     #[test]

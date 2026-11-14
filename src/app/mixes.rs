@@ -136,7 +136,7 @@ impl App {
         }
     }
 
-    fn open_mix_editor(&mut self, index: Option<usize>) {
+    pub(super) fn open_mix_editor(&mut self, index: Option<usize>) {
         let n = self.filaments.len();
         let mut e = MixEdit { open: true, index, min_share: 15.0, ..Default::default() };
         match index.and_then(|i| self.mixes.get(i)) {

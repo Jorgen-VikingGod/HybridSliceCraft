@@ -262,7 +262,6 @@ fn apply_z_change(w: &mut Writer, change: ZChange, firmware: Firmware) {
             let _ = writeln!(w.chunk, "; calibration: retraction {l:.2} mm");
             w.retract_len = l as f64;
         }
-        ZChange::Fan(v) => w.fan_override = Some(v as f64),
         ZChange::Volumetric(v) => {
             let _ = writeln!(w.chunk, "; calibration: {v:.1} mm3/s");
             w.volumetric_override = Some(v as f64);

@@ -45,6 +45,7 @@ pub fn is_known(ext: &str) -> bool {
     TYPES.iter().any(|t| t.0 == ext)
 }
 
+#[cfg(test)]
 pub fn extensions() -> impl Iterator<Item = &'static str> {
     TYPES.iter().map(|t| t.0)
 }
