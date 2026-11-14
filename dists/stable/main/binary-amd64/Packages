@@ -1,0 +1,85 @@
+Package: hybrid-slice-craft
+Architecture: amd64
+Version: 0.10.0
+Priority: optional
+Maintainer: Jürgen Könnemann
+Installed-Size: 31289
+Depends: libxkbcommon0, libwayland-client0, libvulkan1 | libgl1
+Filename: pool/main/hybridslicecraft_0.10.0_amd64.deb
+Size: 10895690
+MD5sum: e55e8c285d5a08fea403c57fb751ae50
+SHA1: 47e930b9a44312a1cc39a39cb86a79843372c94e
+SHA256: e394048ad5b9379fafb669739c72df47b1ca2c4b3ebe411d652fadac24476557
+SHA512: 5524775c5bed0d4df72d3354a3dbdb45143fd45487ee9e4e3b422d1bca9743eb62926c38c707c4a7c5e2db0eb228c1e01bf1d6beaf7ee2650228f1d11ff073d1
+Homepage: https://github.com/Jorgen-VikingGod/HybridSliceCraft
+Description: Hybrid slicer for filament (FDM) and resin (MSLA) 3D printers
+ (none)
+
+Package: hybrid-slice-craft
+Architecture: amd64
+Version: 0.11.0
+Priority: optional
+Maintainer: Jürgen Könnemann
+Installed-Size: 31348
+Depends: libxkbcommon0, libwayland-client0, libvulkan1 | libgl1
+Filename: pool/main/hybridslicecraft_0.11.0_amd64.deb
+Size: 10934724
+MD5sum: 61841b3c307194d5f65b68ff721455b8
+SHA1: dd452fb13ad1613342bfdf465592601e039e6501
+SHA256: c1d0b5b2fc00ac9a9a2ab2a790384ca149c156dbba5f9a2e8be540370b23d683
+SHA512: 9c00820cabdd98cbae3b8d369f6b1482224f255198b8fa48b1bd821faccc0226a5b158ac7ddcb2d3d1b8fe1d49deed3571715c136694af2076e53636140c9624
+Homepage: https://github.com/Jorgen-VikingGod/HybridSliceCraft
+Description: Hybrid slicer for filament (FDM) and resin (MSLA) 3D printers
+ (none)
+
+Package: hybrid-slice-craft
+Architecture: amd64
+Version: 0.11.1
+Priority: optional
+Maintainer: Jürgen Könnemann
+Installed-Size: 31322
+Depends: libxkbcommon0, libwayland-client0, libvulkan1 | libgl1
+Filename: pool/main/hybridslicecraft_0.11.1_amd64.deb
+Size: 10931926
+MD5sum: 7e654afcbeae149d5de17e7755356f04
+SHA1: 521866460b9b6c24466a32cbe727785e434aed8e
+SHA256: c836864441667c61e3a04a9ded82dd1cddb14700446fbc1321934372cd8f1241
+SHA512: 814f3c09a368e27270a9a11b393dc486fd1e07e72ce9a5f250ccc5f704ea607d819c49adb97756a805a312c5f8f2b0ad89999268604f4ce81becc9a659fd4b09
+Homepage: https://github.com/Jorgen-VikingGod/HybridSliceCraft
+Description: Hybrid slicer for filament (FDM) and resin (MSLA) 3D printers
+ (none)
+
+Package: hybrid-slice-craft
+Architecture: amd64
+Version: 0.12.0
+Priority: optional
+Maintainer: Jürgen Könnemann
+Installed-Size: 32020
+Depends: libxkbcommon0, libwayland-client0, libvulkan1 | libgl1
+Filename: pool/main/hybridslicecraft_0.12.0_amd64.deb
+Size: 11143530
+MD5sum: a93bc6af17f77795abad93f7fd2425cc
+SHA1: f4a0ffcbd3c2df78138b81c08dd9a98375e85f16
+SHA256: a185de038185377bbac332d175f3475d0100520f02035bd19b2eac512193f420
+SHA512: 13424a0cf0ef42e452cda37105447f5b8c544ec116c97573e1b551890363e4c692bea7992562a88619f838b4c71dfca004d5c27b751e6de8d032173ca7b4327d
+Homepage: https://github.com/Jorgen-VikingGod/HybridSliceCraft
+Description: Hybrid slicer for filament (FDM) and resin (MSLA) 3D printers
+ (none)
+
+Package: hybrid-slice-craft
+Architecture: amd64
+Version: 0.13.0
+Priority: optional
+Maintainer: Jürgen Könnemann
+Installed-Size: 32068
+Depends: libxkbcommon0, libwayland-client0, libvulkan1 | libgl1
+Filename: pool/main/hybridslicecraft_0.13.0_amd64.deb
+Size: 11158404
+MD5sum: 14f8059ab107a2638d23d36f0c89c5f6
+SHA1: f18c08d99b6c9d28f1b51c79d4371fc49d643908
+SHA256: 6b469bb6b3583a4a14d5cfaa9597879f1587cc2f59694da8f1b4b042f8d22aff
+SHA512: 66a8eb248edeeb27bc0534aad7c2c9a7eeec73262a08873ea17f06621b5604374c0a0512d387a0c8ce61cde41a1a75c2cec905a56bcce2098b3d46f04fa0713a
+Homepage: https://github.com/Jorgen-VikingGod/HybridSliceCraft
+Description: Hybrid slicer for filament (FDM) and resin (MSLA) 3D printers
+ (none)
+

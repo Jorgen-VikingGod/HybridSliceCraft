@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HybridSliceCraft apt repository</title>
+<body style="font:16px/1.5 system-ui;max-width:46rem;margin:2rem auto;padding:0 1rem">
+<h1>HybridSliceCraft apt repository</h1>
+<p>For Debian, Ubuntu and relatives on 64-bit PCs. Run:</p>
+<pre>sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://jorgen-vikinggod.github.io/HybridSliceCraft/hybridslicecraft.gpg \
+  | sudo tee /etc/apt/keyrings/hybridslicecraft.gpg &gt;/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/hybridslicecraft.gpg] https://jorgen-vikinggod.github.io/HybridSliceCraft stable main" \
+  | sudo tee /etc/apt/sources.list.d/hybridslicecraft.list
+sudo apt update
+sudo apt install hybrid-slice-craft</pre>
+<p>Updates then come with the rest of your system.</p>
+<p><a href="https://github.com/Jorgen-VikingGod/HybridSliceCraft">Project page</a></p>

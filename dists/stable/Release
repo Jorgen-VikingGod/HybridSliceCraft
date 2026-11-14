@@ -1,0 +1,23 @@
+Architectures: amd64
+Codename: stable
+Components: main
+Date: Sat, 14 Nov 2026 12:06:38 +0000
+Label: HybridSliceCraft
+Origin: HybridSliceCraft
+Suite: stable
+MD5Sum:
+ fd90dc87219230fe8c0155dbc5294ce9              156 Release
+ 71ddd3c08393413cfae64b6016448031             3570 main/binary-amd64/Packages
+ 816655aeb1a150ff660a9278588649f9             1305 main/binary-amd64/Packages.gz
+SHA1:
+ 3ba66022ca226386b3aedf34fedec13bcfe32e4a              156 Release
+ 37a0e8712ea68d0a5f9c8ba385508814b90b5c43             3570 main/binary-amd64/Packages
+ 4227cf4a967a12e99573eab95985f88a9110ba73             1305 main/binary-amd64/Packages.gz
+SHA256:
+ 201064f5780531b4c695c1bbd49f5470e12956563dae89bd64b2e71018178415              156 Release
+ 08bf8a54d380e2616bad50e116d0d73b7239b48e17c30e3633171e4590192fbe             3570 main/binary-amd64/Packages
+ 198be981145ae866e65b395cb27f4cd88e6d093a1be52e01a066dbaecfedadc1             1305 main/binary-amd64/Packages.gz
+SHA512:
+ 6975f16306cc7e1a2dc77e36b3bcba69e3622fad10d6f1794a90ea6cb0fb5341bd89449872e6b44e8ee538cfa4359d2b244e5227b500a02fb2977009b3c3b66c              156 Release
+ 5ad8d31f83c84e3c907f42f8361833f17dae2838d030dbeaa89f68c51b2fd8a21280eb7c9fcd82a71f740509bef7de680da80024e035c941aa7bb7f84d09e1dd             3570 main/binary-amd64/Packages
+ 3926938af51287e7fe7e6c2700a06886bfc4b7621d3514103f3bc9e447a34d33d3948ee126afe76c2ced38d48aa2c89ec00151f7a8117152cf8d10dd5dcb1f48             1305 main/binary-amd64/Packages.gz
