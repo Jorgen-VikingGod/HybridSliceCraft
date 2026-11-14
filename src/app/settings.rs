@@ -362,14 +362,12 @@ impl App {
     pub fn import_report_window(&mut self, ctx: &egui::Context) {
         let Some(notes) = self.import_notes.clone() else { return };
         let mut open = true;
-        egui::Window::new(crate::i18n::tr("Import report")).open(&mut open).default_width(460.0).show(ctx, |ui| {
-            egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
-                for n in &notes {
-                    ui.label(crate::i18n::tr(n));
-                    ui.add_space(4.0);
-                }
-            });
-        });
+        dialog(ctx, "Import report", &mut open, 500.0, |ui| {
+            for n in &notes {
+                ui.label(crate::i18n::tr(n));
+                ui.add_space(4.0);
+            }
+        }, |_| {});
         if !open {
             self.import_notes = None;
         }
@@ -486,22 +484,18 @@ impl App {
     pub fn editor_windows(&mut self, ctx: &egui::Context) {
         let mut open = self.show_printer;
         let mut save = false;
-        egui::Window::new(if self.resin() { "Resin printer" } else { "Filament printer" })
-            .open(&mut open)
-            .default_width(400.0)
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical().max_height(560.0).show(ui, |ui| {
-                    if self.resin() {
-                        resin_printer_editor(ui, &mut self.resin_printer);
-                    } else {
-                        fdm_printer_editor(ui, &mut self.fdm_printer);
-                    }
-                });
-                ui.add_space(6.0);
-                if ui.button(crate::i18n::tr("Keep this printer in my list")).clicked() {
-                    save = true;
-                }
-            });
+        let resin = self.resin();
+        dialog(ctx, if resin { "Resin printer" } else { "Filament printer" }, &mut open, 440.0, |ui| {
+            if resin {
+                resin_printer_editor(ui, &mut self.resin_printer);
+            } else {
+                fdm_printer_editor(ui, &mut self.fdm_printer);
+            }
+        }, |ui| {
+            if ui.button(crate::i18n::tr("Keep this printer in my list")).clicked() {
+                save = true;
+            }
+        });
         self.show_printer = open;
         if save {
             if self.resin() {
@@ -527,27 +521,23 @@ impl App {
 
         let mut open = self.show_material;
         let mut save = false;
-        egui::Window::new(if self.resin() { "Resin" } else { "Filament" })
-            .open(&mut open)
-            .default_width(380.0)
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical().max_height(560.0).show(ui, |ui| {
-                    if self.resin() {
-                        resin_material_editor(ui, &mut self.resin_mat);
-                    } else {
-                        for (i, f) in self.filaments.iter_mut().enumerate() {
-                            if i > 0 {
-                                ui.separator();
-                            }
-                            filament_editor(ui, f, i);
-                        }
+        let resin = self.resin();
+        dialog(ctx, if resin { "Resin" } else { "Filament" }, &mut open, 420.0, |ui| {
+            if resin {
+                resin_material_editor(ui, &mut self.resin_mat);
+            } else {
+                for (i, f) in self.filaments.iter_mut().enumerate() {
+                    if i > 0 {
+                        ui.separator();
                     }
-                });
-                ui.add_space(6.0);
-                if ui.button(crate::i18n::tr("Keep in my list")).clicked() {
-                    save = true;
+                    filament_editor(ui, f, i);
                 }
-            });
+            }
+        }, |ui| {
+            if ui.button(crate::i18n::tr("Keep in my list")).clicked() {
+                save = true;
+            }
+        });
         self.show_material = open;
         if save {
             if self.resin() {

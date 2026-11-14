@@ -1,6 +1,6 @@
 //! Colours, spacing and the hand-drawn icons used across the window.
 
-use egui::{Color32, CornerRadius, FontId, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2};
+use egui::{Color32, CornerRadius, FontId, Layout, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2};
 
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -373,6 +373,93 @@ pub fn icon_button(ui: &mut egui::Ui, icon: Icon, active: bool, accent: Color32,
     let color = if active { accent } else if resp.hovered() { Color32::WHITE } else { CANVAS_DIM };
     draw_icon(painter, rect.shrink(7.0), icon, color);
     resp
+}
+
+/// A dialog with a fixed title bar and footer; only the middle scrolls, and
+/// shows a bar when the content is taller than the window.
+/// `footer` adds buttons on the left; a Close button is always on the right.
+pub fn dialog(
+    ctx: &egui::Context,
+    title: &str,
+    open: &mut bool,
+    width: f32,
+    body: impl FnOnce(&mut egui::Ui),
+    footer: impl FnOnce(&mut egui::Ui),
+) {
+    let screen = ctx.content_rect();
+    let width = width.min(screen.width() - 24.0).max(240.0);
+    let mut close = false;
+    let frame = egui::Frame::new()
+        .fill(ui_panel())
+        .stroke(Stroke::new(1.0, ui_line()))
+        .corner_radius(10.0)
+        .shadow(egui::Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(110) });
+    egui::Window::new(crate::i18n::tr(title))
+        .title_bar(false)
+        .collapsible(false)
+        .resizable(false)
+        .frame(frame)
+        .pivot(egui::Align2::CENTER_CENTER)
+        .default_pos(screen.center())
+        .constrain_to(screen)
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            ui.set_width(width);
+            // Title bar.
+            egui::Frame::new().inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
+                ui.set_width(width - 32.0);
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(crate::i18n::tr(title)).size(16.0).strong().color(ui_strong()));
+                    ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                        let (rect, resp) = ui.allocate_exact_size(Vec2::splat(22.0), egui::Sense::click());
+                        if resp.hovered() {
+                            ui.painter().rect_filled(rect, 5.0, ui_hover());
+                        }
+                        let c = if resp.hovered() { ui_strong() } else { ui_dim() };
+                        let st = Stroke::new(1.6, c);
+                        let r = rect.shrink(6.5);
+                        ui.painter().line_segment([r.left_top(), r.right_bottom()], st);
+                        ui.painter().line_segment([r.right_top(), r.left_bottom()], st);
+                        if resp.on_hover_text(crate::i18n::tr("Close")).clicked() {
+                            close = true;
+                        }
+                    });
+                });
+            });
+            rule(ui, width);
+            // Scrolling content, leaving room for the title and footer.
+            let max_h = (screen.height() * 0.9 - 120.0).max(120.0);
+            egui::ScrollArea::vertical().max_height(max_h).auto_shrink([false, true]).show(ui, |ui| {
+                ui.spacing_mut().scroll.floating = false;
+                ui.spacing_mut().item_spacing.y = 5.0;
+                egui::Frame::new().inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
+                    ui.set_width(width - 32.0 - ui.spacing().scroll.bar_width - 4.0);
+                    body(ui);
+                });
+            });
+            rule(ui, width);
+            // Footer.
+            egui::Frame::new().inner_margin(egui::Margin::symmetric(16, 10)).show(ui, |ui| {
+                ui.set_width(width - 32.0);
+                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.horizontal(|ui| {
+                    footer(ui);
+                    ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button(crate::i18n::tr("Close")).clicked() {
+                            close = true;
+                        }
+                    });
+                });
+            });
+        });
+    if close {
+        *open = false;
+    }
+}
+
+fn rule(ui: &mut egui::Ui, width: f32) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 1.0), egui::Sense::hover());
+    ui.painter().rect_filled(rect, 0.0, ui_line());
 }
 
 /// A small heading with a rule, used to break up side panels.
