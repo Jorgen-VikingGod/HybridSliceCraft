@@ -247,7 +247,11 @@ fn main() {
 
     // In a Flatpak the window must carry the app's id, or the desktop can't match
     // it to its icon and launcher.
+    let csd = app::frame::wanted();
+    app::frame::set_enabled(csd);
     let mut viewport = egui::ViewportBuilder::default()
+        .with_decorations(!csd)
+        .with_transparent(csd)
         .with_title("HybridSliceCraft")
         .with_inner_size([1440.0, 900.0])
         .with_min_inner_size([960.0, 600.0])

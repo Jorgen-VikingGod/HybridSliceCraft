@@ -3,6 +3,7 @@
 
 mod actions;
 mod dock;
+pub mod frame;
 mod mixes;
 mod panels;
 mod preview;
@@ -791,6 +792,11 @@ impl eframe::App for App {
         }
         self.drive_screenshot(&ctx);
 
+        let title = match &self.project_path {
+            Some(p) => format!("{} – HybridSliceCraft", p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()),
+            None => "HybridSliceCraft".to_string(),
+        };
+        frame::title_bar(ui, &title);
         self.top_bar(ui);
         self.status_bar(ui);
         self.dock_panels(ui);
@@ -801,6 +807,14 @@ impl eframe::App for App {
             });
         self.windows(&ctx);
         self.draw_toasts(&ctx);
+        frame::window_edges(&ctx);
+    }
+
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        if frame::enabled() {
+            return [0.0; 4];
+        }
+        visuals.panel_fill.to_normalized_gamma_f32()
     }
 }
 

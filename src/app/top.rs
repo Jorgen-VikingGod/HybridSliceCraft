@@ -379,7 +379,7 @@ impl App {
     pub fn status_bar(&mut self, ui: &mut egui::Ui) {
         egui::Panel::bottom("status_bar")
             .exact_size(26.0)
-            .frame(egui::Frame::new().fill(ui_bar()).inner_margin(egui::Margin::symmetric(10, 0)))
+            .frame(egui::Frame::new().fill(ui_bar()).corner_radius(super::frame::bottom_corners(ui.ctx())).inner_margin(egui::Margin::symmetric(10, 0)))
             .show(ui, |ui| {
                 ui.horizontal_centered(|ui| {
                     let mut cancel = false;
