@@ -167,7 +167,10 @@ impl App {
         let mut e = std::mem::take(&mut self.mix_edit);
         let mut open = true;
         let mut save = false;
-        egui::Window::new(crate::i18n::tr("Mixed filament")).open(&mut open).collapsible(false).default_width(380.0).show(ctx, |ui| {
+        let can_save = !e.cycle.is_empty();
+        let mut e_body = std::mem::take(&mut e);
+        dialog(ctx, "Mixed filament", &mut open, 420.0, |ui| {
+            let e = &mut e_body;
             ui.horizontal(|ui| {
                 ui.label(crate::i18n::tr("Name"));
                 ui.text_edit_singleline(&mut e.name);
@@ -291,13 +294,12 @@ impl App {
                     }
                 });
             });
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                if ui.add_enabled(!e.cycle.is_empty(), egui::Button::new(crate::i18n::tr("Save"))).clicked() {
-                    save = true;
-                }
-            });
+        }, |ui| {
+            if ui.add_enabled(can_save, egui::Button::new(crate::i18n::tr("Save"))).clicked() {
+                save = true;
+            }
         });
+        let mut e = e_body;
         if save {
             let target = (e.tab == MixTab::Match).then_some(e.target);
             let name = if e.name.trim().is_empty() { MixedFilament { cycle: e.cycle.clone(), ..Default::default() }.text() } else { e.name.trim().to_string() };

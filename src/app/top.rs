@@ -379,7 +379,7 @@ impl App {
     pub fn status_bar(&mut self, ui: &mut egui::Ui) {
         egui::Panel::bottom("status_bar")
             .exact_size(26.0)
-            .frame(egui::Frame::new().fill(ui_bar()).inner_margin(egui::Margin::symmetric(10, 0)))
+            .frame(egui::Frame::new().fill(ui_bar()).corner_radius(super::frame::bottom_corners(ui.ctx())).inner_margin(egui::Margin::symmetric(10, 0)))
             .show(ui, |ui| {
                 ui.horizontal_centered(|ui| {
                     let mut cancel = false;
@@ -481,12 +481,7 @@ impl App {
 
     pub fn windows(&mut self, ctx: &egui::Context) {
         let mut open = self.show_about;
-        egui::Window::new("About HybridSliceCraft")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .default_width(360.0)
-            .show(ctx, |ui| {
+        dialog(ctx, "About HybridSliceCraft", &mut open, 380.0, |ui| {
                 ui.label(RichText::new(format!("HybridSliceCraft {}", env!("CARGO_PKG_VERSION"))).strong());
                 ui.label(crate::i18n::tr("A hybrid slicer for filament (FDM) and resin printers."));
                 ui.label(RichText::new(crate::i18n::tr("Author: Jürgen Könnemann")).strong());
@@ -494,17 +489,13 @@ impl App {
                 ui.label(RichText::new(format!("Graphics: {}", self.gpu_label)).color(ui_dim()));
                 ui.label(RichText::new(format!("Processor threads: {}", rayon::current_num_threads())).color(ui_dim()));
                 ui.label(RichText::new(format!("Settings folder: {}", config_dir().display())).color(ui_dim()));
-            });
+            }, |_| {});
         self.show_about = open;
 
         let mut open = self.show_shortcuts;
-        egui::Window::new("Keyboard shortcuts")
-            .open(&mut open)
-            .collapsible(false)
-            .default_width(420.0)
-            .show(ctx, |ui| {
-                self.shortcut_editor(ui, ctx);
-            });
+        dialog(ctx, "Keyboard shortcuts", &mut open, 460.0, |ui| {
+            self.shortcut_editor(ui, ctx);
+        }, |_| {});
         if !open {
             self.capturing = None;
         }
@@ -512,23 +503,16 @@ impl App {
 
         let mut open = self.show_note;
         let note = self.plate().note.clone();
-        egui::Window::new("How to read this test")
-            .open(&mut open)
-            .collapsible(false)
-            .default_width(380.0)
-            .show(ctx, |ui| {
-                ui.label(if note.is_empty() { "No calibration test is on this plate." } else { note.as_str() });
-            });
+        dialog(ctx, "How to read this test", &mut open, 420.0, |ui| {
+            ui.label(if note.is_empty() { "No calibration test is on this plate." } else { note.as_str() });
+        }, |_| {});
         self.show_note = open;
 
         let mut open = self.show_send;
         let mut do_send = false;
-        egui::Window::new("Send to network printer")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .default_width(380.0)
-            .show(ctx, |ui| {
+        let ready = self.fdm_result.is_some() && self.job.is_none();
+        let sliced = self.fdm_result.is_some();
+        dialog(ctx, "Send to network printer", &mut open, 420.0, |ui| {
                 ui.label(crate::i18n::tr("Works with OctoPrint, Klipper with Moonraker, PrusaLink and Duet, over a plain http address."));
                 ui.add_space(4.0);
                 egui::Grid::new("send").num_columns(2).show(ui, |ui| {
@@ -546,13 +530,13 @@ impl App {
                     ui.add(egui::TextEdit::singleline(&mut self.fdm_printer.host_key).password(true).hint_text("if your printer needs one").desired_width(240.0));
                     ui.end_row();
                 });
-                ui.add_space(4.0);
-                let ready = self.fdm_result.is_some() && self.job.is_none();
+                if !sliced {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(crate::i18n::tr("Slice the plate first.")).small().color(ui_dim()));
+                }
+            }, |ui| {
                 if ui.add_enabled(ready, egui::Button::new(crate::i18n::tr("Send the sliced print"))).clicked() {
                     do_send = true;
-                }
-                if self.fdm_result.is_none() {
-                    ui.label(RichText::new(crate::i18n::tr("Slice the plate first.")).small().color(ui_dim()));
                 }
             });
         self.show_send = open;

@@ -1,6 +1,6 @@
 //! Colours, spacing and the hand-drawn icons used across the window.
 
-use egui::{Color32, CornerRadius, FontId, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2};
+use egui::{Color32, CornerRadius, FontId, Layout, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2};
 
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -373,6 +373,157 @@ pub fn icon_button(ui: &mut egui::Ui, icon: Icon, active: bool, accent: Color32,
     let color = if active { accent } else if resp.hovered() { Color32::WHITE } else { CANVAS_DIM };
     draw_icon(painter, rect.shrink(7.0), icon, color);
     resp
+}
+
+/// A dialog with a fixed title bar and footer; only the middle scrolls, and
+/// shows a bar when the content is taller than the window.
+/// `footer` adds buttons on the left; a Close button is always on the right.
+pub fn dialog(
+    ctx: &egui::Context,
+    title: &str,
+    open: &mut bool,
+    width: f32,
+    body: impl FnOnce(&mut egui::Ui),
+    footer: impl FnOnce(&mut egui::Ui),
+) {
+    if !*open {
+        return;
+    }
+    let screen = ctx.content_rect();
+    let width = width.min(screen.width() - 24.0).max(240.0);
+    let mut close = false;
+    let frame = egui::Frame::new()
+        .fill(ui_panel())
+        .stroke(Stroke::new(1.0, ui_line()))
+        .corner_radius(10.0)
+        .shadow(egui::Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(110) });
+    egui::Window::new(crate::i18n::tr(title))
+        .title_bar(false)
+        .collapsible(false)
+        .resizable(false)
+        .frame(frame)
+        .pivot(egui::Align2::CENTER_CENTER)
+        .default_pos(screen.center())
+        .constrain_to(screen)
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            ui.set_width(width);
+            // Title bar.
+            egui::Frame::new().inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
+                ui.set_width(width - 32.0);
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(crate::i18n::tr(title)).size(16.0).strong().color(ui_strong()));
+                    ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                        let (rect, resp) = ui.allocate_exact_size(Vec2::splat(22.0), egui::Sense::click());
+                        if resp.hovered() {
+                            ui.painter().rect_filled(rect, 5.0, ui_hover());
+                        }
+                        let c = if resp.hovered() { ui_strong() } else { ui_dim() };
+                        let st = Stroke::new(1.6, c);
+                        let r = rect.shrink(6.5);
+                        ui.painter().line_segment([r.left_top(), r.right_bottom()], st);
+                        ui.painter().line_segment([r.right_top(), r.left_bottom()], st);
+                        if resp.on_hover_text(crate::i18n::tr("Close")).clicked() {
+                            close = true;
+                        }
+                    });
+                });
+            });
+            rule(ui, width);
+            // Scrolling content, leaving room for the title and footer.
+            let max_h = (screen.height() * 0.9 - 120.0).max(120.0);
+            {
+                // Thin until the pointer comes near, then wider; never fades while there is more to see.
+                let sc = &mut ui.spacing_mut().scroll;
+                sc.floating = true;
+                sc.bar_width = 10.0;
+                sc.floating_width = 3.0;
+                sc.floating_allocated_width = 8.0;
+                sc.dormant_handle_opacity = 0.55;
+                sc.dormant_background_opacity = 0.0;
+            }
+            let overflow_id = egui::Id::NULL.with(("dialog_overflow", title));
+            let overflows = ctx.data(|d| d.get_temp::<bool>(overflow_id)).unwrap_or(false);
+            let visibility = if overflows {
+                egui::scroll_area::ScrollBarVisibility::AlwaysVisible
+            } else {
+                egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded
+            };
+            let out = egui::ScrollArea::vertical()
+                .max_height(max_h)
+                .auto_shrink([false, true])
+                .scroll_bar_visibility(visibility)
+                .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 5.0;
+                egui::Frame::new().inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
+                    ui.set_width(width - 32.0 - 8.0);
+                    body(ui);
+                });
+            });
+            scroll_shadows(ui, &out);
+            let more = out.content_size.y > out.inner_rect.height() + 0.5;
+            ctx.data_mut(|d| d.insert_temp(overflow_id, more));
+            rule(ui, width);
+            // Footer.
+            egui::Frame::new().inner_margin(egui::Margin::symmetric(16, 10)).show(ui, |ui| {
+                ui.set_width(width - 32.0);
+                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.horizontal(|ui| {
+                    footer(ui);
+                    ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button(crate::i18n::tr("Close")).clicked() {
+                            close = true;
+                        }
+                    });
+                });
+            });
+        });
+    if close {
+        *open = false;
+    }
+}
+
+/// Fades the top and/or bottom edge of a scroll area when there is more content beyond it.
+pub fn scroll_shadows<R>(ui: &egui::Ui, out: &egui::scroll_area::ScrollAreaOutput<R>) {
+    let rect = out.inner_rect;
+    let max = (out.content_size.y - rect.height()).max(0.0);
+    if max <= 0.5 {
+        return;
+    }
+    let offset = out.state.clamped_offset().y;
+    let strength = if theme() == Theme::Dark { 85.0 } else { 34.0 };
+    let h = 40.0f32.min(rect.height() / 3.0);
+    let painter = ui.painter().with_clip_rect(rect);
+    // Eased falloff (quadratic) over several strips, so there is no visible edge.
+    const STEPS: usize = 10;
+    let shade = |top: bool| {
+        let mut mesh = egui::Mesh::default();
+        for k in 0..=STEPS {
+            let t = k as f32 / STEPS as f32; // 0 at the edge, 1 where it has faded out
+            let a = (strength * (1.0 - t) * (1.0 - t)) as u8;
+            let c = Color32::from_black_alpha(a);
+            let y = if top { rect.top() + h * t } else { rect.bottom() - h * t };
+            mesh.colored_vertex(Pos2::new(rect.left(), y), c);
+            mesh.colored_vertex(Pos2::new(rect.right(), y), c);
+            if k > 0 {
+                let n = (k * 2) as u32;
+                mesh.add_triangle(n - 2, n - 1, n);
+                mesh.add_triangle(n - 1, n, n + 1);
+            }
+        }
+        painter.add(egui::Shape::mesh(mesh));
+    };
+    if offset > 0.5 {
+        shade(true);
+    }
+    if offset < max - 0.5 {
+        shade(false);
+    }
+}
+
+fn rule(ui: &mut egui::Ui, width: f32) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 1.0), egui::Sense::hover());
+    ui.painter().rect_filled(rect, 0.0, ui_line());
 }
 
 /// A small heading with a rule, used to break up side panels.

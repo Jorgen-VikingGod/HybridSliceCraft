@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.13.0" date="2026-11-14">
+      <description>
+        <p>A new look: dialogs with a fixed title and footer and a scrolling middle, soft shadows where there is more to scroll to, and on Linux a modern title bar of the program's own.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.13.0</url>
+    </release>
     <release version="0.12.0" date="2026-11-14">
       <description>
         <p>Runs as an MCP server (--mcp), so AI agents can look up printers and settings, slice for filament and resin printers, and see layer pictures.</p>
