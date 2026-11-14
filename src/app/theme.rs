@@ -491,23 +491,26 @@ pub fn scroll_shadows<R>(ui: &egui::Ui, out: &egui::scroll_area::ScrollAreaOutpu
         return;
     }
     let offset = out.state.clamped_offset().y;
-    let strength = if theme() == Theme::Dark { 120 } else { 50 };
-    let h = 14.0f32.min(rect.height() / 3.0);
+    let strength = if theme() == Theme::Dark { 85.0 } else { 34.0 };
+    let h = 40.0f32.min(rect.height() / 3.0);
     let painter = ui.painter().with_clip_rect(rect);
+    // Eased falloff (quadratic) over several strips, so there is no visible edge.
+    const STEPS: usize = 10;
     let shade = |top: bool| {
-        let (strong, clear) = (Color32::from_black_alpha(strength), Color32::TRANSPARENT);
-        let (y0, y1, c0, c1) = if top {
-            (rect.top(), rect.top() + h, strong, clear)
-        } else {
-            (rect.bottom() - h, rect.bottom(), clear, strong)
-        };
         let mut mesh = egui::Mesh::default();
-        mesh.colored_vertex(Pos2::new(rect.left(), y0), c0);
-        mesh.colored_vertex(Pos2::new(rect.right(), y0), c0);
-        mesh.colored_vertex(Pos2::new(rect.right(), y1), c1);
-        mesh.colored_vertex(Pos2::new(rect.left(), y1), c1);
-        mesh.add_triangle(0, 1, 2);
-        mesh.add_triangle(0, 2, 3);
+        for k in 0..=STEPS {
+            let t = k as f32 / STEPS as f32; // 0 at the edge, 1 where it has faded out
+            let a = (strength * (1.0 - t) * (1.0 - t)) as u8;
+            let c = Color32::from_black_alpha(a);
+            let y = if top { rect.top() + h * t } else { rect.bottom() - h * t };
+            mesh.colored_vertex(Pos2::new(rect.left(), y), c);
+            mesh.colored_vertex(Pos2::new(rect.right(), y), c);
+            if k > 0 {
+                let n = (k * 2) as u32;
+                mesh.add_triangle(n - 2, n - 1, n);
+                mesh.add_triangle(n - 1, n, n + 1);
+            }
+        }
         painter.add(egui::Shape::mesh(mesh));
     };
     if offset > 0.5 {
