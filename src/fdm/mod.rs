@@ -197,6 +197,9 @@ pub struct FdmJob {
     pub objects: Vec<JobObject>,
     pub printer: FdmPrinter,
     pub filaments: Vec<Filament>,
+    /// Colours made by alternating filaments layer by layer; painted values from
+    /// `mixing::MIX_BASE` up refer to these.
+    pub mixes: Vec<crate::mixing::MixedFilament>,
     pub process: FdmProcess,
     pub z_changes: Vec<(f32, ZChange)>,
     pub layer_actions: Vec<LayerAction>,

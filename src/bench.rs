@@ -212,6 +212,7 @@ pub fn run_fdm(o: &BenchOptions) -> Result<(), String> {
         }],
         printer: printer.clone(),
         filaments: vec![cat.filaments[0].clone()],
+        mixes: Vec::new(),
         process,
         z_changes: Vec::new(),
         layer_actions: Vec::new(),

@@ -245,6 +245,8 @@ pub struct App {
     pub paint_slot: usize,
     pub paint_mode: PaintMode,
     pub paint_kind: PaintKind,
+    /// Colours made by alternating filaments layer by layer.
+    pub mixes: Vec<crate::mixing::MixedFilament>,
     pub paint_radius: f32,
     pub paint_angle: f32,
     /// True while a brush stroke is being dragged, and where its last dab landed.
@@ -408,6 +410,7 @@ impl App {
             paint_slot: 1,
             paint_mode: PaintMode::Brush,
             paint_kind: PaintKind::Filament,
+            mixes: Vec::new(),
             paint_radius: 3.0,
             paint_angle: 30.0,
             painting: false,

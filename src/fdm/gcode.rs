@@ -113,13 +113,22 @@ fn place_tower(job: &FdmJob, plan: &Plan, tools: &[usize], warnings: &mut Vec<St
     // A prime tower runs up to the last layer that changes tool.
     let mut last_change_layer = -1i64;
     if multi {
+        // The tool in the nozzle as the layers go by; each layer starts with it.
+        let mut loaded: Option<usize> = None;
         for i in 0..plan.layers.len() {
             let mut here: Vec<usize> = (0..job.objects.len()).flat_map(|oi| tools_at(job, plan, oi, i)).collect();
             here.sort_unstable();
             here.dedup();
-            if here.len() > 1 {
+            if here.is_empty() {
+                continue;
+            }
+            // A change within the layer, or onto a different tool than the layer before
+            // ended with (a mixed filament changes tool on every layer).
+            if here.len() > 1 || loaded.is_some_and(|t| !here.contains(&t)) {
                 last_change_layer = i as i64;
             }
+            let first = loaded.filter(|t| here.contains(t)).unwrap_or(here[0]);
+            loaded = here.iter().rev().find(|t| **t != first).copied().or(Some(first));
         }
     }
     let base_h = p.layer_height as f64;

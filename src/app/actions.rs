@@ -642,6 +642,7 @@ impl App {
             objects: Vec::new(),
             printer: self.fdm_printer.clone(),
             filaments: self.filaments.clone(),
+            mixes: self.mixes.clone(),
             process: self.fdm_process.clone(),
             z_changes: self.plate().z_changes.clone(),
             layer_actions: self.plate().layer_actions.clone(),
