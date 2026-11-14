@@ -432,19 +432,36 @@ pub fn dialog(
             rule(ui, width);
             // Scrolling content, leaving room for the title and footer.
             let max_h = (screen.height() * 0.9 - 120.0).max(120.0);
-            ui.spacing_mut().scroll.floating = false;
-            ui.spacing_mut().scroll.bar_width = 9.0;
-            egui::ScrollArea::vertical()
+            {
+                // Thin until the pointer comes near, then wider; never fades while there is more to see.
+                let sc = &mut ui.spacing_mut().scroll;
+                sc.floating = true;
+                sc.bar_width = 10.0;
+                sc.floating_width = 3.0;
+                sc.floating_allocated_width = 8.0;
+                sc.dormant_handle_opacity = 0.55;
+                sc.dormant_background_opacity = 0.0;
+            }
+            let overflow_id = egui::Id::NULL.with(("dialog_overflow", title));
+            let overflows = ctx.data(|d| d.get_temp::<bool>(overflow_id)).unwrap_or(false);
+            let visibility = if overflows {
+                egui::scroll_area::ScrollBarVisibility::AlwaysVisible
+            } else {
+                egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded
+            };
+            let out = egui::ScrollArea::vertical()
                 .max_height(max_h)
                 .auto_shrink([false, true])
-                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
+                .scroll_bar_visibility(visibility)
                 .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 5.0;
                 egui::Frame::new().inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
-                    ui.set_width(width - 32.0 - ui.spacing().scroll.bar_width - 4.0);
+                    ui.set_width(width - 32.0 - 8.0);
                     body(ui);
                 });
             });
+            let more = out.content_size.y > out.inner_rect.height() + 0.5;
+            ctx.data_mut(|d| d.insert_temp(overflow_id, more));
             rule(ui, width);
             // Footer.
             egui::Frame::new().inner_margin(egui::Margin::symmetric(16, 10)).show(ui, |ui| {
