@@ -34,6 +34,7 @@ A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast des
 - Preview by line type, speed, flow, layer height, width, fan, temperature, layer time or filament
 - Calibration tests: temperature tower, flow, max flow tower, speed ripple tower, retraction, pressure advance, first layer
 - Sending to OctoPrint, Moonraker, PrusaLink or Duet printers over the local network
+- **For AI agents**: `hybridslicecraft --mcp` runs an MCP server, so assistants such as Claude can look up printers and settings, slice for filament or resin printers, and see layer pictures (see the [manual](docs/manual.md#use-with-ai-agents-mcp))
 
 ![Painting: the bear painted with two filaments, ready to slice](docs/fdm-painted.png)
 
