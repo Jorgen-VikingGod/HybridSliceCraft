@@ -122,6 +122,7 @@ jobs:
             mv "$f.new" "$f"
             chmod 755 "$f"
             rm -rf squashfs-root
+            "./$f" --appimage-extract >/dev/null
             # Check the result: no file inside may be closed to other users. (Folders are
             # skipped: the unpacking tool makes those private whatever the image says.)
             bad=$(find squashfs-root -type f \( ! -perm -o+r -o \( -perm -u+x ! -perm -o+x \) \))
