@@ -135,7 +135,7 @@ pub fn convert(docs: Vec<(String, Map)>) -> Imported {
         if m.get("instantiation").and_then(|v| v.as_str()) == Some("false") && docs.iter().any(|(_, d)| d.get("inherits").and_then(|v| v.as_str()) == Some(name.as_str())) {
             continue;
         }
-        let kind = m.get("type").and_then(|v| v.as_str()).map(str::to_string).unwrap_or_else(|| guess_kind(&m));
+        let kind = m.get("type").and_then(|v| v.as_str()).map(str::to_string).unwrap_or_else(|| guess_kind(&docs[i].0, &m));
         let mut r = Reader { m: &m, used: HashSet::new() };
         match kind.as_str() {
             "machine" => out.printers.push(printer(&mut r, &name)),
@@ -166,10 +166,30 @@ pub fn convert(docs: Vec<(String, Map)>) -> Imported {
     out
 }
 
-fn guess_kind(m: &Map) -> String {
+/// Which kind of preset a file holds when it doesn't say. User presets exported from Orca
+/// usually carry only what the user changed, with no "type", so look at the file's name, at
+/// the "..._settings_id" key and at which settings are there.
+fn guess_kind(label: &str, m: &Map) -> String {
+    for (key, kind) in [("filament_settings_id", "filament"), ("printer_settings_id", "machine"), ("print_settings_id", "process")] {
+        if m.contains_key(key) {
+            return kind.into();
+        }
+    }
+    let l = label.to_lowercase();
+    for (word, kind) in [("filament", "filament"), ("machine", "machine"), ("printer", "machine"), ("process", "process")] {
+        if l.contains(word) {
+            return kind.into();
+        }
+    }
     if m.contains_key("nozzle_diameter") || m.contains_key("printable_area") {
-        "machine".into()
-    } else if m.contains_key("filament_type") || m.contains_key("nozzle_temperature") {
+        return "machine".into();
+    }
+    const FILAMENT_KEYS: &[&str] = &[
+        "nozzle_temperature", "nozzle_temperature_initial_layer", "hot_plate_temp", "cool_plate_temp", "textured_plate_temp",
+        "eng_plate_temp", "fan_min_speed", "fan_max_speed", "overhang_fan_speed", "slow_down_layer_time", "pressure_advance",
+        "close_fan_the_first_x_layers", "default_filament_colour",
+    ];
+    if m.keys().any(|k| k.starts_with("filament_") || FILAMENT_KEYS.contains(&k.as_str())) {
         "filament".into()
     } else {
         "process".into()
@@ -762,6 +782,21 @@ mod tests {
         assert_eq!((f.nozzle, f.nozzle_first, f.bed, f.bed_first), (240.0, 245.0, 80.0, 85.0));
         assert!((f.flow - 0.95).abs() < 1e-6);
         assert_eq!(f.color, [0x10, 0x30, 0xFF]);
+    }
+
+    #[test]
+    fn a_user_filament_without_a_type_is_still_a_filament() {
+        // As Orca exports a user preset: only what changed, and no "type".
+        let imp = convert(vec![
+            doc(json!({"name": "Generic PLA @Elegoo-real", "from": "User", "inherits": "Generic PLA @Elegoo", "filament_cost": ["22"], "default_filament_colour": ["#112233"], "filament_settings_id": ["Generic PLA @Elegoo-real"]})),
+            // Without the id, the file name still says it.
+            ("Generic_PLA.orca_filament".to_string(), json!({"name": "Other", "nozzle_temperature": ["215"]}).as_object().unwrap().clone()),
+        ]);
+        assert_eq!(imp.filaments.len(), 2, "{:?}", imp.notes);
+        assert!(imp.processes.is_empty());
+        assert_eq!(imp.filaments[0].cost_per_kg, 22.0);
+        assert_eq!(imp.filaments[0].color, [0x11, 0x22, 0x33]);
+        assert!(!imp.notes.iter().any(|n| n.contains("no counterpart")), "{:?}", imp.notes);
     }
 
     #[test]
