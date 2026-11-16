@@ -198,7 +198,8 @@ impl App {
             self.camera.pan(d.x, d.y, rect.height());
         }
         // Left-drag turns the view unless a handle or model took the drag.
-        if resp.dragged_by(egui::PointerButton::Primary) && self.drag.is_none() && !self.painting {
+        let boxing = self.marquee.is_some() || (ui.input(|i| i.modifiers.shift) && self.can_marquee());
+        if resp.dragged_by(egui::PointerButton::Primary) && self.drag.is_none() && !self.painting && !boxing {
             let d = resp.drag_delta();
             self.camera.yaw -= d.x * 0.006;
             self.camera.pitch = (self.camera.pitch + d.y * 0.006).clamp(-1.5697963, 1.5697963);
@@ -248,7 +249,28 @@ impl App {
             }
         } else if resp.drag_started_by(egui::PointerButton::Primary) {
             if let Some(press) = ui.input(|i| i.pointer.press_origin()) {
-                self.begin_drag(rect, press);
+                if shift && self.can_marquee() {
+                    // Shift and drag draws a box; everything it touches is selected.
+                    self.marquee = Some((press, press));
+                } else {
+                    self.begin_drag(rect, press);
+                }
+            }
+        }
+        if let Some((start, _)) = self.marquee {
+            if let Some(p) = pointer {
+                self.marquee = Some((start, p));
+            }
+            let (a, b) = self.marquee.unwrap_or((start, start));
+            let r = Rect::from_two_pos(a, b).intersect(rect);
+            let painter = ui.painter_at(rect);
+            painter.rect_filled(r, 0.0, self.accent().gamma_multiply(0.16));
+            painter.rect_stroke(r, 0.0, egui::Stroke::new(1.0, self.accent()), egui::StrokeKind::Inside);
+            if resp.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
+                self.marquee = None;
+                if r.width() > 3.0 || r.height() > 3.0 {
+                    self.select_in_box(rect, r);
+                }
             }
         }
         if let (Some(drag), Some(p)) = (self.drag, pointer) {
@@ -449,6 +471,42 @@ impl App {
 
     fn handle_len(&self) -> f32 {
         self.camera.dist * 0.11
+    }
+
+    /// Selecting tools can draw a selection box with shift held.
+    fn can_marquee(&self) -> bool {
+        matches!(self.tool, Tool::Move | Tool::Rotate | Tool::Scale)
+    }
+
+    /// Selects every model whose outline touches the box; the models already
+    /// selected stay, as with shift-click.
+    fn select_in_box(&mut self, rect: Rect, boxr: Rect) {
+        let mut hit = Vec::new();
+        for o in self.plate().objects.iter().filter(|o| o.visible) {
+            let (a, b) = o.world_bounds();
+            let mut pts = Vec::new();
+            for i in 0..8 {
+                let c = Vec3::new(if i & 1 == 0 { a.x } else { b.x }, if i & 2 == 0 { a.y } else { b.y }, if i & 4 == 0 { a.z } else { b.z });
+                if let Some(s) = self.to_screen(rect, c) {
+                    pts.push(s);
+                }
+            }
+            if pts.is_empty() {
+                continue;
+            }
+            let mut bounds = Rect::from_min_max(pts[0], pts[0]);
+            for p in &pts {
+                bounds.extend_with(*p);
+            }
+            if bounds.intersects(boxr) {
+                hit.push(o.id);
+            }
+        }
+        for id in hit {
+            if !self.selection.contains(&id) {
+                self.selection.push(id);
+            }
+        }
     }
 
     fn begin_drag(&mut self, rect: Rect, press: Pos2) {

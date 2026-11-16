@@ -420,7 +420,7 @@ impl App {
             return Some("Drag the slider on the right to move through layers. Drag to turn the view; scroll to zoom.");
         }
         Some(match self.tool {
-            Tool::Move => "Click a model to select it, drag it to move. Right-drag to pan the view, scroll to zoom.",
+            Tool::Move => "Click a model to select it, drag it to move. Shift-drag on empty space selects several. Right-drag to pan the view, scroll to zoom.",
             Tool::Rotate => "Drag a coloured ring to turn the selected model.",
             Tool::Scale => "Drag a handle to resize the selected model.",
             Tool::LayFlat => "Click a surface: the model turns so that surface sits flat on the plate.",
