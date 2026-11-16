@@ -63,7 +63,7 @@ HybridSliceCraft slices models for **filament (FDM)** printers and **resin (MSLA
 4. Press **Slice plate** (Ctrl+R). When it is done the view switches to **Preview**; Tab flips between *Prepare* and *Preview*.
 5. **Save G-code** (filament) or **Save print** (resin), or send it to a network printer.
 
-**Your workspace.** Both side panels are made of cards: drag a card by its title to reorder it or move it to the other panel, click a title to fold it away, right-click for *Move up, down, to the other panel*. **View → Restore default layout** puts everything back. The program remembers your layout, language and theme (View → Theme, View → Language).
+**Your workspace.** Both side panels are made of cards: drag a card by its title to reorder it or move it to the other panel, click a title to fold it away, right-click for *Move up, down, to the other panel*. **View → Restore default layout** puts everything back. The program remembers your layout, language and theme (View → Theme, View → Language). The theme follows the system at first: light, or dark when the system is set to dark mode.
 
 **Hint:** the search box above the print settings (*Find a setting…*) finds a setting in every tab. Turn on **Advanced** to see the settings that are hidden by default.
 

@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.15.0" date="2026-11-16">
+      <description>
+        <p>The theme now follows the system: light by default, dark when the system is set to dark mode. The AppImage can be updated with AppImageUpdate.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.15.0</url>
+    </release>
     <release version="0.14.2" date="2026-11-16">
       <description>
         <p>The AppImage now carries the keyboard and window libraries it needs, so it starts on systems that do not have them installed.</p>
