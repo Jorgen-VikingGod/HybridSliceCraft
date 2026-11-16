@@ -199,7 +199,15 @@ pub fn apply_style(ctx: &egui::Context) {
     w.open.weak_bg_fill = hover;
     w.open.corner_radius = round;
     style.visuals = v;
-    ctx.set_global_style(style);
+    // Follow our own choice, not the system's: otherwise a light system theme swaps in
+    // egui's light style for popups and text, which is unreadable on our dark panels.
+    ctx.options_mut(|o| {
+        o.theme_preference = if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light };
+    });
+    ctx.set_style_of(egui::Theme::Dark, style.clone());
+    ctx.set_style_of(egui::Theme::Light, style);
+    // The system's own title bar and dialogs follow the same choice.
+    ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(if dark { egui::SystemTheme::Dark } else { egui::SystemTheme::Light }));
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
