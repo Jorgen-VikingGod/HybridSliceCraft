@@ -529,3 +529,16 @@ Mixed filaments change filament on almost every layer. A printer with several to
 Mixed filaments repeat by layer, so uneven layer heights make the colour uneven. Turn off adaptive layer heights.	Gemischte Filamente wiederholen sich schichtweise; ungleiche Schichthöhen machen die Farbe ungleichmäßig. Adaptive Schichthöhen ausschalten.	Les filaments mélangés se répètent par couche ; des hauteurs de couche inégales rendent la couleur inégale. Désactivez les hauteurs de couche adaptatives.	Los filamentos mezclados se repiten por capa; alturas de capa desiguales hacen el color desigual. Desactiva las alturas de capa adaptativas.
 Close	Schließen	Fermer	Cerrar
 Resize by percentage. With several models selected, all of them change.	In Prozent skalieren. Bei mehreren gewählten Modellen ändern sich alle.	Redimensionner en pourcentage. Avec plusieurs modèles sélectionnés, tous changent.	Cambiar el tamaño en porcentaje. Con varios modelos seleccionados, cambian todos.
+Choose what is offered…	Auswahl der Listen…	Choisir ce qui est proposé…	Elegir qué se ofrece…
+Hide the printers, filaments and settings you never use from the lists	Drucker, Filamente und Einstellungen ausblenden, die du nie benutzt	Masquer des listes les imprimantes, filaments et réglages que vous n'utilisez jamais	Ocultar de las listas las impresoras, filamentos y ajustes que nunca usas
+Presets in the lists	Profile in den Listen	Préréglages dans les listes	Ajustes en las listas
+Untick what you never use. It leaves the lists but is not deleted; tick it again here to bring it back.	Entferne den Haken bei allem, was du nie brauchst. Es verschwindet aus den Listen, wird aber nicht gelöscht; hier kannst du es wieder anhaken.	Décochez ce que vous n'utilisez jamais. Cela quitte les listes sans être supprimé ; recochez ici pour le retrouver.	Desmarca lo que nunca usas. Sale de las listas pero no se borra; vuelve a marcarlo aquí para recuperarlo.
+Resin printers	Harzdrucker	Imprimantes résine	Impresoras de resina
+Resins	Harze	Résines	Resinas
+Printers	Drucker	Imprimantes	Impresoras
+Filaments	Filamente	Filaments	Filamentos
+All	Alle	Tous	Todos
+None	Keine	Aucun	Ninguno
+Show everything	Alles anzeigen	Tout afficher	Mostrar todo
+Only those in use	Nur die benutzten	Seulement ceux utilisés	Solo los usados
+Hide everything except what is chosen now	Alles außer der aktuellen Auswahl ausblenden	Tout masquer sauf ce qui est choisi	Ocultar todo salvo lo elegido ahora

@@ -215,18 +215,10 @@ impl App {
         subheading(ui, "Printer");
         ui.horizontal(|ui| {
             let names: Vec<String> = self.cat.fdm_printers.iter().map(|p| p.name.clone()).collect();
+            let makers: Vec<String> = names.iter().map(|n| maker_of(n)).collect();
             let current = self.fdm_printer.name.clone();
-            let mut pick = None;
-            egui::ComboBox::from_id_salt("fdm_printer")
-                .selected_text(current.clone())
-                .width(ui.available_width() - 56.0)
-                .show_ui(ui, |ui| {
-                    for (i, n) in names.iter().enumerate() {
-                        if ui.selectable_label(*n == current, n).clicked() {
-                            pick = Some(i);
-                        }
-                    }
-                });
+            let shown = self.cat.offered("fdm_printer", &names, &current);
+            let pick = maker_and_printer(ui, "fdm_printer", &names, &makers, &shown, &current);
             if let Some(i) = pick {
                 self.fdm_printer = self.cat.fdm_printers[i].clone();
                 self.filaments.truncate((self.fdm_printer.extruders as usize).max(1));
@@ -251,13 +243,16 @@ impl App {
                     ui.label(RichText::new(format!("{:.1}", self.fdm_printer.nozzle_for(slot))).small().color(ui_dim()))
                         .on_hover_text(crate::i18n::tr("Nozzle size of this tool, in mm"));
                 }
-                let current = self.filaments[slot].name.clone();
+                let current = self.filaments[slot].name.clone(); let offer = self.cat.offered("filament", &names, &current);
                 let mut pick = None;
                 egui::ComboBox::from_id_salt(("filament", slot))
                     .selected_text(current.clone())
                     .width(ui.available_width() - 56.0)
                     .show_ui(ui, |ui| {
                         for (i, n) in names.iter().enumerate() {
+                        if !offer[i] {
+                            continue;
+                        }
                             if ui.selectable_label(*n == current, n).clicked() {
                                 pick = Some(i);
                             }
@@ -275,7 +270,7 @@ impl App {
         subheading(ui, "Print quality");
         ui.horizontal(|ui| {
             let names: Vec<String> = self.cat.fdm_processes.iter().map(|p| p.name.clone()).collect();
-            let current = self.fdm_process.name.clone();
+            let current = self.fdm_process.name.clone(); let offer = self.cat.offered("fdm_process", &names, &current);
             let mut pick = None;
             let modified = !same_json(&self.fdm_process, &self.fdm_process_base);
             let shown = if modified { format!("{current} *") } else { current.clone() };
@@ -284,6 +279,9 @@ impl App {
                 .width(ui.available_width() - 56.0)
                 .show_ui(ui, |ui| {
                     for (i, n) in names.iter().enumerate() {
+                        if !offer[i] {
+                            continue;
+                        }
                         if ui.selectable_label(*n == current, n).clicked() {
                             pick = Some(i);
                         }
@@ -301,6 +299,17 @@ impl App {
     }
 
     fn import_button(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| self.import_buttons(ui));
+    }
+
+    fn import_buttons(&mut self, ui: &mut egui::Ui) {
+        if ui
+            .button(crate::i18n::tr("Choose what is offered…"))
+            .on_hover_text(crate::i18n::tr("Hide the printers, filaments and settings you never use from the lists"))
+            .clicked()
+        {
+            self.show_lists = true;
+        }
         if ui
             .button(crate::i18n::tr("Import profiles…"))
             .on_hover_text(crate::i18n::tr("Read printer, filament and process presets exported from OrcaSlicer or Bambu Studio, and resin presets from PrusaSlicer (.ini)"))
@@ -432,18 +441,10 @@ impl App {
         subheading(ui, "Printer");
         ui.horizontal(|ui| {
             let names: Vec<String> = self.cat.resin_printers.iter().map(|p| p.name.clone()).collect();
+            let makers: Vec<String> = self.cat.resin_printers.iter().map(|p| if p.maker.is_empty() { maker_of(&p.name) } else { p.maker.clone() }).collect();
             let current = self.resin_printer.name.clone();
-            let mut pick = None;
-            egui::ComboBox::from_id_salt("resin_printer")
-                .selected_text(current.clone())
-                .width(ui.available_width() - 56.0)
-                .show_ui(ui, |ui| {
-                    for (i, n) in names.iter().enumerate() {
-                        if ui.selectable_label(*n == current, n).clicked() {
-                            pick = Some(i);
-                        }
-                    }
-                });
+            let shown = self.cat.offered("resin_printer", &names, &current);
+            let pick = maker_and_printer(ui, "resin_printer", &names, &makers, &shown, &current);
             if let Some(i) = pick {
                 self.resin_printer = self.cat.resin_printers[i].clone();
                 if let Some(f) = crate::resin::export::ResinFormat::from_extension(&self.resin_printer.format) {
@@ -460,13 +461,16 @@ impl App {
         ui.horizontal(|ui| {
             swatch(ui, self.resin_mat.color, 18.0);
             let names: Vec<String> = self.cat.resins.iter().map(|p| p.name.clone()).collect();
-            let current = self.resin_mat.name.clone();
+            let current = self.resin_mat.name.clone(); let offer = self.cat.offered("resin", &names, &current);
             let mut pick = None;
             egui::ComboBox::from_id_salt("resin_mat")
                 .selected_text(current.clone())
                 .width(ui.available_width() - 56.0)
                 .show_ui(ui, |ui| {
                     for (i, n) in names.iter().enumerate() {
+                        if !offer[i] {
+                            continue;
+                        }
                         if ui.selectable_label(*n == current, n).clicked() {
                             pick = Some(i);
                         }
@@ -482,7 +486,7 @@ impl App {
         subheading(ui, "Print quality");
         ui.horizontal(|ui| {
             let names: Vec<String> = self.cat.resin_processes.iter().map(|p| p.name.clone()).collect();
-            let current = self.resin_process.name.clone();
+            let current = self.resin_process.name.clone(); let offer = self.cat.offered("resin_process", &names, &current);
             let mut pick = None;
             let modified = !same_json(&self.resin_process, &self.resin_process_base);
             let shown = if modified { format!("{current} *") } else { current.clone() };
@@ -491,6 +495,9 @@ impl App {
                 .width(ui.available_width() - 56.0)
                 .show_ui(ui, |ui| {
                     for (i, n) in names.iter().enumerate() {
+                        if !offer[i] {
+                            continue;
+                        }
                         if ui.selectable_label(*n == current, n).clicked() {
                             pick = Some(i);
                         }
@@ -505,6 +512,106 @@ impl App {
             }
         });
         self.import_button(ui);
+    }
+
+    /// Where presets are ticked in or out of the drop-down lists. Nothing is deleted.
+    pub fn lists_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.show_lists;
+        let resin = self.resin();
+        // (heading, kind, names, makers or empty for a plain list, the one in use)
+        let mut sections: Vec<(&str, &str, Vec<String>, Vec<String>, Vec<String>)> = Vec::new();
+        if resin {
+            let p = &self.cat.resin_printers;
+            sections.push((
+                "Resin printers",
+                "resin_printer",
+                p.iter().map(|x| x.name.clone()).collect(),
+                p.iter().map(|x| if x.maker.is_empty() { maker_of(&x.name) } else { x.maker.clone() }).collect(),
+                vec![self.resin_printer.name.clone()],
+            ));
+            sections.push(("Resins", "resin", self.cat.resins.iter().map(|x| x.name.clone()).collect(), vec![], vec![self.resin_mat.name.clone()]));
+            sections.push(("Print quality", "resin_process", self.cat.resin_processes.iter().map(|x| x.name.clone()).collect(), vec![], vec![self.resin_process.name.clone()]));
+        } else {
+            let p = &self.cat.fdm_printers;
+            sections.push(("Printers", "fdm_printer", p.iter().map(|x| x.name.clone()).collect(), p.iter().map(|x| maker_of(&x.name)).collect(), vec![self.fdm_printer.name.clone()]));
+            sections.push(("Filaments", "filament", self.cat.filaments.iter().map(|x| x.name.clone()).collect(), vec![], self.filaments.iter().map(|f| f.name.clone()).collect()));
+            sections.push(("Print quality", "fdm_process", self.cat.fdm_processes.iter().map(|x| x.name.clone()).collect(), vec![], vec![self.fdm_process.name.clone()]));
+        }
+        let mut changed = false;
+        let mut show_all = false;
+        let mut keep_used = false;
+        let cat = &mut self.cat;
+        dialog(ctx, "Presets in the lists", &mut open, 460.0, |ui| {
+            ui.label(RichText::new(crate::i18n::tr("Untick what you never use. It leaves the lists but is not deleted; tick it again here to bring it back.")).small().color(ui_dim()));
+            for (title, kind, names, makers, _) in &sections {
+                section(ui, title);
+                let groups: Vec<(String, Vec<usize>)> = if makers.is_empty() {
+                    vec![(String::new(), (0..names.len()).collect())]
+                } else {
+                    let mut g: Vec<(String, Vec<usize>)> = Vec::new();
+                    for (i, m) in makers.iter().enumerate() {
+                        match g.iter_mut().find(|(x, _)| x == m) {
+                            Some((_, v)) => v.push(i),
+                            None => g.push((m.clone(), vec![i])),
+                        }
+                    }
+                    g.sort_by_key(|(m, _)| m.to_lowercase());
+                    g
+                };
+                for (maker, idx) in groups {
+                    let shown = idx.iter().filter(|&&i| !cat.is_hidden(kind, &names[i])).count();
+                    let mut body = |ui: &mut egui::Ui| {
+                        ui.horizontal(|ui| {
+                            if ui.small_button(crate::i18n::tr("All")).clicked() {
+                                for &i in &idx {
+                                    cat.set_hidden(kind, &names[i], false);
+                                }
+                                changed = true;
+                            }
+                            if ui.small_button(crate::i18n::tr("None")).clicked() {
+                                for &i in &idx {
+                                    cat.set_hidden(kind, &names[i], true);
+                                }
+                                changed = true;
+                            }
+                        });
+                        for &i in &idx {
+                            let mut on = !cat.is_hidden(kind, &names[i]);
+                            if ui.checkbox(&mut on, names[i].as_str()).changed() {
+                                cat.set_hidden(kind, &names[i], !on);
+                                changed = true;
+                            }
+                        }
+                    };
+                    if maker.is_empty() {
+                        body(ui);
+                    } else {
+                        egui::CollapsingHeader::new(format!("{maker}  ({shown}/{})", idx.len())).id_salt((kind, maker.clone())).show(ui, body);
+                    }
+                }
+            }
+        }, |ui| {
+            if ui.button(crate::i18n::tr("Show everything")).clicked() {
+                show_all = true;
+            }
+            if ui.button(crate::i18n::tr("Only those in use")).on_hover_text(crate::i18n::tr("Hide everything except what is chosen now")).clicked() {
+                keep_used = true;
+            }
+        });
+        if show_all || keep_used {
+            for (_, kind, names, _, used) in &sections {
+                for n in names {
+                    self.cat.set_hidden(kind, n, keep_used && !used.contains(n));
+                }
+            }
+            changed = true;
+        }
+        if changed {
+            if let Err(e) = self.cat.save_custom() {
+                self.toast(ctx, ToastKind::Bad, format!("Couldn't save: {e}"));
+            }
+        }
+        self.show_lists = open;
     }
 
     pub fn editor_windows(&mut self, ctx: &egui::Context) {
@@ -586,6 +693,35 @@ impl App {
             }
         }
     }
+}
+
+/// A make list and, beside it, the printers of that make. Returns the index of a new pick.
+fn maker_and_printer(ui: &mut egui::Ui, salt: &str, names: &[String], makers: &[String], shown: &[bool], current: &str) -> Option<usize> {
+    let now = names.iter().position(|n| n == current).map(|i| makers[i].clone()).unwrap_or_else(|| maker_of(current));
+    let mut all: Vec<&String> = Vec::new();
+    for (i, m) in makers.iter().enumerate() {
+        if shown[i] && !all.contains(&m) {
+            all.push(m);
+        }
+    }
+    all.sort_by_key(|m| m.to_lowercase());
+    let mut pick = None;
+    let room = ui.available_width() - 56.0;
+    egui::ComboBox::from_id_salt((salt, "make")).selected_text(now.clone()).width((room * 0.36).max(70.0)).show_ui(ui, |ui| {
+        for m in &all {
+            if ui.selectable_label(**m == now, m.as_str()).clicked() && **m != now {
+                pick = makers.iter().enumerate().position(|(i, x)| x == *m && shown[i]);
+            }
+        }
+    });
+    egui::ComboBox::from_id_salt(salt).selected_text(current.to_string()).width(ui.available_width() - 56.0).show_ui(ui, |ui| {
+        for (i, n) in names.iter().enumerate() {
+            if shown[i] && makers[i] == now && ui.selectable_label(n == current, n).clicked() {
+                pick = Some(i);
+            }
+        }
+    });
+    pick
 }
 
 fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &FdmProcess) {

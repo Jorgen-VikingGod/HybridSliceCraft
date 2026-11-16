@@ -1152,9 +1152,33 @@ pub struct Catalogue {
     pub resin_printers: Vec<ResinPrinter>,
     pub resins: Vec<ResinMaterial>,
     pub resin_processes: Vec<ResinProcess>,
+    /// Presets the person chose not to see in the lists, as "kind|name".
+    pub hidden: Vec<String>,
+}
+
+/// Who makes a machine: the first word of its name, when nothing says otherwise.
+pub fn maker_of(name: &str) -> String {
+    name.split_whitespace().next().unwrap_or("Other").to_string()
 }
 
 impl Catalogue {
+    pub fn is_hidden(&self, kind: &str, name: &str) -> bool {
+        self.hidden.iter().any(|h| h.split_once('|') == Some((kind, name)))
+    }
+
+    pub fn set_hidden(&mut self, kind: &str, name: &str, hide: bool) {
+        let key = format!("{kind}|{name}");
+        self.hidden.retain(|h| *h != key);
+        if hide {
+            self.hidden.push(key);
+        }
+    }
+
+    /// For each name, whether it belongs in a list: not hidden, or the one in use.
+    pub fn offered(&self, kind: &str, names: &[String], current: &str) -> Vec<bool> {
+        names.iter().map(|n| n == current || !self.is_hidden(kind, n)).collect()
+    }
+
     pub fn builtin() -> Self {
         let fp = |name: &str, x: f32, y: f32, z: f32, fw: Firmware, speed: f32, accel: f32, ret: f32| FdmPrinter {
             name: name.into(),
@@ -1346,6 +1370,7 @@ impl Catalogue {
             resin_printers,
             resins,
             resin_processes,
+            hidden: Vec::new(),
         }
     }
 
@@ -1359,6 +1384,7 @@ impl Catalogue {
                 merge(&mut cat.resin_printers, user.resin_printers, |p| p.name.clone());
                 merge(&mut cat.resins, user.resins, |p| p.name.clone());
                 merge(&mut cat.resin_processes, user.resin_processes, |p| p.name.clone());
+                cat.hidden = user.hidden;
             }
         }
         cat
@@ -1374,6 +1400,7 @@ impl Catalogue {
             resin_printers: custom(&self.resin_printers, &base.resin_printers, |p| p.name.clone()),
             resins: custom(&self.resins, &base.resins, |p| p.name.clone()),
             resin_processes: custom(&self.resin_processes, &base.resin_processes, |p| p.name.clone()),
+            hidden: self.hidden.clone(),
         };
         let dir = config_dir();
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

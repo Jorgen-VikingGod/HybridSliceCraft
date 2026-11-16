@@ -222,6 +222,7 @@ impl App {
             .frame(egui::Frame::new().fill(ui_panel()).inner_margin(egui::Margin::same(8)))
             .show(ui, |ui| self.dock_side(ui, false));
         self.editor_windows(ui.ctx());
+        self.lists_window(ui.ctx());
         self.import_report_window(ui.ctx());
         self.mix_window(ui.ctx());
         // A drag dropped outside both panels just ends.
