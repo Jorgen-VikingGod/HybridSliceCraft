@@ -122,14 +122,15 @@ jobs:
             mv "$f.new" "$f"
             chmod 755 "$f"
             rm -rf squashfs-root
-            # Check the result: nothing inside may be closed to other users.
-            "./$f" --appimage-extract >/dev/null
-            if find squashfs-root \( -type d -o -perm -u+x \) ! -perm -o+rx | grep -q .; then
-              find squashfs-root \( -type d -o -perm -u+x \) ! -perm -o+rx
+            # Check the result: no file inside may be closed to other users. (Folders are
+            # skipped: the unpacking tool makes those private whatever the image says.)
+            bad=$(find squashfs-root -type f \( ! -perm -o+r -o \( -perm -u+x ! -perm -o+x \) \))
+            if [ -n "$bad" ]; then
+              echo "$bad"
               echo "Some files in the AppImage are still closed to other users" >&2
               exit 1
             fi
-            test -x squashfs-root/AppRun
+            [ "$(stat -c %a squashfs-root/AppRun)" = 755 ] || { echo "AppRun is not 755" >&2; exit 1; }
             rm -rf squashfs-root
           done
 
