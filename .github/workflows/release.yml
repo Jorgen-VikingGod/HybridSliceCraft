@@ -171,3 +171,61 @@ jobs:
             dist/*.dmg
             dist/*.deb
             dist/*.AppImage
+
+  # Starts the AppImage the way the AppImage catalogue (appimage.github.io) tests it: a
+  # fresh Ubuntu 22.04 without our build libraries, a small virtual screen with no graphics
+  # card, and a sandbox with no network. The program must show a window within 30 seconds.
+  appimage-test:
+    name: AppImage start test
+    needs: package
+    runs-on: ubuntu-22.04
+    env:
+      DISPLAY: ":99"
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: installers-x86_64-unknown-linux-gnu
+          path: dist
+
+      - name: Test tools (as the catalogue installs them)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb icewm xdotool x11-utils imagemagick libgl1-mesa-dri mesa-utils libfuse2 firejail
+
+      - name: Start the AppImage
+        shell: bash
+        run: |
+          set -u
+          Xvfb :99 -screen 0 800x600x24 >/dev/null 2>&1 &
+          sleep 2
+          icewm >/dev/null 2>&1 &
+          sleep 2
+          f=$(ls dist/*.AppImage | head -n 1)
+          chmod +x "$f"
+          mkdir -p "$HOME/.local/share/appimagekit" && touch "$HOME/.local/share/appimagekit/no_desktopintegration"
+          firejail --quiet --noprofile --net=none --appimage "./$f" > app.log 2>&1 &
+          pid=$!
+          shown=""
+          for i in $(seq 1 30); do
+            kill -0 $pid 2>/dev/null || break
+            if timeout 5 xdotool search --onlyvisible --name 'HybridSliceCraft' >/dev/null 2>&1; then shown=yes; break; fi
+            sleep 1
+          done
+          sleep 3
+          import -window root screen.png || true
+          echo "----- program output -----"; cat app.log
+          kill $pid 2>/dev/null || true
+          if [ -z "$shown" ]; then
+            echo "::error::The AppImage did not show a window within 30 seconds"
+            exit 1
+          fi
+          echo "A window appeared after about $i seconds"
+
+      - name: Keep the screen picture and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage-test
+          path: |
+            screen.png
+            app.log
