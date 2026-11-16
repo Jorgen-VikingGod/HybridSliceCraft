@@ -255,6 +255,8 @@ pub struct App {
     pub paint_angle: f32,
     /// True while a brush stroke is being dragged, and where its last dab landed.
     pub painting: bool,
+    /// A box being dragged over the view to select several models: start and current corner.
+    pub marquee: Option<(egui::Pos2, egui::Pos2)>,
     pub last_dab: Option<Vec3>,
     pub drag_plane_z: f32,
     pub framed: bool,
@@ -425,6 +427,7 @@ impl App {
             paint_radius: 3.0,
             paint_angle: 30.0,
             painting: false,
+            marquee: None,
             last_dab: None,
             drag_plane_z: 0.0,
             framed: false,
