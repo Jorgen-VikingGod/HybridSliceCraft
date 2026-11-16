@@ -127,7 +127,8 @@ jobs:
             rm -f "$RUNNER_TEMP/$f.orig"
             chmod 755 "$f"
             [ -s "$f.zsync" ] || { echo "No .zsync file was made" >&2; exit 1; }
-            info=$("./$f" --appimage-updateinformation)
+            objcopy --dump-section .upd_info="$RUNNER_TEMP/upd_info" "$f" "$RUNNER_TEMP/elf.tmp"
+            info=$(tr -d '\0' < "$RUNNER_TEMP/upd_info")
             [ "$info" = "$UPDATE_INFO" ] || { echo "Update information is '$info'" >&2; exit 1; }
             rm -rf squashfs-root
             "./$f" --appimage-extract >/dev/null
