@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.14.0" date="2026-11-16">
+      <description>
+        <p>Choose which printers, filaments and settings the lists offer, pick printers by make, resize by percentage, select several models with a box, import PrusaSlicer resin presets, and fixes for Orca filament imports and the theme on a light Windows.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.14.0</url>
+    </release>
     <release version="0.13.0" date="2026-11-14">
       <description>
         <p>A new look: dialogs with a fixed title and footer and a scrolling middle, soft shadows where there is more to scroll to, and on Linux a modern title bar of the program's own.</p>
