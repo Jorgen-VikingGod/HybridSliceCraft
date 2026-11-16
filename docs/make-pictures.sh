@@ -7,13 +7,13 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
 # Full-size picture for the README.
-big() { out=$1; shift; $BIN --screenshot "$TMP/$out" "$@" >/dev/null; optipng -quiet -clobber -nb -o2 -out "docs/$out" "$TMP/$out"; echo "docs/$out"; }
+big() { out=$1; shift; $BIN --screenshot "$TMP/$out" "$@" >/dev/null; rm -f "docs/$out"; optipng -quiet -o2 -out "docs/$out" "$TMP/$out"; echo "docs/$out"; }
 # Smaller picture for the manual.
 man() {
   out=$1; shift
   $BIN --screenshot "$TMP/$out" "$@" >/dev/null
   ffmpeg -v error -y -i "$TMP/$out" -vf scale=1400:875:flags=lanczos "$TMP/s-$out"
-  optipng -quiet -clobber -nb -o2 -out "docs/manual/images/$out" "$TMP/s-$out"; echo "docs/manual/images/$out"
+  rm -f "docs/manual/images/$out"; optipng -quiet -o2 -out "docs/manual/images/$out" "$TMP/s-$out"; echo "docs/manual/images/$out"
 }
 
 big fdm-preview.png --slice
