@@ -16,13 +16,16 @@ pub struct Imported {
     pub printers: Vec<FdmPrinter>,
     pub filaments: Vec<Filament>,
     pub processes: Vec<FdmProcess>,
+    pub resin_printers: Vec<ResinPrinter>,
+    pub resins: Vec<ResinMaterial>,
+    pub resin_processes: Vec<ResinProcess>,
     /// Things worth telling the user: unresolved parents, settings we don't have.
     pub notes: Vec<String>,
 }
 
 impl Imported {
     pub fn count(&self) -> usize {
-        self.printers.len() + self.filaments.len() + self.processes.len()
+        self.printers.len() + self.filaments.len() + self.processes.len() + self.resin_printers.len() + self.resins.len() + self.resin_processes.len()
     }
 }
 
@@ -64,12 +67,16 @@ fn read_docs(path: &Path) -> Result<Vec<(String, Map)>, String> {
         for i in 0..zip.len() {
             let mut f = zip.by_index(i).map_err(|e| e.to_string())?;
             let n = f.name_raw().iter().map(|&b| b as char).collect::<String>();
-            if !n.to_lowercase().ends_with(".json") || f.size() > 8 << 20 {
+            let lower = n.to_lowercase();
+            let ini = lower.ends_with(".ini");
+            if !(lower.ends_with(".json") || ini) || f.size() > 8 << 20 {
                 continue;
             }
             let mut text = String::new();
             if f.read_to_string(&mut text).is_ok() {
-                if let Some(m) = parse_object(&text) {
+                if ini {
+                    out.append(&mut parse_ini(&text, &n));
+                } else if let Some(m) = parse_object(&text) {
                     out.push((n, m));
                 }
             }
@@ -80,6 +87,10 @@ fn read_docs(path: &Path) -> Result<Vec<(String, Map)>, String> {
         Ok(out)
     } else {
         let text = String::from_utf8_lossy(&bytes);
+        if !text.trim_start().starts_with('{') {
+            let docs = parse_ini(&text, &label);
+            return if docs.is_empty() { Err("not a preset file".into()) } else { Ok(docs) };
+        }
         match parse_object(&text) {
             Some(m) => Ok(vec![(label, m)]),
             None => Err("not a preset file".into()),
@@ -141,6 +152,18 @@ pub fn convert(docs: Vec<(String, Map)>) -> Imported {
             "machine" => out.printers.push(printer(&mut r, &name)),
             "filament" => out.filaments.push(filament(&mut r, &name)),
             "process" => out.processes.push(process(&mut r, &name)),
+            "resin_machine" => {
+                out.resin_printers.push(resin_printer(&mut r, &name));
+                continue;
+            }
+            "resin_material" => {
+                out.resins.push(resin_material(&mut r, &name));
+                continue;
+            }
+            "resin_process" => {
+                out.resin_processes.push(resin_process(&mut r, &name));
+                continue;
+            }
             other => {
                 out.notes.push(format!("{name}: unknown preset type \"{other}\", skipped"));
                 continue;
@@ -409,6 +432,137 @@ fn printer(r: &mut Reader, name: &str) -> FdmPrinter {
 }
 
 // ---------------------------------------------------------------- filaments
+
+// ------------------------------------------------------------ resin (PrusaSlicer)
+
+/// Reads PrusaSlicer-style `.ini` files: a config bundle with `[sla_print:Name]`,
+/// `[sla_material:Name]` and `[printer:Name]` sections, or one exported preset without
+/// sections. Parents named in `inherits` (separated by `;`) are folded in. Only resin
+/// (SLA) presets are kept; each comes out as a map with a "type" of our own.
+fn parse_ini(text: &str, label: &str) -> Vec<(String, Map)> {
+    let mut sections: Vec<(String, String, Map)> = Vec::new(); // (kind, name, values)
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+        if let Some(head) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            let (kind, name) = head.split_once(':').unwrap_or((head, ""));
+            sections.push((kind.trim().to_string(), name.trim().to_string(), Map::new()));
+        } else if let Some((k, v)) = line.split_once('=') {
+            if sections.is_empty() {
+                // One exported preset: no section header.
+                let name = std::path::Path::new(label).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                sections.push((String::new(), name, Map::new()));
+            }
+            if let Some(last) = sections.last_mut() {
+                last.2.insert(k.trim().to_string(), Value::String(v.trim().trim_matches('"').to_string()));
+            }
+        }
+    }
+    fn fold(sections: &[(String, String, Map)], kind: &str, own: Map, depth: u32) -> Map {
+        let mut base = Map::new();
+        if depth < 12 {
+            if let Some(Value::String(list)) = own.get("inherits") {
+                for parent in list.split(';').map(str::trim).filter(|p| !p.is_empty()) {
+                    if let Some(p) = sections.iter().find(|(k, n, _)| k == kind && n == parent) {
+                        for (k, v) in fold(sections, kind, p.2.clone(), depth + 1) {
+                            base.insert(k, v);
+                        }
+                    }
+                }
+            }
+        }
+        for (k, v) in own {
+            base.insert(k, v);
+        }
+        base.remove("inherits");
+        base
+    }
+    let mut out = Vec::new();
+    for (kind, name, values) in &sections {
+        if name.starts_with('*') || name.is_empty() {
+            continue;
+        }
+        let map = fold(&sections, kind, values.clone(), 0);
+        let our = match kind.as_str() {
+            "printer" if map.get("printer_technology").and_then(|v| v.as_str()) == Some("SLA") => "resin_machine",
+            "sla_material" => "resin_material",
+            "sla_print" => "resin_process",
+            "" => {
+                if map.contains_key("display_width") {
+                    "resin_machine"
+                } else if map.contains_key("exposure_time") || map.contains_key("initial_exposure_time") {
+                    "resin_material"
+                } else if map.contains_key("faded_layers") || map.contains_key("support_head_front_diameter") {
+                    "resin_process"
+                } else {
+                    continue;
+                }
+            }
+            _ => continue,
+        };
+        let mut m = map;
+        m.insert("name".into(), Value::String(name.clone()));
+        m.insert("type".into(), Value::String(our.into()));
+        out.push((format!("{label}:{name}"), m));
+    }
+    out
+}
+
+fn resin_printer(r: &mut Reader, name: &str) -> ResinPrinter {
+    let mut p = ResinPrinter { name: name.to_string(), ..ResinPrinter::default() };
+    set!(r, p.size_x, "display_width", num);
+    set!(r, p.size_y, "display_height", num);
+    if let Some(v) = r.num("display_pixels_x") {
+        p.res_x = v as u32;
+    }
+    if let Some(v) = r.num("display_pixels_y") {
+        p.res_y = v as u32;
+    }
+    set!(r, p.height, "max_print_height", num);
+    set!(r, p.mirror_x, "display_mirror_x", flag);
+    set!(r, p.mirror_y, "display_mirror_y", flag);
+    if let Some(v) = r.text("printer_model") {
+        if p.maker.is_empty() {
+            p.maker = v;
+        }
+    }
+    p
+}
+
+fn resin_material(r: &mut Reader, name: &str) -> ResinMaterial {
+    let mut m = ResinMaterial { name: name.to_string(), ..ResinMaterial::default() };
+    set!(r, m.exposure, "exposure_time", num);
+    set!(r, m.bottom_exposure, "initial_exposure_time", num);
+    set!(r, m.density, "material_density", num);
+    if let (Some(cost), Some(ml)) = (r.num("bottle_cost"), r.num("bottle_volume")) {
+        if ml > 0.0 {
+            m.cost_per_litre = cost / (ml / 1000.0);
+        }
+    }
+    if let Some(rgb) = r.text("material_colour").and_then(|c| hex_colour(&c)) {
+        m.color = rgb;
+    }
+    m
+}
+
+fn resin_process(r: &mut Reader, name: &str) -> ResinProcess {
+    let mut p = ResinProcess { name: name.to_string(), ..ResinProcess::default() };
+    set!(r, p.layer_height, "layer_height", num);
+    if let Some(v) = r.num("faded_layers") {
+        p.transition_layers = v as u32;
+    }
+    set!(r, p.hollow_wall, "hollowing_min_thickness", num);
+    set!(r, p.tip_diameter, "support_head_front_diameter", num);
+    set!(r, p.pillar_diameter, "support_pillar_diameter", num);
+    set!(r, p.base_diameter, "support_base_diameter", num);
+    if let Some(v) = r.flag("pad_enable") {
+        p.raft = v;
+    }
+    set!(r, p.raft_height, "pad_wall_height", num);
+    p
+}
 
 fn filament(r: &mut Reader, name: &str) -> Filament {
     let mut f = Filament { name: name.to_string(), ..Filament::default() };
@@ -708,6 +862,23 @@ impl Catalogue {
             self.filaments.retain(|e| e.name != f.name || bf.contains(&e.name));
             put(&mut self.filaments, &bf, f, &f.name, |x, n| x.name = n);
         }
+        let (brp, brm, brs) = (
+            base.resin_printers.iter().map(|p| p.name.clone()).collect::<Vec<_>>(),
+            base.resins.iter().map(|p| p.name.clone()).collect::<Vec<_>>(),
+            base.resin_processes.iter().map(|p| p.name.clone()).collect::<Vec<_>>(),
+        );
+        for p in &imp.resin_printers {
+            self.resin_printers.retain(|e| e.name != p.name || brp.contains(&e.name));
+            put(&mut self.resin_printers, &brp, p, &p.name, |x, n| x.name = n);
+        }
+        for m in &imp.resins {
+            self.resins.retain(|e| e.name != m.name || brm.contains(&e.name));
+            put(&mut self.resins, &brm, m, &m.name, |x, n| x.name = n);
+        }
+        for s in &imp.resin_processes {
+            self.resin_processes.retain(|e| e.name != s.name || brs.contains(&e.name));
+            put(&mut self.resin_processes, &brs, s, &s.name, |x, n| x.name = n);
+        }
         for s in &imp.processes {
             self.fdm_processes.retain(|e| e.name != s.name || bs.contains(&e.name));
             put(&mut self.fdm_processes, &bs, s, &s.name, |x, n| x.name = n);
@@ -782,6 +953,22 @@ mod tests {
         assert_eq!((f.nozzle, f.nozzle_first, f.bed, f.bed_first), (240.0, 245.0, 80.0, 85.0));
         assert!((f.flow - 0.95).abs() < 1e-6);
         assert_eq!(f.color, [0x10, 0x30, 0xFF]);
+    }
+
+    #[test]
+    fn reads_a_prusaslicer_resin_bundle() {
+        let ini = "[printer:*common*]\nprinter_technology = SLA\n\n[printer:My Mono]\ninherits = *common*\nprinter_technology = SLA\ndisplay_width = 143.4\ndisplay_height = 89.6\ndisplay_pixels_x = 5760\ndisplay_pixels_y = 3600\ndisplay_mirror_x = 1\nmax_print_height = 165\n\n[sla_material:Grey]\nexposure_time = 2.2\ninitial_exposure_time = 28\nmaterial_density = 1.12\nbottle_cost = 30\nbottle_volume = 1000\nmaterial_colour = #808080\n\n[sla_print:Fine]\nlayer_height = 0.03\nfaded_layers = 8\n\n[printer:An FDM]\nprinter_technology = FFF\n";
+        let imp = convert(parse_ini(ini, "bundle.ini"));
+        assert_eq!(imp.resin_printers.len(), 1, "{:?}", imp.notes);
+        let p = &imp.resin_printers[0];
+        assert_eq!((p.name.as_str(), p.res_x, p.res_y, p.mirror_x, p.height), ("My Mono", 5760, 3600, true, 165.0));
+        assert!((p.size_x - 143.4).abs() < 1e-3);
+        assert_eq!(imp.resins.len(), 1);
+        assert!((imp.resins[0].cost_per_litre - 30.0).abs() < 1e-3);
+        assert_eq!(imp.resins[0].color, [128, 128, 128]);
+        assert_eq!(imp.resin_processes.len(), 1);
+        assert_eq!(imp.resin_processes[0].transition_layers, 8);
+        assert!(imp.printers.is_empty() && imp.filaments.is_empty());
     }
 
     #[test]

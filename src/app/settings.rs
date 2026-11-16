@@ -297,9 +297,13 @@ impl App {
                 self.save_process_preset(ui.ctx());
             }
         });
+        self.import_button(ui);
+    }
+
+    fn import_button(&mut self, ui: &mut egui::Ui) {
         if ui
             .button(crate::i18n::tr("Import profiles…"))
-            .on_hover_text(crate::i18n::tr("Read printer, filament and process presets exported from OrcaSlicer or Bambu Studio"))
+            .on_hover_text(crate::i18n::tr("Read printer, filament and process presets exported from OrcaSlicer or Bambu Studio, and resin presets from PrusaSlicer (.ini)"))
             .clicked()
         {
             self.import_profiles(ui.ctx());
@@ -308,7 +312,7 @@ impl App {
 
     fn import_profiles(&mut self, ctx: &egui::Context) {
         let Some(files) = rfd::FileDialog::new()
-            .add_filter("Slicer presets", &["json", "orca_printer", "orca_filament", "bbscfg", "bbsflmt", "zip"])
+            .add_filter("Slicer presets", &["json", "orca_printer", "orca_filament", "bbscfg", "bbsflmt", "zip", "ini"])
             .add_filter("All files", &["*"])
             .set_title("Import printer, filament and process presets")
             .pick_files()
@@ -344,11 +348,32 @@ impl App {
                 self.fdm_process_base = s;
             }
         }
+        if let Some(p) = imp.resin_printers.first() {
+            if let Some(p) = self.cat.resin_printers.iter().rev().find(|e| e.name.starts_with(&p.name)).cloned() {
+                self.resin_printer = p;
+                self.place_new_objects();
+                self.frame_all();
+            }
+        }
+        if let Some(m) = imp.resins.first() {
+            if let Some(m) = self.cat.resins.iter().rev().find(|e| e.name.starts_with(&m.name)).cloned() {
+                self.resin_mat = m;
+            }
+        }
+        if let Some(s) = imp.resin_processes.first() {
+            if let Some(s) = self.cat.resin_processes.iter().rev().find(|e| e.name.starts_with(&s.name)).cloned() {
+                self.resin_process = s.clone();
+                self.resin_process_base = s;
+            }
+        }
         let msg = format!(
-            "Imported {} printers, {} filaments and {} print settings.",
+            "Imported {} printers, {} filaments and {} print settings, and {} resin printers, {} resins and {} resin print settings.",
             imp.printers.len(),
             imp.filaments.len(),
-            imp.processes.len()
+            imp.processes.len(),
+            imp.resin_printers.len(),
+            imp.resins.len(),
+            imp.resin_processes.len()
         );
         match self.cat.save_custom() {
             Ok(()) => self.toast(ctx, ToastKind::Good, msg),
@@ -479,6 +504,7 @@ impl App {
                 self.save_process_preset(ui.ctx());
             }
         });
+        self.import_button(ui);
     }
 
     pub fn editor_windows(&mut self, ctx: &egui::Context) {

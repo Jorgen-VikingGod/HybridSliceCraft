@@ -112,7 +112,7 @@ HybridSliceCraft slices models for **filament (FDM)** printers and **resin (MSLA
 
 ## Importing your own presets
 
-**Import profiles…** (under the print quality list) reads printer, filament and print presets you exported from OrcaSlicer or Bambu Studio: plain `.json` files or their export bundles (`.orca_printer`, `.orca_filament`, `.bbscfg`, `.bbsflmt`, `.zip`).
+**Import profiles…** (under the print quality list) reads printer, filament and print presets you exported from OrcaSlicer or Bambu Studio: plain `.json` files or their export bundles (`.orca_printer`, `.orca_filament`, `.bbscfg`, `.bbsflmt`, `.zip`). The button is also in resin mode, where it reads resin printers, resins and print settings from PrusaSlicer `.ini` files: a config bundle, or a single exported preset.
 
 - Choose several files at once; a preset that inherits from another is completed from the files you picked.
 - A report lists parent presets that were missing (their settings come from our defaults) and settings that have no counterpart here. Nothing is dropped silently.
