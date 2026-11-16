@@ -96,6 +96,45 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN: 1
         run: cargo packager --release ${{ matrix.formats }} --target ${{ matrix.target }}
 
+      - name: Make the AppImage usable by every user
+        # cargo-packager leaves the files inside the AppImage readable and runnable by their
+        # owner only (the build folder is private), so another user, or a sandbox such as the
+        # one the AppImage catalogue tests in, gets "Permission denied" on AppRun. Unpack it,
+        # open the permissions and pack it again.
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          ARCH: x86_64
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
+            https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  $RUNNER_TEMP/appimagetool" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/appimagetool"
+          cd dist
+          for f in *.AppImage; do
+            chmod +x "$f"
+            "./$f" --appimage-extract >/dev/null
+            chmod -R u+rwX,go+rX squashfs-root
+            chmod 755 squashfs-root/AppRun
+            "$RUNNER_TEMP/appimagetool" squashfs-root "$f.new"
+            mv "$f.new" "$f"
+            chmod 755 "$f"
+            rm -rf squashfs-root
+            "./$f" --appimage-extract >/dev/null
+            # Check the result: no file inside may be closed to other users. (Folders are
+            # skipped: the unpacking tool makes those private whatever the image says.)
+            bad=$(find squashfs-root -type f \( ! -perm -o+r -o \( -perm -u+x ! -perm -o+x \) \))
+            if [ -n "$bad" ]; then
+              echo "$bad"
+              echo "Some files in the AppImage are still closed to other users" >&2
+              exit 1
+            fi
+            [ "$(stat -c %a squashfs-root/AppRun)" = 755 ] || { echo "AppRun is not 755" >&2; exit 1; }
+            rm -rf squashfs-root
+          done
+
       - name: Name the files by platform
         shell: bash
         run: |
