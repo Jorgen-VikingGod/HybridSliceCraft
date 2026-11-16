@@ -106,6 +106,8 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
           ARCH: x86_64
+          # https://docs.appimage.org/packaging-guide/optional/updates.html
+          UPDATE_INFO: gh-releases-zsync|Jorgen-VikingGod|HybridSliceCraft|latest|hybridslicecraft_*_x86_64.AppImage.zsync
         run: |
           set -euo pipefail
           curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
@@ -118,9 +120,15 @@ jobs:
             "./$f" --appimage-extract >/dev/null
             chmod -R u+rwX,go+rX squashfs-root
             chmod 755 squashfs-root/AppRun
-            "$RUNNER_TEMP/appimagetool" squashfs-root "$f.new"
-            mv "$f.new" "$f"
+            # Pack it under its own name, so the .zsync file names it correctly, and embed
+            # where updates come from: AppImageUpdate then fetches only what changed.
+            mv "$f" "$RUNNER_TEMP/$f.orig"
+            "$RUNNER_TEMP/appimagetool" -u "$UPDATE_INFO" squashfs-root "$f"
+            rm -f "$RUNNER_TEMP/$f.orig"
             chmod 755 "$f"
+            [ -s "$f.zsync" ] || { echo "No .zsync file was made" >&2; exit 1; }
+            info=$("./$f" --appimage-updateinformation)
+            [ "$info" = "$UPDATE_INFO" ] || { echo "Update information is '$info'" >&2; exit 1; }
             rm -rf squashfs-root
             "./$f" --appimage-extract >/dev/null
             # Check the result: no file inside may be closed to other users. (Folders are
@@ -160,6 +168,7 @@ jobs:
             dist/*.dmg
             dist/*.deb
             dist/*.AppImage
+            dist/*.AppImage.zsync
           if-no-files-found: error
 
       - name: Attach the installers to the release
@@ -171,6 +180,7 @@ jobs:
             dist/*.dmg
             dist/*.deb
             dist/*.AppImage
+            dist/*.AppImage.zsync
 
   # Starts the AppImage the way the AppImage catalogue (appimage.github.io) tests it: a
   # fresh Ubuntu 22.04 without our build libraries, a small virtual screen with no graphics
