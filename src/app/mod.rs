@@ -777,6 +777,7 @@ impl eframe::App for App {
         self.last_frame = now;
         self.frames += 1;
 
+        theme::follow_system(&ctx);
         self.poll_job(&ctx);
         self.handle_keys(&ctx);
         self.handle_dropped_files(&ctx);

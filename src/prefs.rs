@@ -45,7 +45,6 @@ impl Prefs {
     /// Make these choices take effect.
     pub fn apply(&self, ctx: &egui::Context) {
         crate::i18n::set_lang(self.language);
-        crate::app::theme::set_theme(self.theme);
-        crate::app::theme::apply_style(ctx);
+        crate::app::theme::choose(self.theme, ctx);
     }
 }

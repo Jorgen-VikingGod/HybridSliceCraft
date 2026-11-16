@@ -6,30 +6,112 @@ use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU8, Ordering};
 
 /// Which colours the panels, menus and text use. The 3D view and the layer
-/// picture are drawn on a dark ground in both, as in most modelling tools.
+/// picture are drawn on a dark ground in all of them, as in most modelling tools.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum Theme {
+    /// Dark when the system is set to dark mode, light otherwise.
     #[default]
+    System,
     Dark,
     Light,
 }
 
 impl Theme {
-    pub const ALL: [Theme; 2] = [Theme::Dark, Theme::Light];
+    pub const ALL: [Theme; 3] = [Theme::System, Theme::Dark, Theme::Light];
     pub fn label(self) -> &'static str {
         match self {
+            Theme::System => "Follow system",
             Theme::Dark => "Dark theme",
             Theme::Light => "Light theme",
         }
     }
+
+    /// The look this choice stands for right now: Dark or Light, never System.
+    pub fn resolve(self, ctx: &egui::Context) -> Theme {
+        match self {
+            Theme::System => match ctx.system_theme().or_else(desktop_theme) {
+                Some(egui::Theme::Dark) => Theme::Dark,
+                _ => Theme::Light,
+            },
+            t => t,
+        }
+    }
+}
+
+/// The dark-mode setting of the desktop, for systems where the window library
+/// cannot tell (X11). Read once: it starts programs, which is too slow per frame.
+fn desktop_theme() -> Option<egui::Theme> {
+    static FOUND: std::sync::OnceLock<Option<egui::Theme>> = std::sync::OnceLock::new();
+    *FOUND.get_or_init(|| {
+        if !cfg!(target_os = "linux") {
+            return None;
+        }
+        let dark = |v: &str| v.to_lowercase().contains("dark");
+        // GTK_THEME=Adwaita:dark
+        if let Ok(v) = std::env::var("GTK_THEME") {
+            return Some(if dark(&v) { egui::Theme::Dark } else { egui::Theme::Light });
+        }
+        let gsettings = |key: &str| {
+            std::process::Command::new("gsettings")
+                .args(["get", "org.gnome.desktop.interface", key])
+                .stderr(std::process::Stdio::null())
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().trim_matches('\'').to_string())
+        };
+        // 'prefer-dark' / 'prefer-light' / 'default' (GNOME 42 and later, also set by KDE)
+        match gsettings("color-scheme").as_deref() {
+            Some(v) if dark(v) => return Some(egui::Theme::Dark),
+            Some("prefer-light") => return Some(egui::Theme::Light),
+            _ => {}
+        }
+        if let Some(v) = gsettings("gtk-theme") {
+            if dark(&v) {
+                return Some(egui::Theme::Dark);
+            }
+        }
+        // KDE Plasma: ColorScheme=BreezeDark
+        let home = std::env::var_os("XDG_CONFIG_HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".config")));
+        if let Some(text) = home.and_then(|d| std::fs::read_to_string(d.join("kdeglobals")).ok()) {
+            if let Some(line) = text.lines().find(|l| l.starts_with("ColorScheme=")) {
+                return Some(if dark(line) { egui::Theme::Dark } else { egui::Theme::Light });
+            }
+        }
+        None
+    })
 }
 
 static CURRENT: AtomicU8 = AtomicU8::new(0);
+static FOLLOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-pub fn set_theme(t: Theme) {
-    CURRENT.store(t as u8, Ordering::Relaxed);
+/// Choose the look. System is looked up through `ctx` now and again whenever
+/// the system changes (see [`follow_system`]).
+pub fn choose(t: Theme, ctx: &egui::Context) {
+    FOLLOW.store(t == Theme::System, Ordering::Relaxed);
+    set_theme(t.resolve(ctx));
+    apply_style(ctx);
 }
 
+/// Called every frame: when following the system, switch with it.
+pub fn follow_system(ctx: &egui::Context) {
+    if FOLLOW.load(Ordering::Relaxed) {
+        let now = Theme::System.resolve(ctx);
+        if now != theme() {
+            set_theme(now);
+            apply_style(ctx);
+        }
+    }
+}
+
+/// Set the look directly: Dark or Light (System counts as Dark).
+pub fn set_theme(t: Theme) {
+    CURRENT.store((t == Theme::Light) as u8, Ordering::Relaxed);
+}
+
+/// The look in use: Dark or Light.
 pub fn theme() -> Theme {
     if CURRENT.load(Ordering::Relaxed) == 1 {
         Theme::Light
@@ -206,8 +288,16 @@ pub fn apply_style(ctx: &egui::Context) {
     });
     ctx.set_style_of(egui::Theme::Dark, style.clone());
     ctx.set_style_of(egui::Theme::Light, style);
-    // The system's own title bar and dialogs follow the same choice.
-    ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(if dark { egui::SystemTheme::Dark } else { egui::SystemTheme::Light }));
+    // The system's own title bar and dialogs follow the same choice. When following
+    // the system, leave them alone, or the window would stop reporting its changes.
+    let system = if FOLLOW.load(Ordering::Relaxed) {
+        egui::SystemTheme::SystemDefault
+    } else if dark {
+        egui::SystemTheme::Dark
+    } else {
+        egui::SystemTheme::Light
+    };
+    ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(system));
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -590,7 +680,7 @@ mod tests {
     #[test]
     fn both_themes_keep_text_readable_on_their_panels() {
         // One test, since the theme is a global.
-        for t in Theme::ALL {
+        for t in [Theme::Dark, Theme::Light] {
             set_theme(t);
             for (name, c, min) in [
                 ("text", ui_text(), 7.0),
