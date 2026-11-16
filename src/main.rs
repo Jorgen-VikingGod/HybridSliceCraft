@@ -46,7 +46,7 @@ Options:
   For pictures in the manual:
   --tool <name>             Start with a tool chosen: move, rotate, scale, lay-flat, cut, paint, measure, support-point, drain-hole
   --tab <0-4>               Start on this tab of the print settings
-  --window <name>           Open a window: printer, material, send, note, mixes
+  --window <name>           Open a window: printer, material, send, note, mixes, lists
   --scheme <name>           Colour the preview by this (Feature, Speed, Flow, Layer height, Filament...)
   --demo-paint              Paint the front of the model with the second filament, or the first mix
   --demo-mixes              Add the 50/50 mixed filaments

@@ -305,6 +305,8 @@ pub struct App {
     /// What the last profile import could not carry over, shown until closed.
     pub import_notes: Option<Vec<String>>,
     pub show_material: bool,
+    /// The window where presets are shown or hidden in the lists.
+    pub show_lists: bool,
     pub show_about: bool,
     pub show_shortcuts: bool,
     pub show_note: bool,
@@ -470,6 +472,7 @@ impl App {
             show_printer: false,
             import_notes: None,
             show_material: false,
+            show_lists: false,
             show_about: false,
             show_shortcuts: false,
             show_note: false,
@@ -590,6 +593,7 @@ impl App {
             Some("material") => self.show_material = true,
             Some("send") => self.show_send = true,
             Some("note") => self.show_note = true,
+            Some("lists") => self.show_lists = true,
             Some("mixes") => self.open_mix_editor(None),
             _ => {}
         }
