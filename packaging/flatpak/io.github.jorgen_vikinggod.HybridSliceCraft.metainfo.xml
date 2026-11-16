@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.14.1" date="2026-11-16">
+      <description>
+        <p>The AppImage can now be run by every user, not only the one who unpacked it.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.14.1</url>
+    </release>
     <release version="0.14.0" date="2026-11-16">
       <description>
         <p>Choose which printers, filaments and settings the lists offer, pick printers by make, resize by percentage, select several models with a box, import PrusaSlicer resin presets, and fixes for Orca filament imports and the theme on a light Windows.</p>
