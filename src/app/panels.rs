@@ -152,6 +152,7 @@ impl App {
         let mut changed = false;
         let mut want_undo = false;
         let mut drop_after = false;
+        let mut resize_all: Option<f32> = None;
         let track = |r: &egui::Response, changed: &mut bool, undo: &mut bool| {
             if r.drag_started() || r.gained_focus() {
                 *undo = true;
@@ -237,7 +238,18 @@ impl App {
                     changed = true;
                     drop_after = true;
                 }
-                ui.label(RichText::new(format!("{:.0}%", o.scale.x.abs() * 100.0)).small().color(ui_dim()));
+                let old = o.scale.x.abs() * 100.0;
+                let mut pct = old;
+                let r = ui
+                    .add(egui::DragValue::new(&mut pct).speed(0.5).range(1.0..=10000.0).max_decimals(1).suffix(" %"))
+                    .on_hover_text(crate::i18n::tr("Resize by percentage. With several models selected, all of them change."));
+                track(&r, &mut changed, &mut want_undo);
+                if r.changed() && old > 1e-6 {
+                    let f = pct / old;
+                    o.scale *= f;
+                    resize_all = Some(f);
+                    drop_after = true;
+                }
             });
         });
         ui.horizontal_wrapped(|ui| {
@@ -275,6 +287,18 @@ impl App {
         if changed {
             if let Some(slot) = self.selected_mut() {
                 *slot = o.clone();
+            }
+        }
+        // The same percentage for every other selected model.
+        if let Some(f) = resize_all {
+            let first = self.selection.first().copied();
+            let ids: Vec<u64> = self.selection.iter().copied().filter(|id| Some(*id) != first).collect();
+            let resin = self.resin();
+            let lift = self.resin_process.lift_from_plate;
+            for obj in self.plate_mut().objects.iter_mut().filter(|x| ids.contains(&x.id)) {
+                obj.scale *= f;
+                let floor = if resin && !obj.support_points.is_empty() { lift } else { 0.0 };
+                obj.drop_to_plate(floor);
             }
         }
     }
