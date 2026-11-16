@@ -271,6 +271,7 @@ WORTH CHECKING	PRÜFENSWERT	À VÉRIFIER	A REVISAR
 Wall loops	Wandlinien	Parois	Perímetros
 Wall thickness	Wandstärke	Épaisseur des parois	Grosor de pared
 Works with OctoPrint, Klipper with Moonraker, PrusaLink and Duet, over a plain http address.	Funktioniert mit OctoPrint, Klipper mit Moonraker, PrusaLink und Duet, über eine einfache http-Adresse.	Fonctionne avec OctoPrint, Klipper avec Moonraker, PrusaLink et Duet, via une simple adresse http.	Funciona con OctoPrint, Klipper con Moonraker, PrusaLink y Duet, mediante una dirección http simple.
+Follow system	System folgen	Suivre le système	Seguir el sistema
 Dark theme	Dunkles Design	Thème sombre	Tema oscuro
 Light theme	Helles Design	Thème clair	Tema claro
 Light	Licht	Lumière	Luz
