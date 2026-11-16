@@ -26,6 +26,19 @@ before-packaging-command = "cargo build --release --locked"
 binaries = [{ path = "hybridslicecraft", main = true }]
 icons = ["assets/icon.ico", "assets/icon-512@2x.png", "assets/icon-512.png", "assets/icon-256.png", "assets/icon-128.png", "assets/icon-32.png"]
 
+# The window library loads these when it starts, so the AppImage tool can't see that they
+# are needed. Without them the program won't start on a system that lacks one.
+[package.metadata.packager.appimage]
+libs = [
+  "libxkbcommon.so.0",
+  "libxkbcommon-x11.so.0",
+  "libxcb-xkb.so.1",
+  "libXcursor.so.1",
+  "libXi.so.6",
+  "libXrandr.so.2",
+  "libXrender.so.1",
+]
+
 [package.metadata.packager.deb]
 depends = ["libxkbcommon0", "libwayland-client0", "libvulkan1 | libgl1"]
 

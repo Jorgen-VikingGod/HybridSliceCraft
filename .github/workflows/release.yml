@@ -76,7 +76,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libx11-dev \
-            libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+            libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev libxkbcommon-x11-0 libxcb-xkb1
 
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked --version ${{ env.PACKAGER_VERSION }}
@@ -131,6 +131,10 @@ jobs:
               echo "Some files in the AppImage are still closed to other users" >&2
               exit 1
             fi
+            # The libraries the window code loads on its own must be inside.
+            for lib in libxkbcommon.so.0 libxkbcommon-x11.so.0 libXcursor.so.1 libXi.so.6 libXrandr.so.2; do
+              [ -e "squashfs-root/usr/lib/$lib" ] || { echo "$lib is missing from the AppImage" >&2; ls squashfs-root/usr/lib >&2; exit 1; }
+            done
             [ "$(stat -c %a squashfs-root/AppRun)" = 755 ] || { echo "AppRun is not 755" >&2; exit 1; }
             rm -rf squashfs-root
           done
