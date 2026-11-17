@@ -237,7 +237,6 @@ TOP AND BOTTOM	OBEN UND UNTEN	DESSUS ET DESSOUS	SUPERIOR E INFERIOR
 TRAVEL	LEERFAHRT	DÉPLACEMENT	DESPLAZAMIENTO
 Temperature tower	Temperaturturm	Tour de température	Torre de temperatura
 Temperatures, cooling, flow, cost	Temperaturen, Kühlung, Fluss, Kosten	Températures, refroidissement, débit, coût	Temperaturas, refrigeración, flujo, coste
-The cut height doesn't pass through this model.	Die Schnitthöhe liegt nicht im Modell.	La hauteur de coupe ne traverse pas ce modèle.	La altura de corte no atraviesa este modelo.
 The model changed size. Hollow it again to keep the walls right.	Das Modell hat seine Größe geändert. Höhle es erneut aus, damit die Wände stimmen.	Le modèle a changé de taille. Creusez-le à nouveau pour garder des parois correctes.	El modelo cambió de tamaño. Vacíalo de nuevo para que las paredes sean correctas.
 Then click a surface of the model. Shortcut: F	Klicke dann auf eine Fläche des Modells. Kürzel: F	Cliquez ensuite sur une surface du modèle. Raccourci : F	Después haz clic en una superficie del modelo. Atajo: F
 Then click the model where a hole should go	Klicke dann auf das Modell, wo ein Loch hin soll	Cliquez ensuite sur le modèle là où un trou doit aller	Después haz clic en el modelo donde debe ir un agujero
@@ -543,3 +542,9 @@ None	Keine	Aucun	Ninguno
 Show everything	Alles anzeigen	Tout afficher	Mostrar todo
 Only those in use	Nur die benutzten	Seulement ceux utilisés	Solo los usados
 Hide everything except what is chosen now	Alles außer der aktuellen Auswahl ausblenden	Tout masquer sauf ce qui est choisi	Ocultar todo salvo lo elegido ahora
+Choose the direction and position, then cut the selected models in two.	Wähle Richtung und Position und schneide dann die ausgewählten Modelle in zwei Teile.	Choisissez la direction et la position, puis coupez les modèles sélectionnés en deux.	Elige la dirección y la posición y corta en dos los modelos seleccionados.
+The cut doesn't pass through the selected models.	Der Schnitt geht durch keines der ausgewählten Modelle.	La coupe ne traverse pas les modèles sélectionnés.	El corte no atraviesa los modelos seleccionados.
+Cut across	Schneiden quer zu	Couper selon	Cortar según
+Lay the cut faces on the plate	Schnittflächen auf die Platte legen	Poser les faces coupées sur le plateau	Apoyar las caras cortadas en la placa
+Find room for the pieces	Platz für die Teile suchen	Trouver de la place pour les pièces	Buscar sitio para las piezas
+Off: the pieces stay where the model was, just moved apart. Other models never move.	Aus: Die Teile bleiben, wo das Modell war, nur auseinandergerückt. Andere Modelle bewegen sich nie.	Désactivé : les pièces restent à la place du modèle, juste écartées. Les autres modèles ne bougent jamais.	Desactivado: las piezas se quedan donde estaba el modelo, solo separadas. Los demás modelos nunca se mueven.

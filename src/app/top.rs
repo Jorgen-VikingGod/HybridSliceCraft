@@ -424,7 +424,7 @@ impl App {
             Tool::Rotate => "Drag a coloured ring to turn the selected model.",
             Tool::Scale => "Drag a handle to resize the selected model.",
             Tool::LayFlat => "Click a surface: the model turns so that surface sits flat on the plate.",
-            Tool::Cut => "Set the height, then cut the selected model in two.",
+            Tool::Cut => "Choose the direction and position, then cut the selected models in two.",
             Tool::SupportPoint => "Click the model to add a support. Shift-click a support to remove it.",
             Tool::DrainHole => "Click the model to add a drain hole. Shift-click a hole to remove it.",
             Tool::Measure => "Click two points to measure the distance between them.",

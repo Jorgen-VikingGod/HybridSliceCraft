@@ -229,7 +229,13 @@ pub struct App {
     pub camera: Camera,
     pub tool: Tool,
     pub drag: Option<Drag>,
-    pub cut_z: f32,
+    /// Where the cut tool cuts: across X (0), Y (1) or Z (2), at this position.
+    pub cut_axis: usize,
+    pub cut_at: f32,
+    /// Turn each piece so its cut face lies on the plate.
+    pub cut_flat: bool,
+    /// Find room for the pieces; otherwise they stay where they were, just apart.
+    pub cut_place: bool,
     /// Copies for the array tool: across, deep, and the space between.
     pub array: (u32, u32, f32),
     /// Keyboard shortcuts, and the command waiting for its new key.
@@ -410,7 +416,10 @@ impl App {
             },
             tool: Tool::Move,
             drag: None,
-            cut_z: 10.0,
+            cut_axis: 2,
+            cut_at: 10.0,
+            cut_flat: true,
+            cut_place: true,
             array: (2, 2, 5.0),
             keys: crate::keys::Keymap::load(),
             capturing: None,

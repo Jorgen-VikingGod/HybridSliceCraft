@@ -866,10 +866,7 @@ impl App {
             if icon_button(&mut child, icon, self.tool == t, accent, tip).clicked() {
                 self.tool = t;
                 if t == Tool::Cut {
-                    if let Some(o) = self.selected() {
-                        let (a, b) = o.world_bounds();
-                        self.cut_z = (a.z + b.z) * 0.5;
-                    }
+                    self.centre_cut();
                 }
             }
         }
@@ -894,21 +891,35 @@ impl App {
         let area = Rect::from_min_size(rect.left_top() + Vec2::new(60.0, 10.0), Vec2::new(280.0, 64.0));
         match self.tool {
             Tool::Cut => {
-                let top = self.selected().map(|o| o.world_bounds().1.z).unwrap_or(self.build_height());
+                let (lo, hi) = self.cut_range().unwrap_or((0.0, self.build_height()));
+                let cut_area = Rect::from_min_size(area.min, Vec2::new(330.0, 120.0));
                 let mut do_cut = false;
-                ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
+                ui.scope_builder(egui::UiBuilder::new().max_rect(cut_area), |ui| {
                     egui::Frame::new()
                         .fill(Color32::from_rgba_unmultiplied(26, 29, 36, 240))
                         .corner_radius(8.0)
                         .inner_margin(10.0)
                         .show(ui, |ui| {
+                            ui.visuals_mut().override_text_color = Some(CANVAS_TEXT);
                             ui.horizontal(|ui| {
-                                ui.label(crate::i18n::tr("Height"));
-                                ui.add(egui::Slider::new(&mut self.cut_z, 0.0..=top.max(0.1)).suffix(" mm").max_decimals(2));
+                                ui.label(crate::i18n::tr("Cut across"));
+                                for (k, name) in ["X", "Y", "Z"].into_iter().enumerate() {
+                                    if ui.selectable_label(self.cut_axis == k, name).clicked() && self.cut_axis != k {
+                                        self.cut_axis = k;
+                                        self.centre_cut();
+                                    }
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label(crate::i18n::tr("Position"));
+                                ui.add(egui::Slider::new(&mut self.cut_at, lo..=hi.max(lo + 0.1)).suffix(" mm").max_decimals(2));
                                 if ui.add_enabled(!self.selection.is_empty(), egui::Button::new(crate::i18n::tr("Cut"))).clicked() {
                                     do_cut = true;
                                 }
                             });
+                            ui.checkbox(&mut self.cut_flat, crate::i18n::tr("Lay the cut faces on the plate"));
+                            ui.checkbox(&mut self.cut_place, crate::i18n::tr("Find room for the pieces"))
+                                .on_hover_text(crate::i18n::tr("Off: the pieces stay where the model was, just moved apart. Other models never move."));
                         });
                 });
                 if do_cut {
@@ -1186,17 +1197,28 @@ impl App {
                 clip = Some(z);
             }
             if self.tool == Tool::Cut {
-                if let Some(o) = self.selected() {
-                    let (a, b) = o.world_bounds();
-                    let z = self.cut_z;
+                let bounds = self
+                    .plate()
+                    .objects
+                    .iter()
+                    .filter(|o| self.selection.contains(&o.id))
+                    .map(|o| o.world_bounds())
+                    .reduce(|x, y| (x.0.min(y.0), x.1.max(y.1)));
+                if let Some((a, b)) = bounds {
                     let pad = 4.0;
+                    let (a, b) = (a - Vec3::splat(pad), b + Vec3::splat(pad));
+                    let k = self.cut_axis.min(2);
+                    // The two other axes span the plane.
+                    let (u, v) = ((k + 1) % 3, (k + 2) % 3);
+                    let corner = |i: usize, j: usize| {
+                        let mut p = Vec3::ZERO;
+                        p[k] = self.cut_at;
+                        p[u] = if i == 0 { a[u] } else { b[u] };
+                        p[v] = if j == 0 { a[v] } else { b[v] };
+                        p
+                    };
+                    let corners = [corner(0, 0), corner(1, 0), corner(1, 1), corner(0, 1)];
                     let c = [240u8, 200, 90, 230];
-                    let corners = [
-                        Vec3::new(a.x - pad, a.y - pad, z),
-                        Vec3::new(b.x + pad, a.y - pad, z),
-                        Vec3::new(b.x + pad, b.y + pad, z),
-                        Vec3::new(a.x - pad, b.y + pad, z),
-                    ];
                     for i in 0..4 {
                         push_line(&mut lines, corners[i], corners[(i + 1) % 4], c);
                     }
