@@ -211,7 +211,11 @@ impl App {
                 ui.close();
             }
             if ui.button(crate::i18n::tr("Save plate as STL…")).clicked() {
-                self.export_stl(ctx);
+                self.export_stl(ctx, false);
+                ui.close();
+            }
+            if ui.add_enabled(!self.selection.is_empty(), egui::Button::new(crate::i18n::tr("Save selection as STL…"))).clicked() {
+                self.export_stl(ctx, true);
                 ui.close();
             }
             if !self.resin() && ui.button(crate::i18n::tr("Send to network printer…")).clicked() {
@@ -239,6 +243,10 @@ impl App {
             }
             if ui.button(self.keys.caption(crate::i18n::tr("Duplicate"), Command::Duplicate)).clicked() {
                 self.duplicate_selected();
+                ui.close();
+            }
+            if ui.add_enabled(self.selection.len() > 1, egui::Button::new(crate::i18n::tr("Merge into one"))).clicked() {
+                self.merge_selected(ctx);
                 ui.close();
             }
             ui.menu_button(crate::i18n::tr("Mirror"), |ui| {

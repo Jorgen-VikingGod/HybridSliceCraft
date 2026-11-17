@@ -363,6 +363,74 @@ impl App {
         self.toast(ctx, ToastKind::Good, text);
     }
 
+    /// Join the selected models into one, as they are placed now. Paint, marks,
+    /// supports and drain holes come along; Split into parts takes it apart again.
+    pub fn merge_selected(&mut self, ctx: &egui::Context) {
+        let chosen: Vec<PlateObject> = self.plate().objects.iter().filter(|o| self.selection.contains(&o.id)).cloned().collect();
+        if chosen.len() < 2 {
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("Select two or more models to merge."));
+            return;
+        }
+        if chosen.iter().any(|o| o.cavity.is_some()) {
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("Hollowed models can't be merged. Merge first, then hollow."));
+            return;
+        }
+        let mut mesh = Mesh::default();
+        let painted = chosen.iter().any(|o| o.paint.is_some());
+        let marked = chosen.iter().any(|o| o.marks.is_some());
+        let (mut paint, mut marks) = (Vec::new(), Vec::new());
+        let mut points = Vec::new();
+        let mut holes = Vec::new();
+        for o in &chosen {
+            let n = o.mesh.t.len();
+            mesh.append(&o.world_mesh());
+            let per_face = |v: &Option<Arc<Vec<u8>>>| match v {
+                Some(v) if v.len() == n => v.to_vec(),
+                _ => vec![0; n],
+            };
+            if painted {
+                paint.extend(per_face(&o.paint));
+            }
+            if marked {
+                marks.extend(per_face(&o.marks));
+            }
+            for (p, w) in o.support_points.iter().zip(o.world_points()) {
+                points.push(crate::resin::supports::SupportPoint { pos: w.pos.into(), normal: w.normal.into(), ..*p });
+            }
+            let m = o.matrix();
+            for h in &o.holes {
+                let normal = m.transform_vector3(Vec3::from(h.normal)).normalize_or_zero();
+                holes.push(crate::scene::DrainHole { pos: m.transform_point3(Vec3::from(h.pos)).into(), normal: normal.into(), diameter: h.diameter });
+            }
+        }
+        let first = &chosen[0];
+        let mut merged = PlateObject::new(merged_name(chosen.iter().map(|o| o.name.as_str())), mesh);
+        merged.pos = merged.pivot;
+        merged.extruder = first.extruder;
+        merged.flow = first.flow;
+        merged.infill = first.infill;
+        merged.walls = first.walls;
+        merged.ranges = first.ranges.clone();
+        merged.paint_depth = first.paint_depth;
+        if painted {
+            merged.paint = Some(Arc::new(paint));
+        }
+        if marked {
+            merged.marks = Some(Arc::new(marks));
+        }
+        merged.refresh_paint();
+        merged.support_points = points;
+        merged.holes = holes;
+        self.push_undo();
+        let plate = self.plate_mut();
+        let at = plate.objects.iter().position(|o| o.id == first.id).unwrap_or(0);
+        plate.objects.retain(|o| !chosen.iter().any(|c| c.id == o.id));
+        let at = at.min(plate.objects.len());
+        let id = merged.id;
+        plate.objects.insert(at, merged);
+        self.selection = vec![id];
+    }
+
     pub fn split_selected(&mut self, ctx: &egui::Context) {
         let Some(sel) = self.selected().cloned() else { return };
         let parts = sel.mesh.split_shells();
@@ -925,15 +993,28 @@ impl App {
         });
     }
 
-    pub fn export_stl(&mut self, ctx: &egui::Context) {
-        let objects: Vec<PlateObject> = self.plate().objects.iter().filter(|o| o.visible).cloned().collect();
+    /// Save the plate, or only the selected models, as one STL file.
+    pub fn export_stl(&mut self, ctx: &egui::Context, only_selection: bool) {
+        let objects: Vec<PlateObject> = self
+            .plate()
+            .objects
+            .iter()
+            .filter(|o| o.visible && (!only_selection || self.selection.contains(&o.id)))
+            .cloned()
+            .collect();
         if objects.is_empty() {
-            self.toast(ctx, ToastKind::Info, crate::i18n::tr("There's nothing on the plate to save."));
+            let text = if only_selection { "Select the models to save first." } else { "There's nothing on the plate to save." };
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr(text));
             return;
         }
+        let name = match (only_selection, objects.as_slice()) {
+            (true, [one]) => one.name.clone(),
+            (true, many) => merged_name(many.iter().map(|o| o.name.as_str())),
+            _ => self.default_name(),
+        };
         let Some(path) = rfd::FileDialog::new()
             .add_filter("STL", &["stl"])
-            .set_file_name(format!("{}.stl", self.default_name()))
+            .set_file_name(format!("{}.stl", name.replace(['/', '\\'], "-")))
             .save_file()
         else {
             return;
@@ -1211,4 +1292,34 @@ pub fn load_model(path: &std::path::Path) -> Result<(String, Mesh, Vec<String>),
     let notes = m.repair();
     m.compact();
     Ok((stem_of(path), m, notes))
+}
+
+/// A name for models put together: what their names have in common ("Bear" for
+/// "Bear part 1" and "Bear part 2"), or a plain one.
+fn merged_name<'a>(names: impl Iterator<Item = &'a str>) -> String {
+    let names: Vec<&str> = names.collect();
+    let Some(first) = names.first() else { return "Merged model".into() };
+    let mut common = first.to_string();
+    for n in &names[1..] {
+        let len = common.chars().zip(n.chars()).take_while(|(a, b)| a == b).count();
+        common = common.chars().take(len).collect();
+    }
+    let mut c = common.trim_end_matches(|ch: char| ch.is_ascii_digit() || ch.is_whitespace()).to_string();
+    for end in [" part", " lower", " upper", " copy"] {
+        if let Some(s) = c.strip_suffix(end) {
+            c = s.to_string();
+        }
+    }
+    let c = c.trim().to_string();
+    if c.chars().count() < 2 { "Merged model".into() } else { c }
+}
+
+#[cfg(test)]
+mod merge_tests {
+    #[test]
+    fn merged_names() {
+        assert_eq!(super::merged_name(["Bear part 1", "Bear part 2"].into_iter()), "Bear");
+        assert_eq!(super::merged_name(["Bear lower", "Bear upper"].into_iter()), "Bear");
+        assert_eq!(super::merged_name(["Cube", "Ball"].into_iter()), "Merged model");
+    }
 }

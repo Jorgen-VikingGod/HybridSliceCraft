@@ -401,6 +401,14 @@ impl App {
                     self.split_selected(&ctx);
                     ui.close();
                 }
+                if self.selection.len() > 1 && ui.button(crate::i18n::tr("Merge into one")).clicked() {
+                    self.merge_selected(&ctx);
+                    ui.close();
+                }
+                if ui.button(crate::i18n::tr("Save selection as STL…")).clicked() {
+                    self.export_stl(&ctx, true);
+                    ui.close();
+                }
                 ui.separator();
             }
             if ui.button(crate::i18n::tr("Add models…")).clicked() {
