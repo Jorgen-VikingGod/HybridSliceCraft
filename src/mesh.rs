@@ -502,6 +502,20 @@ impl Mesh {
         (low, up)
     }
 
+    /// Cut with the plane through `at` along `axis` (0 X, 1 Y, 2 Z), returning
+    /// (the part below `at` on that axis, the part above), both capped.
+    pub fn cut_axis(&self, axis: usize, at: f32) -> (Mesh, Mesh) {
+        if axis >= 2 {
+            return self.cut_z(at);
+        }
+        // Turn the mesh so the axis points up, cut, and turn the halves back.
+        let dir = if axis == 0 { Vec3::X } else { Vec3::Y };
+        let turn = Mat4::from_quat(glam::Quat::from_rotation_arc(dir, Vec3::Z));
+        let (lo, up) = self.transformed(&turn).cut_z(at);
+        let back = turn.inverse();
+        (lo.transformed(&back), up.transformed(&back))
+    }
+
     /// Remove corners no face uses any more.
     pub fn compact(&mut self) {
         let mut map = vec![u32::MAX; self.v.len()];
@@ -1448,6 +1462,18 @@ mod tests {
         assert!((up.volume() - 600.0).abs() < 0.5, "{}", up.volume());
         assert!(lo.report().is_clean(), "{:?}", lo.report());
         assert!(up.report().is_clean(), "{:?}", up.report());
+    }
+
+    #[test]
+    fn cut_across_x_and_y_keeps_volume() {
+        let m = make_box(Vec3::new(10.0, 20.0, 30.0));
+        let (lo, up) = m.cut_axis(0, 3.0);
+        assert!((lo.volume() - 1800.0).abs() < 1.0, "{}", lo.volume());
+        assert!((up.volume() - 4200.0).abs() < 1.0, "{}", up.volume());
+        assert!(lo.bounds().1.x < 3.01 && up.bounds().0.x > 2.99);
+        let (lo, up) = m.cut_axis(1, 15.0);
+        assert!((lo.volume() - 4500.0).abs() < 1.0 && (up.volume() - 1500.0).abs() < 1.0);
+        assert!(lo.report().is_clean() && up.report().is_clean(), "{:?}", up.report());
     }
 
     #[test]

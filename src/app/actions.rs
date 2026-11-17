@@ -384,30 +384,95 @@ impl App {
         self.selection = ids;
     }
 
+    /// The models the cut tool works on: the selection, and what it spans on the cut axis.
+    pub fn cut_range(&self) -> Option<(f32, f32)> {
+        let k = self.cut_axis.min(2);
+        self.plate()
+            .objects
+            .iter()
+            .filter(|o| self.selection.contains(&o.id))
+            .map(|o| o.world_bounds())
+            .map(|(a, b)| (a[k], b[k]))
+            .reduce(|x, y| (x.0.min(y.0), x.1.max(y.1)))
+    }
+
+    /// Put the cut in the middle of the selection.
+    pub fn centre_cut(&mut self) {
+        if let Some((a, b)) = self.cut_range() {
+            self.cut_at = (a + b) * 0.5;
+        }
+    }
+
+    /// Cut every selected model the plane passes through. Only the pieces move;
+    /// everything else on the plate stays where it is.
     pub fn cut_selected(&mut self, ctx: &egui::Context) {
-        let Some(sel) = self.selected().cloned() else {
+        let chosen: Vec<PlateObject> = self.plate().objects.iter().filter(|o| self.selection.contains(&o.id)).cloned().collect();
+        if chosen.is_empty() {
             self.toast(ctx, ToastKind::Info, crate::i18n::tr("Select a model to cut first."));
             return;
-        };
-        let world = sel.world_mesh();
-        let (lo, up) = world.cut_z(self.cut_z);
-        if lo.is_empty() || up.is_empty() {
-            self.toast(ctx, ToastKind::Info, crate::i18n::tr("The cut height doesn't pass through this model."));
+        }
+        let axis = self.cut_axis.min(2);
+        let dir = Vec3::AXES[axis];
+        let mut pieces: Vec<(u64, PlateObject, PlateObject)> = Vec::new();
+        for sel in &chosen {
+            let (lo, up) = sel.world_mesh().cut_axis(axis, self.cut_at);
+            if lo.is_empty() || up.is_empty() {
+                continue;
+            }
+            let mut low = PlateObject::new(format!("{} {}", sel.name, if axis == 2 { "lower" } else { "part 1" }), lo);
+            let mut high = PlateObject::new(format!("{} {}", sel.name, if axis == 2 { "upper" } else { "part 2" }), up);
+            for (piece, face) in [(&mut low, dir), (&mut high, -dir)] {
+                piece.pos = piece.pivot;
+                // Keep the settings that belong to the model.
+                piece.extruder = sel.extruder;
+                piece.flow = sel.flow;
+                piece.infill = sel.infill;
+                piece.walls = sel.walls;
+                piece.ranges = sel.ranges.clone();
+                // The cut face down, unless it points straight up: then the piece
+                // still stands on the model's own bottom.
+                if self.cut_flat && face.z < 0.99 {
+                    piece.rot = Quat::from_rotation_arc(face, -Vec3::Z);
+                }
+            }
+            pieces.push((sel.id, low, high));
+        }
+        if pieces.is_empty() {
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("The cut doesn't pass through the selected models."));
             return;
         }
         self.push_undo();
-        self.plate_mut().objects.retain(|o| o.id != sel.id);
-        let mut bottom = PlateObject::new(format!("{} lower", sel.name), lo);
-        bottom.pos = bottom.pivot;
-        let mut top = PlateObject::new(format!("{} upper", sel.name), up);
-        top.pos = top.pivot;
-        top.rot = Quat::from_rotation_x(std::f32::consts::PI);
-        top.drop_to_plate(0.0);
-        bottom.drop_to_plate(0.0);
-        self.selection = vec![bottom.id, top.id];
-        self.plate_mut().objects.push(bottom);
-        self.plate_mut().objects.push(top);
-        self.place_new_objects();
+        let resin = self.resin();
+        let lift = self.resin_process.lift_from_plate;
+        let mut ids = Vec::new();
+        for (old, mut low, mut high) in pieces {
+            let floor = if resin && !low.support_points.is_empty() { lift } else { 0.0 };
+            low.drop_to_plate(floor);
+            high.drop_to_plate(floor);
+            if !self.cut_place {
+                // Stay where the model was, with the second piece moved clear of the first.
+                let (a, b) = low.world_bounds();
+                let (c, d) = high.world_bounds();
+                let overlap = a.x < d.x && c.x < b.x && a.y < d.y && c.y < b.y;
+                if overlap {
+                    let side = if axis == 1 { 1 } else { 0 };
+                    high.pos[side] += b[side] + 5.0 - c[side];
+                }
+            }
+            let plate = self.plate_mut();
+            let at = plate.objects.iter().position(|o| o.id == old).unwrap_or(plate.objects.len());
+            plate.objects.retain(|o| o.id != old);
+            let at = at.min(plate.objects.len());
+            ids.push(low.id);
+            ids.push(high.id);
+            plate.objects.insert(at, high);
+            plate.objects.insert(at, low);
+        }
+        if self.cut_place {
+            self.place_only(&ids);
+        }
+        let keep: Vec<u64> = self.selection.iter().copied().filter(|id| self.plate().objects.iter().any(|o| o.id == *id)).collect();
+        self.selection = keep.into_iter().chain(ids).collect();
         self.tool = Tool::Move;
     }
 
