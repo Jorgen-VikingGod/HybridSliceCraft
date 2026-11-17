@@ -59,6 +59,8 @@ png = "0.18"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 pollster = "0.4"
 ahash = "0.8"
+# Checking for and downloading new versions (HTTPS through rustls, no system libraries).
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 # STEP files (Apache-2.0): read the solid's faces and cut them into triangles.
 truck-stepio = "0.3"
 truck-meshalgo = { version = "0.4", default-features = false, features = ["analyzers", "filters", "tessellation"] }

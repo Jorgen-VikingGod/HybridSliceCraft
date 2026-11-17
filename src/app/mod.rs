@@ -10,6 +10,7 @@ mod preview;
 mod settings;
 pub mod theme;
 mod top;
+mod updates;
 mod view;
 
 use crate::keys::Command;
@@ -314,6 +315,7 @@ pub struct App {
     /// The window where presets are shown or hidden in the lists.
     pub show_lists: bool,
     pub show_about: bool,
+    pub updater: updates::Updater,
     pub show_shortcuts: bool,
     pub show_note: bool,
     pub show_send: bool,
@@ -483,6 +485,7 @@ impl App {
             show_material: false,
             show_lists: false,
             show_about: false,
+            updater: updates::Updater::default(),
             show_shortcuts: false,
             show_note: false,
             show_send: false,
@@ -510,6 +513,10 @@ impl App {
             || opts.window.is_some();
         if !automated {
             app.load_session();
+            // A quiet look for a newer release; says something only if there is one.
+            if !app.prefs.no_update_check && std::env::var_os("HYBRIDSLICECRAFT_NO_UPDATE_CHECK").is_none() {
+                app.updater.check(true);
+            }
         }
 
         if let Some(name) = &opts.printer {
@@ -603,6 +610,10 @@ impl App {
             Some("send") => self.show_send = true,
             Some("note") => self.show_note = true,
             Some("lists") => self.show_lists = true,
+            Some("update") => {
+                self.updater.check(false);
+                self.updater.open = true;
+            }
             Some("mixes") => self.open_mix_editor(None),
             _ => {}
         }
@@ -787,6 +798,7 @@ impl eframe::App for App {
         self.frames += 1;
 
         theme::follow_system(&ctx);
+        self.poll_updates(&ctx);
         self.poll_job(&ctx);
         self.handle_keys(&ctx);
         self.handle_dropped_files(&ctx);
