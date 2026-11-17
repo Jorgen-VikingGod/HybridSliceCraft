@@ -311,6 +311,9 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
         seam_loop_counter: 88172645463393265,
         last_written: None,
         tier_speed: None,
+        // Z contouring moves the nozzle up and down inside a layer by up to this much.
+        layer_top: None,
+        contour_slack: if job.process.zaa_enabled { job.process.layer_height as f64 + 0.1 } else { 0.0 },
     };
 
     let tools_used: Vec<usize> = {
@@ -583,6 +586,9 @@ pub fn write(job: &FdmJob, plan: &Plan, progress: &Progress) -> Result<FdmResult
             drop(_t_moves);
             let t_before = w.result.total_time;
             let _t = super::span("writer finish_layer (estimate, text, preview)");
+            if w.contour_slack > 0.0 {
+                w.layer_top = Some(z);
+            }
             w.finish_layer(display_layer, h);
             drop(_t);
             chunks.push((std::mem::take(&mut w.chunk), w.result.total_time - t_before));

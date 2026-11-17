@@ -718,6 +718,18 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
         return Err("The model is too thin to make even one layer.".into());
     }
     let zs_mid: Vec<f64> = layers.iter().map(|l| l.z - l.height * 0.5).collect();
+    // Where each layer's outline is cut: its middle, or low in it for Z contouring.
+    let zs_cut = super::contour::cut_heights(&layers, p);
+    if p.zaa_enabled && p.zaa_min_z as f64 > p.layer_height as f64 * 0.9 {
+        warnings.push(format!(
+            "Z contouring: the lowest contour height ({:.2} mm) is more than the layers allow; it is held at {:.2} mm.",
+            p.zaa_min_z,
+            super::contour::min_z(p, p.layer_height as f64)
+        ));
+    }
+    if p.zaa_enabled && p.spiral_vase {
+        warnings.push("Z contouring does nothing in spiral vase mode, which already rises smoothly.".into());
+    }
     let heights: Vec<f64> = layers.iter().map(|l| l.height).collect();
     let n = layers.len();
 
@@ -730,7 +742,7 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
             all_slices.push(ready.as_ref().clone());
             continue;
         }
-        let (slices, forced) = object_slices(&o.mesh, &zs_mid, p, job.printer.nozzle_for(o.extruder) as f64);
+        let (slices, forced) = object_slices(&o.mesh, &zs_cut, p, job.printer.nozzle_for(o.extruder) as f64);
         stitched += forced;
         all_slices.push(slices);
     }
@@ -1001,7 +1013,9 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
                         // Keep beads inside the walls, overlapping them a little.
                         let inset = -w * 0.5 + w * overlap;
                         let bound_solid = EdgeIndex::new(&geom::offset(&inner, s * 0.25));
-                        let angle = base_angle + if i % 2 == 0 { 0.0 } else { PI / 2.0 };
+                        // Z contouring can keep one direction, for an even look on curved tops.
+                        let keep = p.zaa_enabled && p.zaa_keep_direction;
+                        let angle = base_angle + if i % 2 == 0 || keep { 0.0 } else { PI / 2.0 };
 
                         drop(_t);
                         let bridge_fill = geom::offset(&bridge_area, inset);

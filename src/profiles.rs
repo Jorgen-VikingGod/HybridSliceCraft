@@ -653,6 +653,17 @@ pub struct FdmProcess {
     pub ironing_flow: f32,
     pub ironing_spacing: f32,
     pub ironing_speed: f32,
+    /// Z contouring: top surfaces and the walls under them follow the model's
+    /// slope in Z within a layer, which smooths the steps on domes and slopes.
+    pub zaa_enabled: bool,
+    /// The thinnest a contoured line may get, in mm; layers are also cut this
+    /// far above their bottom.
+    pub zaa_min_z: f32,
+    /// Walls on surfaces steeper than this many degrees are lowered to meet the
+    /// slope; 0 turns that off.
+    pub zaa_wall_angle: f32,
+    /// Keep the fill direction the same on every layer while contouring.
+    pub zaa_keep_direction: bool,
     // Strength
     pub walls: u32,
     pub top_layers: u32,
@@ -810,6 +821,10 @@ impl Default for FdmProcess {
             ironing_flow: 12.0,
             ironing_spacing: 0.15,
             ironing_speed: 25.0,
+            zaa_enabled: false,
+            zaa_min_z: 0.05,
+            zaa_wall_angle: 35.0,
+            zaa_keep_direction: false,
             walls: 2,
             top_layers: 4,
             bottom_layers: 3,

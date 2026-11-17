@@ -2,6 +2,7 @@
 //! printer instructions and a preview.
 
 pub mod gcode;
+pub mod contour;
 pub mod infill;
 pub mod marks;
 pub mod painting;
@@ -245,6 +246,8 @@ pub struct FdmResult {
     pub tool_changes: u32,
     pub warnings: Vec<String>,
     pub slice_seconds: f32,
+    /// How many lines Z contouring moved off their flat layer.
+    pub contoured_lines: u32,
 }
 
 /// Cross-section area of a laid-down bead, in mm² (a rounded rectangle).
@@ -330,6 +333,9 @@ pub struct ExPath {
     /// Per point of a wall loop, when the user painted the seam: 1 where the
     /// seam should go, -1 where it should not, 0 elsewhere. Empty without paint.
     pub seam: Vec<i8>,
+    /// Per point, with Z contouring: how far above (+) or below (-) the layer's
+    /// top this point is printed, in mm. Empty for a flat line.
+    pub dz: Vec<f32>,
 }
 
 impl ExPath {
@@ -343,6 +349,7 @@ impl ExPath {
             overhang: Vec::new(),
             tier: Vec::new(),
             seam: Vec::new(),
+            dz: Vec::new(),
         }
     }
     pub fn closed(pts: Vec<DVec2>, width: f64, feature: Feature) -> Self {
@@ -355,6 +362,7 @@ impl ExPath {
             overhang: Vec::new(),
             tier: Vec::new(),
             seam: Vec::new(),
+            dz: Vec::new(),
         }
     }
     pub fn length(&self) -> f64 {
@@ -483,8 +491,16 @@ pub fn slice(job: &FdmJob, progress: &Progress) -> Result<FdmResult, String> {
     } else {
         job
     };
-    let plan = plan::build_plan(job, progress)?;
+    let mut plan = plan::build_plan(job, progress)?;
     lap(&started, "plan built");
+    let contoured = if job.process.zaa_enabled {
+        progress.set(0.84, "Z contouring");
+        let n = contour::apply(job, &mut plan);
+        lap(&started, "Z contouring");
+        n
+    } else {
+        0
+    };
     if progress.cancelled() {
         return Err("Cancelled".into());
     }
@@ -495,5 +511,6 @@ pub fn slice(job: &FdmJob, progress: &Progress) -> Result<FdmResult, String> {
     result.warnings.extend(mix_warnings);
     result.warnings.extend(plan.warnings.iter().cloned());
     result.slice_seconds = started.elapsed().as_secs_f32();
+    result.contoured_lines = contoured;
     Ok(result)
 }

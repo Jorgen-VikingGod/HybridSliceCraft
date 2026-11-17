@@ -718,6 +718,10 @@ fn process(r: &mut Reader, name: &str) -> FdmProcess {
     set!(r, p.ironing_flow, "ironing_flow", num);
     set!(r, p.ironing_spacing, "ironing_spacing", num);
     set!(r, p.ironing_speed, "ironing_speed", num);
+    set!(r, p.zaa_enabled, "zaa_enabled", flag);
+    set!(r, p.zaa_min_z, "zaa_min_z", num);
+    set!(r, p.zaa_wall_angle, "zaa_minimize_perimeter_height", num);
+    set!(r, p.zaa_keep_direction, "zaa_dont_alternate_fill_direction", flag);
     // Strength
     set!(r, p.walls, "wall_loops", uint);
     set!(r, p.top_layers, "top_shell_layers", uint);
@@ -903,6 +907,8 @@ mod tests {
             "sparse_infill_pattern": "gyroid", "outer_wall_speed": "80",
             "enable_support": "1", "support_type": "tree(auto)", "support_top_z_distance": "0.2",
             "seam_position": "back", "ironing_type": "topmost", "wall_sequence": "inner-outer-inner wall",
+            "zaa_enabled": "1", "zaa_min_z": "0.08", "zaa_minimize_perimeter_height": "40",
+            "zaa_dont_alternate_fill_direction": "1",
             "some_future_setting": "1"
         }))]);
         let p = &out.processes[0];
@@ -917,6 +923,8 @@ mod tests {
         assert_eq!(p.seam, SeamMode::Back);
         assert!(p.ironing && p.ironing_type == IroningType::Topmost);
         assert!(p.inner_outer_inner && !p.outer_wall_first);
+        assert!(p.zaa_enabled && p.zaa_keep_direction);
+        assert!((p.zaa_min_z - 0.08).abs() < 1e-6 && (p.zaa_wall_angle - 40.0).abs() < 1e-6);
         assert!(out.notes.iter().any(|n| n.contains("some_future_setting")), "{:?}", out.notes);
     }
 

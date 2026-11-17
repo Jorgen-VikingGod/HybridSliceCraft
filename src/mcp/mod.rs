@@ -69,7 +69,7 @@ fn tool_list() -> Value {
                 "filaments": {"type": "array", "items": {"type": "string"}, "description": "Filament names, one per tool head, in order."},
                 "layer_height": {"type": "number", "description": "Layer height in mm (also sets the first layer)."},
                 "supports": {"type": "string", "enum": ["none", "normal", "tree"]},
-                "profile_settings": {"type": "object", "description": "Print settings to change, by name from describe_settings (group filament_process), e.g. {\"walls\": 4, \"infill_density\": 25, \"infill_pattern\": \"Gyroid\"}."},
+                "profile_settings": {"type": "object", "description": "Print settings to change, by name from describe_settings (group filament_process), e.g. {\"walls\": 4, \"infill_density\": 25, \"infill_pattern\": \"Gyroid\"}, or {\"zaa_enabled\": true} for Z contouring of curved tops."},
                 "printer_settings": {"type": "object", "description": "Printer settings to change (group filament_printer)."},
                 "filament_settings": {"type": "object", "description": "Settings to change on every filament (group filament), e.g. {\"nozzle\": 215}."},
                 "fit_to_bed": {"type": "boolean", "description": "Shrink models that are bigger than the bed."},
@@ -277,5 +277,40 @@ mod tests {
         let r = ask(&mut s, "resources/read", json!({"uri": MANUAL_URI}));
         assert!(r["result"]["contents"][0]["text"].as_str().unwrap().contains("HybridSliceCraft manual"));
         assert!(ask(&mut s, "resources/read", json!({"uri": "file:///etc/passwd"}))["error"].is_object());
+    }
+
+    #[test]
+    fn z_contouring_can_be_asked_for_and_is_reported() {
+        let dir = std::env::temp_dir().join("hsc-mcp-zaa");
+        std::fs::create_dir_all(&dir).unwrap();
+        let ball = crate::mesh::make_sphere(glam::Vec3::new(0.0, 0.0, 0.0), 10.0, 64, 32);
+        let (_, dome) = ball.cut_z(0.0);
+        let model = dir.join("dome.stl");
+        dome.write_stl(&model).unwrap();
+        let mut s = tools::State::default();
+        let r = ask(&mut s, "tools/call", json!({"name": "describe_settings", "arguments": {"group": "filament_process"}}));
+        let v = &r["result"]["structuredContent"];
+        for k in ["zaa_enabled", "zaa_min_z", "zaa_wall_angle", "zaa_keep_direction"] {
+            assert!(!v["defaults"][k].is_null(), "{k} missing");
+            assert!(v["explained"][k].as_str().is_some_and(|t| t.len() > 20), "{k} not explained");
+        }
+        let call = |s: &mut tools::State, on: bool| {
+            let out = dir.join(format!("dome-{on}.gcode"));
+            ask(s, "tools/call", json!({"name": "slice_filament", "arguments": {
+                "models": [model.display().to_string()],
+                "profile_settings": {"zaa_enabled": on},
+                "output_path": out.display().to_string(),
+            }}))
+        };
+        let on = call(&mut s, true);
+        assert_eq!(on["result"]["isError"], false, "{on}");
+        let z = &on["result"]["structuredContent"]["z_contouring"];
+        assert_eq!(z["enabled"], true);
+        assert!(z["contoured_lines"].as_u64().unwrap() > 0, "{z}");
+        let off = call(&mut s, false);
+        let z = &off["result"]["structuredContent"]["z_contouring"];
+        assert_eq!(z["enabled"], false);
+        assert_eq!(z["contoured_lines"], 0);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

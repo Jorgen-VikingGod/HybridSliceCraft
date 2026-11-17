@@ -16,7 +16,8 @@ pub fn split_painted(job: &FdmJob) -> FdmJob {
     }
     let p = &job.process;
     let (layers, _) = plan::layer_stack(job);
-    let zs_mid: Vec<f64> = layers.iter().map(|l| l.z - l.height * 0.5).collect();
+    // The same planes the plan cuts at, so the pieces line up with it.
+    let zs_mid = super::contour::cut_heights(&layers, p);
     let last_tool = job.filaments.len().saturating_sub(1);
     let mut out = job.clone();
     out.objects.clear();
