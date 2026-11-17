@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.17.0" date="2026-11-17">
+      <description>
+        <p>Z contouring: top surfaces and the walls under them follow the model's slope within a layer, which smooths the steps on domes, chamfers and gentle slopes.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.17.0</url>
+    </release>
     <release version="0.16.0" date="2026-11-17">
       <description>
         <p>Cut across X, Y or Z without re-arranging the plate, merge models into one and save the selection as STL, and check for updates from inside the program.</p>
