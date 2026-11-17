@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.16.0" date="2026-11-17">
+      <description>
+        <p>Cut across X, Y or Z without re-arranging the plate, merge models into one and save the selection as STL, and check for updates from inside the program.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.16.0</url>
+    </release>
     <release version="0.15.0" date="2026-11-16">
       <description>
         <p>The theme now follows the system: light by default, dark when the system is set to dark mode. The AppImage can be updated with AppImageUpdate.</p>
