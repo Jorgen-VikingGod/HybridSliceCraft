@@ -77,12 +77,12 @@ HybridSliceCraft slices models for **filament (FDM)** printers and **resin (MSLA
 
 - **Move, Turn, Resize** (keys M, R, S): drag the arrows or rings on the model, or type exact values in the **Placement** card (*Position*, *Turn*, *Size*). *Keep proportions* scales evenly; *Actual size* goes back to 100%.
 - **Lay a face flat** (F): click a face, and the model turns so that face lies on the plate. ![Lay flat tool](manual/images/fdm-lay-flat.png)
-- **Cut** (C): slices the model with a plane; useful to split a big model or to print it flat.
+- **Cut** (C): slices the selected models with a plane across X, Y or Z, at the position you set; useful to split a big model or to print it flat. *Lay the cut faces on the plate* turns each piece onto its cut face. *Find room for the pieces* places them in free space; turned off, they stay where the model was, just apart. Only the pieces move, never the rest of the plate.
   ![Cut tool](manual/images/fdm-cut.png)
 - **Measure**: click two points to read the distance.
   ![Measure tool](manual/images/fdm-measure.png)
 - **Arrange the plate** (A) packs the models; **Auto-orient** (O) turns a model so it needs the fewest supports. **On the plate** lowers it to the bed.
-- **Repair** (in the *Model* card) fixes holes and faces pointing the wrong way; **Split into parts** separates pieces that are not joined. The card tells you if the model is *Solid and watertight*.
+- **Repair** (in the *Model* card) fixes holes and faces pointing the wrong way; **Split into parts** separates pieces that are not joined. **Edit → Merge into one** does the opposite: it joins the selected models into one, as they are placed. **File → Save selection as STL…** saves just the selected models as one STL file. The card tells you if the model is *Solid and watertight*.
 - **Several copies:** *Duplicate* (Ctrl+D) or *Make several copies* with the space between them. **Several plates** (the *Plates* card) hold different arrangements in one project.
 - **Undo / Redo** (Ctrl+Z, Ctrl+Shift+Z).
 
@@ -541,6 +541,8 @@ The manual you are reading is also offered to the agent as the resource `hybrids
 | Home | Reset the view |
 
 You can change the keys in **Help → Keyboard shortcuts**.
+
+**Updates.** **Help → Check for updates…** looks for a newer release, and installs it where the program can (AppImage, Windows, macOS). It also looks once at start, quietly; the dialog has a switch to turn that off.
 
 # Command line
 
