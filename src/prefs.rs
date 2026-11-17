@@ -10,6 +10,10 @@ use std::path::PathBuf;
 pub struct Prefs {
     pub theme: Theme,
     pub language: Lang,
+    /// Don't look for a newer release at start.
+    pub no_update_check: bool,
+    /// A release the person chose not to be told about again.
+    pub skip_version: String,
 }
 
 fn path() -> PathBuf {

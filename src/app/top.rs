@@ -377,6 +377,17 @@ impl App {
                 self.show_shortcuts = true;
                 ui.close();
             }
+            let label = match self.updater.available() {
+                Some(v) => RichText::new(crate::i18n::tr("Update to {version}…").replace("{version}", v)).color(self.accent()),
+                None => RichText::new(crate::i18n::tr("Check for updates…")),
+            };
+            if ui.button(label).clicked() {
+                if self.updater.available().is_none() {
+                    self.updater.check(false);
+                }
+                self.updater.open = true;
+                ui.close();
+            }
             if ui.button(crate::i18n::tr("About HybridSliceCraft")).clicked() {
                 self.show_about = true;
                 ui.close();
@@ -488,6 +499,7 @@ impl App {
     }
 
     pub fn windows(&mut self, ctx: &egui::Context) {
+        self.update_window(ctx);
         let mut open = self.show_about;
         dialog(ctx, "About HybridSliceCraft", &mut open, 380.0, |ui| {
                 ui.label(RichText::new(format!("HybridSliceCraft {}", env!("CARGO_PKG_VERSION"))).strong());

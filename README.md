@@ -88,6 +88,8 @@ There is also a Flatpak file (`HybridSliceCraft-<version>-x86_64.flatpak`) on ea
 
     flatpak install --user HybridSliceCraft-0.15.0-x86_64.flatpak
 
+**Updates.** At start the program asks GitHub once for the newest release (nothing else is sent; turn it off in Help → Check for updates). When there is one, Help → Update installs it: the AppImage replaces itself, Windows starts the new installer, macOS opens the new disk image. The `.deb` and Flatpak show how to update them. AppImageUpdate also works, from the `.zsync` file on each release.
+
 The installers aren't code-signed yet. Windows SmartScreen and macOS Gatekeeper will warn on first launch; on macOS, right-click the app and choose Open.
 
 To make installers yourself, install `cargo-packager` (`cargo install cargo-packager --locked`) and run `cargo packager --release` on the system you're building for. They appear in `dist/`.

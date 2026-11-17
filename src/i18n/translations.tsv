@@ -553,3 +553,31 @@ Select two or more models to merge.	Wähle zwei oder mehr Modelle zum Zusammenf�
 Hollowed models can't be merged. Merge first, then hollow.	Ausgehöhlte Modelle lassen sich nicht zusammenfügen. Erst zusammenfügen, dann aushöhlen.	Les modèles évidés ne peuvent pas être fusionnés. Fusionnez d'abord, puis évidez.	Los modelos vaciados no se pueden unir. Une primero y vacía después.
 Save selection as STL…	Auswahl als STL speichern…	Enregistrer la sélection en STL…	Guardar la selección como STL…
 Select the models to save first.	Wähle zuerst die Modelle zum Speichern aus.	Sélectionnez d'abord les modèles à enregistrer.	Selecciona primero los modelos que quieres guardar.
+Version {version} is available: Help → Check for updates.	Version {version} ist verfügbar: Hilfe → Nach Updates suchen.	La version {version} est disponible : Aide → Rechercher des mises à jour.	La versión {version} está disponible: Ayuda → Buscar actualizaciones.
+The download stopped.	Der Download wurde abgebrochen.	Le téléchargement s'est arrêté.	La descarga se detuvo.
+Updates	Updates	Mises à jour	Actualizaciones
+Looking for a new version…	Suche nach einer neuen Version…	Recherche d'une nouvelle version…	Buscando una versión nueva…
+You have the newest version ({version}).	Du hast die neueste Version ({version}).	Vous avez la version la plus récente ({version}).	Tienes la versión más reciente ({version}).
+Version {version} is available. You have {current}.	Version {version} ist verfügbar. Du hast {current}.	La version {version} est disponible. Vous avez la {current}.	La versión {version} está disponible. Tienes la {current}.
+Install replaces {file} with the new version.	Installieren ersetzt {file} durch die neue Version.	Installer remplace {file} par la nouvelle version.	Instalar sustituye {file} por la versión nueva.
+Install downloads the new installer and starts it; HybridSliceCraft closes so it can be replaced.	Installieren lädt das neue Installationsprogramm herunter und startet es; HybridSliceCraft schließt sich, damit es ersetzt werden kann.	Installer télécharge le nouveau programme d'installation et le lance ; HybridSliceCraft se ferme pour pouvoir être remplacé.	Instalar descarga el nuevo instalador y lo inicia; HybridSliceCraft se cierra para poder sustituirse.
+Install downloads the new disk image and opens it: drag HybridSliceCraft to Applications again.	Installieren lädt das neue Disk-Image herunter und öffnet es: Ziehe HybridSliceCraft erneut in Programme.	Installer télécharge la nouvelle image disque et l'ouvre : faites de nouveau glisser HybridSliceCraft dans Applications.	Instalar descarga la nueva imagen de disco y la abre: arrastra de nuevo HybridSliceCraft a Aplicaciones.
+Update it with your system's updates, or in a terminal:	Aktualisiere es mit den Systemupdates oder im Terminal:	Mettez-le à jour avec les mises à jour du système, ou dans un terminal :	Actualízalo con las actualizaciones del sistema o en un terminal:
+Download the new .deb package and open it to install it.	Lade das neue .deb-Paket herunter und öffne es, um es zu installieren.	Téléchargez le nouveau paquet .deb et ouvrez-le pour l'installer.	Descarga el nuevo paquete .deb y ábrelo para instalarlo.
+Download the new .flatpak file and install it in a terminal:	Lade die neue .flatpak-Datei herunter und installiere sie im Terminal:	Téléchargez le nouveau fichier .flatpak et installez-le dans un terminal :	Descarga el nuevo archivo .flatpak e instálalo en un terminal:
+Download the new version from the release page.	Lade die neue Version von der Release-Seite herunter.	Téléchargez la nouvelle version depuis la page de publication.	Descarga la versión nueva desde la página de la versión.
+Copy	Kopieren	Copier	Copiar
+Downloading version {version}…	Lade Version {version} herunter…	Téléchargement de la version {version}…	Descargando la versión {version}…
+Version {version} is installed. Restart HybridSliceCraft to use it.	Version {version} ist installiert. Starte HybridSliceCraft neu, um sie zu verwenden.	La version {version} est installée. Redémarrez HybridSliceCraft pour l'utiliser.	La versión {version} está instalada. Reinicia HybridSliceCraft para usarla.
+The installer has started.	Das Installationsprogramm wurde gestartet.	Le programme d'installation a démarré.	El instalador se ha iniciado.
+Drag HybridSliceCraft to Applications in the window that opened, then start it again.	Ziehe HybridSliceCraft im geöffneten Fenster in Programme und starte es dann erneut.	Faites glisser HybridSliceCraft dans Applications dans la fenêtre ouverte, puis relancez-le.	Arrastra HybridSliceCraft a Aplicaciones en la ventana que se abrió y vuelve a iniciarlo.
+Couldn't check for updates.	Konnte nicht nach Updates suchen.	Impossible de rechercher des mises à jour.	No se pudo buscar actualizaciones.
+Check for updates at start	Beim Start nach Updates suchen	Rechercher des mises à jour au démarrage	Buscar actualizaciones al iniciar
+Asks GitHub for the newest release once at each start. Nothing else is sent.	Fragt bei jedem Start einmal GitHub nach der neuesten Version. Sonst wird nichts gesendet.	Demande à GitHub la dernière version une fois à chaque démarrage. Rien d'autre n'est envoyé.	Pregunta a GitHub por la versión más reciente una vez en cada inicio. No se envía nada más.
+Install	Installieren	Installer	Instalar
+Download	Herunterladen	Télécharger	Descargar
+Release page	Release-Seite	Page de publication	Página de la versión
+Skip this version	Diese Version überspringen	Ignorer cette version	Omitir esta versión
+Restart now	Jetzt neu starten	Redémarrer maintenant	Reiniciar ahora
+Update to {version}…	Auf {version} aktualisieren…	Mettre à jour vers {version}…	Actualizar a {version}…
+Check for updates…	Nach Updates suchen…	Rechercher des mises à jour…	Buscar actualizaciones…
