@@ -755,6 +755,10 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.pick(ui, "Ironing type", "Which surfaces get ironed.", &mut p.ironing_type, b.ironing_type, &IroningType::ALL, IroningType::label, true);
             r.num(ui, "Ironing flow", "", &mut p.ironing_flow, b.ironing_flow, 0.0..=50.0, "%", 1, true);
             r.num(ui, "Ironing spacing", "", &mut p.ironing_spacing, b.ironing_spacing, 0.03..=1.0, "mm", 3, true);
+            r.flag(ui, "Z contouring", "Top surfaces and the walls under them follow the model's slope up and down within a layer, which smooths the steps on domes, chamfers and gentle slopes. Only surfaces facing up gain.", &mut p.zaa_enabled, b.zaa_enabled, true);
+            r.num(ui, "Lowest contour height", "The thinnest a contoured line may get. Layers are also cut this far above their bottom: lower lets lines follow the surface further down.", &mut p.zaa_min_z, b.zaa_min_z, 0.01..=0.3, "mm", 3, true);
+            r.num(ui, "Lower walls steeper than", "On surfaces steeper than this, walls are lowered so their outer edge meets the slope. 0 turns it off.", &mut p.zaa_wall_angle, b.zaa_wall_angle, 0.0..=90.0, "°", 0, true);
+            r.flag(ui, "Keep fill direction", "Lays solid and top lines in the same direction on every layer, for an even look on contoured tops.", &mut p.zaa_keep_direction, b.zaa_keep_direction, true);
             r.flag(ui, "Fuzzy skin", "A rough texture on outer walls.", &mut p.fuzzy_skin, b.fuzzy_skin, false);
             r.pick(ui, "Fuzzy skin on", "Which outer walls get the texture.", &mut p.fuzzy_mode, b.fuzzy_mode, &FuzzyMode::ALL, FuzzyMode::label, true);
             r.num(ui, "Fuzzy thickness", "", &mut p.fuzzy_thickness, b.fuzzy_thickness, 0.05..=2.0, "mm", 2, true);

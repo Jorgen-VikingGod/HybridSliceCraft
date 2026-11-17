@@ -376,8 +376,22 @@ pub fn describe_settings(args: &Value) -> Result<Output, String> {
         "group": group,
         "defaults": value,
         "allowed_values_for_choices": known,
+        "explained": explained(group),
         "note": "Pass any of these names in the matching *_settings object of slice_filament or slice_resin. Lengths are mm, speeds mm/s, temperatures degrees C, densities percent."
     }))
+}
+
+/// Short explanations for settings whose name doesn't say enough.
+fn explained(group: &str) -> Value {
+    match group {
+        "filament_process" => json!({
+            "zaa_enabled": "Z contouring (Z anti-aliasing): top surfaces, ironing and walls move up and down within their layer to follow the model's slope, which smooths the steps on domes, chamfers and gentle slopes. Only surfaces facing up gain. Off by default.",
+            "zaa_min_z": "Z contouring: the thinnest a contoured line may get, in mm (default 0.05). Layers are also cut this far above their bottom.",
+            "zaa_wall_angle": "Z contouring: walls on surfaces steeper than this many degrees are lowered so their outer edge meets the slope (default 35, 0 = off).",
+            "zaa_keep_direction": "Z contouring: lay solid and top lines in the same direction on every layer instead of turning them 90 degrees.",
+        }),
+        _ => json!({}),
+    }
 }
 
 pub fn inspect_model(args: &Value) -> Result<Output, String> {
@@ -530,6 +544,17 @@ pub fn slice_filament(state: &mut State, args: &Value) -> Result<Output, String>
         "warnings": warnings,
         "calibration_note": calibration_note,
         "slice_seconds": (res.slice_seconds * 100.0).round() / 100.0,
+        "z_contouring": {
+            "enabled": process.zaa_enabled,
+            "contoured_lines": res.contoured_lines,
+            "note": if !process.zaa_enabled {
+                "Off. Turn on with profile_settings {\"zaa_enabled\": true} to smooth sloped and curved top surfaces."
+            } else if res.contoured_lines == 0 {
+                "On, but nothing changed: the model has no sloped or curved top surfaces."
+            } else {
+                "Top surfaces, ironing and walls follow the model's slope in Z within their layers."
+            },
+        },
     });
     let id = state.remember(Cached::Fdm { res: Arc::new(res), bed });
     let mut value = value;

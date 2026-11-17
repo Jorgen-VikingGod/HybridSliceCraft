@@ -1374,3 +1374,221 @@ fn tall_stacks_and_adaptive_layers_are_warned_about() {
     j.objects[0].paint = None;
     assert!(!slice(&j, &Progress::default()).unwrap().warnings.iter().any(|w| w.to_lowercase().contains("mix")));
 }
+
+// ------------------------------------------------------------- Z contouring
+
+/// A dome (the top half of a ball shows) of radius 12 standing on the plate.
+fn dome_job(zaa: bool) -> FdmJob {
+    let ball = crate::mesh::make_sphere(Vec3::new(90.0, 90.0, 0.0), 12.0, 96, 48);
+    // Keep only what is above the plate.
+    let (_, upper) = ball.cut_z(0.0);
+    let mut p = FdmProcess::default();
+    p.layer_height = 0.2;
+    p.first_layer_height = 0.2;
+    p.zaa_enabled = zaa;
+    job(upper, p)
+}
+
+/// A ramp 30 mm long rising from 2 to 7 mm (about 9.5 degrees), 20 mm deep.
+fn ramp_job(zaa: bool) -> FdmJob {
+    let profile = [(0.0f32, 0.0f32), (30.0, 0.0), (30.0, 7.0), (0.0, 2.0)];
+    let mut m = Mesh::default();
+    for y in [0.0f32, 20.0] {
+        for (x, z) in profile {
+            m.v.push(Vec3::new(75.0 + x, 80.0 + y, z));
+        }
+    }
+    // Two caps (fans) and the four sides.
+    m.t.extend([[0, 1, 2], [0, 2, 3], [4, 6, 5], [4, 7, 6]]);
+    for k in 0..4u32 {
+        let j = (k + 1) % 4;
+        m.t.push([k, k + 4, j + 4]);
+        m.t.push([k, j + 4, j]);
+    }
+    if m.volume() < 0.0 {
+        for t in &mut m.t {
+            t.swap(1, 2);
+        }
+    }
+    let mut p = FdmProcess::default();
+    p.layer_height = 0.2;
+    p.first_layer_height = 0.2;
+    p.zaa_enabled = zaa;
+    job(m, p)
+}
+
+fn contour_features(f: u32) -> bool {
+    [Feature::TopSurface, Feature::Ironing, Feature::OuterWall, Feature::InnerWall, Feature::OverhangWall]
+        .iter()
+        .any(|x| *x as u32 == f)
+}
+
+#[test]
+fn z_contouring_off_changes_nothing_even_with_its_settings_moved() {
+    let plain = slice(&dome_job(false), &Progress::default()).unwrap();
+    let mut j = dome_job(false);
+    j.process.zaa_min_z = 0.12;
+    j.process.zaa_wall_angle = 10.0;
+    j.process.zaa_keep_direction = true;
+    let moved = slice(&j, &Progress::default()).unwrap();
+    assert_eq!(plain.gcode, moved.gcode);
+    assert_eq!(plain.contoured_lines, 0);
+}
+
+#[test]
+fn z_contouring_follows_a_ramp_within_its_limits() {
+    let j = ramp_job(true);
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.contoured_lines > 20, "only {} lines contoured", r.contoured_lines);
+    let min_z = j.process.zaa_min_z;
+    let eps = 2e-3;
+    let mut varied_top_layers = 0;
+    for (li, l) in r.layers.iter().enumerate().skip(1) {
+        let segs = &r.segs[..];
+        let mine = segs.iter().filter(|s| s.layer as usize == li && s.feature != Feature::Travel as u32);
+        let (top, bottom) = (l.z, l.z - l.height);
+        let mut zs: Vec<f32> = Vec::new();
+        for s in mine {
+            let z = s.b[2];
+            if !contour_features(s.feature) {
+                assert!((z - top).abs() < eps, "layer {li}: feature {} left the layer at {z}", s.feature);
+                continue;
+            }
+            if s.feature == Feature::Ironing as u32 {
+                assert!(z <= top + l.height + eps && z >= bottom - 0.1 - eps, "layer {li}: ironing at {z}");
+                continue;
+            }
+            // Never thinner than the lowest contour height, never above the top by more than it.
+            assert!(z >= bottom + min_z - eps, "layer {li}: {z} is below {} + {min_z}", bottom);
+            assert!(z <= top + min_z + eps, "layer {li}: {z} is too high above {top}");
+            let wall = [Feature::OuterWall, Feature::InnerWall, Feature::OverhangWall].iter().any(|f| *f as u32 == s.feature);
+            if wall {
+                assert!(z <= top + eps, "layer {li}: a wall was raised to {z}");
+            }
+            if s.feature == Feature::TopSurface as u32 {
+                zs.push(z);
+                // A lowered line is a thinner line.
+                if z < top - 0.03 {
+                    assert!(s.height < l.height - 0.02, "layer {li}: lowered to {z} but {} thick", s.height);
+                }
+            }
+        }
+        if zs.iter().any(|z| (z - top).abs() > 0.02) {
+            varied_top_layers += 1;
+        }
+    }
+    assert!(varied_top_layers > 10, "only {varied_top_layers} layers have a contoured top");
+    // The layer list keeps the nominal heights.
+    for w in r.layers.windows(2) {
+        assert!((w[1].z - w[0].z - w[1].height).abs() < 1e-3);
+    }
+}
+
+#[test]
+fn z_contouring_uses_less_plastic_on_lowered_lines() {
+    let flat = slice(&ramp_job(false), &Progress::default()).unwrap();
+    let curved = slice(&ramp_job(true), &Progress::default()).unwrap();
+    let (e_flat, ..) = replay(&flat.gcode);
+    let (e_curved, ..) = replay(&curved.gcode);
+    // Lines that drop toward the surface get thinner; it's a small share of the whole.
+    assert!(e_curved < e_flat * 1.02, "{e_curved} vs {e_flat}");
+    assert!(e_curved > e_flat * 0.85, "{e_curved} vs {e_flat}");
+}
+
+#[test]
+fn flat_tops_are_left_alone() {
+    let mut p = FdmProcess::default();
+    p.layer_height = 0.2;
+    p.first_layer_height = 0.2;
+    p.zaa_enabled = true;
+    let r = slice(&job(centered(make_box(Vec3::new(20.0, 20.0, 10.0))), p), &Progress::default()).unwrap();
+    assert_eq!(r.contoured_lines, 0);
+    for s in r.segs.iter().filter(|s| s.feature != Feature::Travel as u32) {
+        let l = &r.layers[s.layer as usize];
+        assert!((s.b[2] - l.z).abs() < 1e-3, "{} at {}", s.b[2], l.z);
+    }
+}
+
+#[test]
+fn layers_are_cut_low_for_z_contouring() {
+    let layers = vec![plan::Layer { z: 0.2, height: 0.2 }, plan::Layer { z: 0.4, height: 0.2 }, plan::Layer { z: 0.6, height: 0.2 }];
+    let mut p = FdmProcess::default();
+    let mid = contour::cut_heights(&layers, &p);
+    assert!((mid[1] - 0.3).abs() < 1e-9);
+    p.zaa_enabled = true;
+    p.zaa_min_z = 0.05;
+    let low = contour::cut_heights(&layers, &p);
+    assert!((low[0] - 0.1).abs() < 1e-9, "the first layer is cut in its middle");
+    assert!((low[1] - 0.25).abs() < 1e-9 && (low[2] - 0.45).abs() < 1e-9, "{low:?}");
+    // A lowest height above the layer is held inside it.
+    p.zaa_min_z = 0.5;
+    let held = contour::cut_heights(&layers, &p);
+    assert!(held[1] < 0.4 && held[1] > 0.2, "{held:?}");
+}
+
+#[test]
+fn keep_fill_direction_keeps_the_top_lines_parallel() {
+    // The longest top-surface line on each layer, as an angle in [0, pi).
+    let angles = |r: &FdmResult| -> Vec<f32> {
+        let mut out = Vec::new();
+        for li in 1..r.layers.len() {
+            let best = r
+                .segs
+                .iter()
+                .filter(|s| s.layer as usize == li && s.feature == Feature::SolidInfill as u32)
+                .max_by(|a, b| {
+                    let la = (a.b[0] - a.a[0]).hypot(a.b[1] - a.a[1]);
+                    let lb = (b.b[0] - b.a[0]).hypot(b.b[1] - b.a[1]);
+                    la.total_cmp(&lb)
+                });
+            if let Some(s) = best {
+                if (s.b[0] - s.a[0]).hypot(s.b[1] - s.a[1]) > 5.0 {
+                    out.push((s.b[1] - s.a[1]).atan2(s.b[0] - s.a[0]).rem_euclid(std::f32::consts::PI));
+                }
+            }
+        }
+        out
+    };
+    let differ = |v: &[f32]| v.windows(2).filter(|w| ((w[0] - w[1]).abs() - std::f32::consts::FRAC_PI_2).abs() < 0.2).count();
+    let mut p = FdmProcess::default();
+    p.zaa_enabled = true;
+    let boxed = || centered(make_box(Vec3::new(20.0, 20.0, 6.0)));
+    let turning = slice(&job(boxed(), p.clone()), &Progress::default()).unwrap();
+    p.zaa_keep_direction = true;
+    let kept = slice(&job(boxed(), p), &Progress::default()).unwrap();
+    let (a, b) = (angles(&turning), angles(&kept));
+    assert!(a.len() >= 2 && b.len() >= 2, "{a:?} {b:?}");
+    assert!(differ(&a) > 0, "solid layers normally turn: {a:?}");
+    assert_eq!(differ(&b), 0, "kept: {b:?}");
+}
+
+#[test]
+fn z_contouring_warns_when_it_cannot_do_what_was_asked() {
+    let mut j = dome_job(true);
+    j.process.zaa_min_z = 0.5;
+    let r = slice(&j, &Progress::default()).unwrap();
+    assert!(r.warnings.iter().any(|w| w.contains("lowest contour height")), "{:?}", r.warnings);
+}
+
+#[test]
+fn a_dome_gets_its_walls_lowered_toward_the_curve() {
+    let r = slice(&dome_job(true), &Progress::default()).unwrap();
+    let lowered = r
+        .segs
+        .iter()
+        .filter(|s| s.feature == Feature::OuterWall as u32)
+        .filter(|s| s.b[2] < r.layers[s.layer as usize].z - 0.02)
+        .count();
+    assert!(lowered > 500, "{lowered} outer wall lines lowered");
+    // Turning the wall angle off keeps walls on the layer unless the surface itself is lower.
+    let mut j = dome_job(true);
+    j.process.zaa_wall_angle = 0.0;
+    let r0 = slice(&j, &Progress::default()).unwrap();
+    let lowered0 = r0
+        .segs
+        .iter()
+        .filter(|s| s.feature == Feature::OuterWall as u32)
+        .filter(|s| s.b[2] < r0.layers[s.layer as usize].z - 0.02)
+        .count();
+    assert!(lowered0 < lowered, "{lowered0} vs {lowered}");
+}

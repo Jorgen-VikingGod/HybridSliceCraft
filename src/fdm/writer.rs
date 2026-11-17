@@ -100,6 +100,12 @@ pub(super) struct Writer<'a> {
     pub last_written: Option<DVec3>,
     /// Overhang tier of the segment being written, when speeds follow it.
     pub tier_speed: Option<u8>,
+    /// With Z contouring: Z changes up to this size are moves within a layer,
+    /// not layer changes. 0 when contouring is off.
+    pub contour_slack: f64,
+    /// The layer's own top while contouring, since the nozzle may end the layer
+    /// above or below it.
+    pub layer_top: Option<f64>,
 }
 
 impl<'a> Writer<'a> {
@@ -189,8 +195,10 @@ impl<'a> Writer<'a> {
         if dist < 1e-4 && !z_changes {
             return;
         }
+        // A small step between contoured lines of one layer isn't a layer change.
+        let within_layer = z_changes && (z - self.pos.z).abs() <= self.contour_slack;
         let need_retract = !inside && dist >= min_travel;
-        if need_retract || (z_changes && (dist >= min_travel || self.job.printer.retract_layer_change)) {
+        if need_retract || (z_changes && !within_layer && (dist >= min_travel || self.job.printer.retract_layer_change)) {
             self.retract();
         }
         let pr = &self.job.printer;
@@ -240,6 +248,13 @@ impl<'a> Writer<'a> {
                     self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, z), speed: slow });
                 }
             }
+        } else if within_layer && z < self.pos.z {
+            // Going down inside a layer: move across first, so the nozzle never
+            // drops onto plastic it has just laid.
+            if dist >= 1e-4 {
+                self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, self.pos.z), speed });
+            }
+            self.moves.push(Mv::Travel { to: DVec3::new(p.x, p.y, z), speed: 50f64.max(speed * 0.25) });
         } else {
             if z_changes {
                 let top = DVec3::new(from.x, from.y, z);
@@ -450,13 +465,18 @@ impl<'a> Writer<'a> {
         if path.pts.len() < 2 {
             return;
         }
+        // Z contouring: each point has its own height above or below the layer's
+        // top, and the line its own thickness there. Ironing keeps its pass height.
+        let contoured = path.dz.len() == path.pts.len();
+        let off = |k: usize| if contoured { path.dz[k] as f64 } else { 0.0 };
+        let thick = |d: f64| if path.feature == Feature::Ironing { h } else { (h + d).max(0.01) };
         if path.closed {
             let is_outer = path.feature == Feature::OuterWall;
             let seam = self.pick_seam(&path.pts, is_outer, &path.seam);
             let n = path.pts.len();
-            self.travel_to(path.pts[seam], z, comb);
+            self.travel_to(path.pts[seam], z + off(seam), comb);
             let total = path.length();
-            let scarf = self.job.process.scarf_seam && is_outer && total > 4.0;
+            let scarf = self.job.process.scarf_seam && is_outer && total > 4.0 && !contoured;
             if scarf {
                 self.emit_scarf(path, seam, z, h, flow);
                 return;
@@ -475,30 +495,28 @@ impl<'a> Writer<'a> {
                 self.tier_speed = self.job.process.overhang_tiers.then(|| path.tier.get(i).copied().unwrap_or(0));
                 let seg = path.pts[i].distance(path.pts[j]);
                 if seg >= left {
-                    let end = path.pts[i].lerp(path.pts[j], (left / seg.max(1e-9)).min(1.0));
-                    self.ext_seg(end, z, path.width, h, flow * path.flow_mult, f);
+                    let t = (left / seg.max(1e-9)).min(1.0);
+                    let end = path.pts[i].lerp(path.pts[j], t);
+                    let d = off(i) + (off(j) - off(i)) * t;
+                    self.ext_seg(end, z + d, path.width, thick(d), flow * path.flow_mult, f);
                     break;
                 }
-                self.ext_seg(path.pts[j], z, path.width, h, flow * path.flow_mult, f);
+                self.ext_seg(path.pts[j], z + off(j), path.width, thick(off(j)), flow * path.flow_mult, f);
                 left -= seg;
             }
         } else {
+            let last = path.pts.len() - 1;
             let start = path.pts[0];
             let here = DVec2::new(self.pos.x, self.pos.y);
-            let end = path.pts[path.pts.len() - 1];
+            let end = path.pts[last];
             let reverse = path.pts.len() == 2 && end.distance_squared(here) < start.distance_squared(here);
-            let order: Box<dyn Iterator<Item = &DVec2>> = if reverse {
-                Box::new(path.pts.iter().rev())
-            } else {
-                Box::new(path.pts.iter())
-            };
-            let mut first = true;
-            for q in order {
-                if first {
-                    self.travel_to(*q, z, comb);
-                    first = false;
+            for step in 0..=last {
+                let k = if reverse { last - step } else { step };
+                let q = path.pts[k];
+                if step == 0 {
+                    self.travel_to(q, z + off(k), comb);
                 } else {
-                    self.ext_seg(*q, z, path.width, h, flow * path.flow_mult, path.feature);
+                    self.ext_seg(q, z + off(k), path.width, thick(off(k)), flow * path.flow_mult, path.feature);
                 }
             }
         }
@@ -864,7 +882,7 @@ impl<'a> Writer<'a> {
         }
         self.last_written = Some(prev_pos);
         let info = LayerInfo {
-            z: self.pos.z as f32,
+            z: self.layer_top.take().unwrap_or(self.pos.z) as f32,
             height: height as f32,
             first_seg: 0,
             seg_count: 0,

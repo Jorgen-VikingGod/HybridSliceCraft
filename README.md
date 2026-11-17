@@ -13,6 +13,7 @@ A hybrid slicer for filament (FDM) and resin (MSLA) 3D printers, in one fast des
 - Grid and tree supports with interface layers
 - Skirt, brim (outside, inside holes or both) and raft
 - Seam placement, ironing (all top surfaces, topmost only, or all solid layers), fuzzy skin (outline, holes or both), spiral vase, adaptive layer heights
+- **Z contouring** (Z anti-aliasing): top surfaces, ironing and the walls under them follow the model's slope up and down within a layer, which smooths the steps on domes, chamfers and gentle slopes
 - Several filaments in one print, with a prime tower
 - **Paint with filaments**: brush, fill and erase tools colour the model's surface; each colour prints with its own filament and reaches a chosen depth into the part
 - **Mixed filaments** (full-spectrum colour mixing): alternate a few filaments layer by layer in a repeating pattern, such as red, yellow, yellow, so the eye blends them into orange. Make mixes from a ratio, a typed pattern, or by picking a colour and letting the program find the closest blend of your filaments; paint them on a model like any filament. Best with a tool changer, thin layers (0.08 to 0.12 mm), short patterns and translucent filament

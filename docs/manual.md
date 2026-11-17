@@ -14,6 +14,7 @@ HybridSliceCraft slices models for **filament (FDM)** printers and **resin (MSLA
   - [Infill](#infill)
   - [Top and bottom surfaces](#top-and-bottom-surfaces)
   - [Ironing and fuzzy skin](#ironing-and-fuzzy-skin)
+  - [Z contouring](#z-contouring)
   - [Seam and scarf seam](#seam-and-scarf-seam)
   - [Size accuracy: holes, cracks and the first layer](#size-accuracy-holes-cracks-and-the-first-layer)
   - [Supports](#supports)
@@ -173,6 +174,28 @@ Bridges (surfaces printed over air) have **Bridge speed** and **Bridge flow**, a
 - **Fuzzy skin** roughens outer walls for grip or looks. Choose which walls (*outline*, *holes* or *both*) and the *thickness*. To roughen only a part of a model, [paint it](#painting-supports-seams-and-fuzzy-skin).
 
 **Example:** fuzzy skin on a handle for grip, nothing on the rest.
+
+## Z contouring
+
+*Print settings → Quality → Surface* (shown with *Advanced*).
+
+Every layer leaves a small step on a slope or a curve. **Z contouring** (also called Z anti-aliasing) moves the nozzle up and down *within* a layer, so the top-surface lines, ironing and the walls just under the top follow the model's real surface instead of the flat layer. Domes, chamfers, rounded edges and gentle slopes come out smoother, and the rest of the print keeps its layer height.
+
+- **Z contouring** turns it on.
+- **Lowest contour height** (default 0.05 mm) is the thinnest a contoured line may get. Layers are also cut this far above their bottom, so a lower value lets lines follow the surface further down, and a higher one keeps lines thicker. Top-surface lines can also rise by up to this much above the layer; walls are never raised.
+- **Lower walls steeper than** (default 35°): on surfaces steeper than this, walls are lowered a little more, so their outer edge meets the slope instead of their middle. 0 turns it off.
+- **Keep fill direction** lays solid and top lines in the same direction on every layer instead of turning them 90°, which gives a more even look on contoured tops.
+
+A contoured line gets the plastic for its own thickness: lower lines get less. In the preview the lines show at the height they are printed.
+
+**Good to know**
+
+- Only surfaces that face up gain. Overhangs and the undersides of curves keep their steps.
+- The first layer always stays flat on the plate, and spiral vase layers are not contoured.
+- A flat top doesn't change at all, so turning it on costs nothing on boxy parts. Slicing takes a little longer.
+- The printer moves Z a little while it extrudes, which every common firmware can do.
+
+**Example:** a dome or a filleted lid at 0.2 mm layers with Z contouring on, and ironing on the top for an even finish.
 
 ## Seam and scarf seam
 
@@ -510,7 +533,7 @@ The manual you are reading is also offered to the agent as the resource `hybrids
 
 **Good to know**
 
-- Settings are changed by name, for example `{"walls": 4, "infill_pattern": "Gyroid"}`. A wrong name or value comes back as a message that says what is allowed, so the agent can correct itself.
+- Settings are changed by name, for example `{"walls": 4, "infill_pattern": "Gyroid"}`. Settings whose name doesn't say enough are explained in `describe_settings` under `explained`, for example the [Z contouring](#z-contouring) ones (`zaa_enabled`, `zaa_min_z`, `zaa_wall_angle`, `zaa_keep_direction`). `slice_filament` reports `z_contouring` with how many lines were contoured. A wrong name or value comes back as a message that says what is allowed, so the agent can correct itself.
 - Models without a position are arranged on the bed automatically; with `fit_to_bed` too-large models are shrunk. Models can be placed (`x`, `y`), turned (`rotate_z`), scaled and copied.
 - The server reads and writes only the files the agent names. G-code and print files go to a temporary folder unless `output_path` is given.
 - Nothing is sent to a printer by this server; the agent gets the file and you decide what to do with it.
