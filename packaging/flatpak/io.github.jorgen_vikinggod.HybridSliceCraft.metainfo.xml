@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.19.0" date="2026-11-19">
+      <description>
+        <p>Menus that work like desktop menus: shortcuts in their own column, moving between menus without an extra click, and full keyboard use. Linux downloads come with signed checksums.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.19.0</url>
+    </release>
     <release version="0.18.0" date="2026-11-19">
       <description>
         <p>Open glTF, GLB and FBX models, file dialogs that no longer freeze the window, and safer saving: an interrupted save never leaves a broken file.</p>
