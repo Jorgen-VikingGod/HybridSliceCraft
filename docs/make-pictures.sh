@@ -39,6 +39,7 @@ man fdm-send.png --window send
 man fdm-preview.png --slice
 man fdm-preview-speed.png --slice --scheme Speed
 man fdm-preview-filament.png --slice --demo-mixes --demo-paint --scheme Filament
+man fdm-tree-supports.png --printer "Snapmaker U1 (0.4 nozzle)" --supports --slice --zoom 2.5
 man resin-prepare.png --resin
 man resin-supports.png --resin --supports
 man resin-support-points.png --resin --supports --tool support-point
