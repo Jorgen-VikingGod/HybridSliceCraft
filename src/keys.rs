@@ -313,15 +313,12 @@ impl Keymap {
 
     pub fn save(&self) {
         let p = path();
-        if let Some(dir) = p.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
         let json = self.to_json();
         if json.as_object().is_some_and(|o| o.is_empty()) {
             // Nothing differs from the defaults, so there is nothing to keep.
             let _ = std::fs::remove_file(p);
         } else if let Ok(text) = serde_json::to_string_pretty(&json) {
-            let _ = std::fs::write(p, text);
+            let _ = crate::save::write_private(&p, text.as_bytes());
         }
     }
 }

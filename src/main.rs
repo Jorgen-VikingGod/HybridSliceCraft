@@ -21,6 +21,7 @@ mod profiles;
 mod project;
 mod render;
 mod resin;
+mod save;
 mod scene;
 mod shapes;
 mod slicing;

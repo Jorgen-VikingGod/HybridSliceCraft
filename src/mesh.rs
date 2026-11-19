@@ -4,7 +4,6 @@
 use ahash::{AHashMap, AHashSet};
 use glam::{Mat4, Vec3};
 use rayon::prelude::*;
-use std::io::Read;
 use std::path::Path;
 
 #[derive(Clone, Debug, Default)]
@@ -533,21 +532,20 @@ impl Mesh {
         self.v = nv;
     }
 
+    /// This mesh as a binary STL file.
+    pub fn stl_bytes(&self) -> Result<Vec<u8>, String> {
+        let corners = self.t.iter().flatten().map(|&i| craft_mesh::Corner::at(i)).collect();
+        let mesh = craft_mesh::Mesh {
+            positions: self.v.iter().map(|v| v.as_dvec3().to_array()).collect(),
+            parts: vec![craft_mesh::Part { corners, ..Default::default() }],
+            ..Default::default()
+        };
+        let scene = craft_mesh::Scene::from_meshes(vec![mesh], Vec::new());
+        craft_mesh::stl::write_binary(&scene, "", &limits()).map_err(mesh_error)
+    }
+
     pub fn write_stl(&self, path: &Path) -> Result<(), String> {
-        let mut bytes = Vec::with_capacity(84 + self.t.len() * 50);
-        bytes.extend_from_slice(&[0u8; 80]);
-        bytes.extend_from_slice(&(self.t.len() as u32).to_le_bytes());
-        for i in 0..self.t.len() {
-            let [a, b, c] = self.tri(i);
-            let n = self.tri_normal(i);
-            for v in [n, a, b, c] {
-                for f in v.to_array() {
-                    bytes.extend_from_slice(&f.to_le_bytes());
-                }
-            }
-            bytes.extend_from_slice(&[0, 0]);
-        }
-        std::fs::write(path, bytes).map_err(|e| e.to_string())
+        crate::save::write(path, &self.stl_bytes()?)
     }
 }
 
@@ -723,14 +721,7 @@ pub fn load(path: &Path) -> Result<Mesh, String> {
         .unwrap_or("")
         .to_ascii_lowercase();
     let bytes = std::fs::read(path).map_err(|e| format!("couldn't read the file: {e}"))?;
-    let mut mesh = match ext.as_str() {
-        "stl" => parse_stl(&bytes)?,
-        "obj" => parse_obj(&bytes)?,
-        "3mf" => parse_3mf(&bytes)?,
-        "ply" => parse_ply(&bytes)?,
-        "step" | "stp" => crate::step::parse_step(&bytes)?,
-        other => return Err(format!("the .{other} format isn't supported yet")),
-    };
+    let mut mesh = parse(&bytes, &ext)?;
     if mesh.t.is_empty() {
         return Err("the file holds no triangles".into());
     }
@@ -741,210 +732,111 @@ pub fn load(path: &Path) -> Result<Mesh, String> {
     Ok(mesh)
 }
 
-pub fn parse_stl(bytes: &[u8]) -> Result<Mesh, String> {
-    let binary_size = if bytes.len() >= 84 {
-        let n = u32::from_le_bytes([bytes[80], bytes[81], bytes[82], bytes[83]]) as u64;
-        84u64.checked_add(n.saturating_mul(50))
-    } else {
-        None
-    };
-    if binary_size == Some(bytes.len() as u64) {
-        let n = (bytes.len() - 84) / 50;
-        let body = &bytes[84..];
-        let v: Vec<Vec3> = body
-            .par_chunks_exact(50)
-            .flat_map_iter(|rec| {
-                let rd = |o: usize| {
-                    Vec3::new(
-                        f32::from_le_bytes([rec[o], rec[o + 1], rec[o + 2], rec[o + 3]]),
-                        f32::from_le_bytes([rec[o + 4], rec[o + 5], rec[o + 6], rec[o + 7]]),
-                        f32::from_le_bytes([rec[o + 8], rec[o + 9], rec[o + 10], rec[o + 11]]),
-                    )
-                };
-                [rd(12), rd(24), rd(36)]
-            })
-            .collect();
-        let t = (0..n as u32).map(|i| [i * 3, i * 3 + 1, i * 3 + 2]).collect();
-        return Ok(Mesh { v, t });
+/// The model in `bytes`. The file's own signature decides the format when it
+/// has one (a renamed file still opens); otherwise its extension `ext` does.
+pub fn parse(bytes: &[u8], ext: &str) -> Result<Mesh, String> {
+    use craft_sniff::Kind;
+    let head = &bytes[..bytes.len().min(craft_sniff::HEAD)];
+    match craft_sniff::identify(head) {
+        Some(Kind::Glb) => return parse_gltf(bytes),
+        Some(Kind::Fbx) => return parse_fbx(bytes),
+        Some(Kind::Ply) => return parse_ply(bytes),
+        Some(Kind::Zip) if ext != "3mf" => return parse_3mf(bytes),
+        _ => {}
     }
-    // Text STL.
-    let text = String::from_utf8_lossy(bytes);
-    let mut v = Vec::new();
-    for line in text.lines() {
-        let l = line.trim_start();
-        if let Some(rest) = l.strip_prefix("vertex") {
-            let mut it = rest.split_whitespace().filter_map(|s| s.parse::<f32>().ok());
-            if let (Some(x), Some(y), Some(z)) = (it.next(), it.next(), it.next()) {
-                v.push(Vec3::new(x, y, z));
+    match ext {
+        "stl" => parse_stl(bytes),
+        "obj" => parse_obj(bytes),
+        "3mf" => parse_3mf(bytes),
+        "ply" => parse_ply(bytes),
+        "gltf" | "glb" => parse_gltf(bytes),
+        "fbx" => parse_fbx(bytes),
+        "step" | "stp" => crate::step::parse_step(bytes),
+        other => Err(format!("the .{other} format isn't supported yet")),
+    }
+}
+
+/// The file types `load` opens, for file dialogs.
+pub const EXTENSIONS: &[&str] = &["stl", "obj", "3mf", "ply", "gltf", "glb", "fbx", "step", "stp"];
+
+/// How much a model file may hold. An STL keeps three corners per triangle.
+fn limits() -> craft_mesh::Limits {
+    craft_mesh::Limits { max_triangles: 25_000_000, max_vertices: 75_000_000, ..Default::default() }
+}
+
+fn mesh_error(e: craft_mesh::Error) -> String {
+    match e {
+        craft_mesh::Error::TooLarge(m) => format!("the model is too large to open ({m})"),
+        e => format!("this file can't be read: {e}"),
+    }
+}
+
+/// Y up (glTF, FBX) to Z up, turning about X so the front stays in front.
+const Y_UP_TO_Z_UP: craft_mesh::Mat4 = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+
+fn scaled(m: &craft_mesh::Mat4, s: f64) -> craft_mesh::Mat4 {
+    let mut out = *m;
+    for v in out.iter_mut().take(12) {
+        *v *= s;
+    }
+    out
+}
+
+/// Every placed mesh of `scene` in world space as one triangle mesh. `root`
+/// takes the file's axes and units to ours (millimetres, Z up).
+fn from_scene(scene: &craft_mesh::Scene, root: &craft_mesh::Mat4) -> Result<Mesh, String> {
+    let mut out = Mesh::default();
+    for (index, world) in scene.instances(&limits()).map_err(mesh_error)? {
+        let Some(m) = scene.meshes.get(index) else { continue };
+        let world = craft_mesh::mat_mul(root, &world);
+        let base = out.v.len() as u32;
+        let count = m.positions.len() as u32;
+        out.v.par_extend(m.positions.par_iter().map(|p| {
+            let [x, y, z] = craft_mesh::transform_point(&world, *p);
+            Vec3::new(x as f32, y as f32, z as f32)
+        }));
+        // A mirroring placement turns the triangles inside out unless they are flipped back.
+        let flip = craft_mesh::is_mirror(&world);
+        for part in &m.parts {
+            for [a, b, c] in part.triangles_in(&m.positions) {
+                if [a, b, c].iter().all(|k| k.position < count) {
+                    let (b, c) = if flip { (c, b) } else { (b, c) };
+                    out.t.push([base + a.position, base + b.position, base + c.position]);
+                }
             }
         }
     }
-    if v.len() < 3 {
-        return Err("this doesn't look like a valid STL file".into());
-    }
-    let n = (v.len() / 3) as u32;
-    v.truncate(n as usize * 3);
-    let t = (0..n).map(|i| [i * 3, i * 3 + 1, i * 3 + 2]).collect();
-    Ok(Mesh { v, t })
+    Ok(out)
+}
+
+pub fn parse_stl(bytes: &[u8]) -> Result<Mesh, String> {
+    from_scene(&craft_mesh::stl::read(bytes, &limits()).map_err(mesh_error)?, &craft_mesh::IDENTITY)
 }
 
 pub fn parse_obj(bytes: &[u8]) -> Result<Mesh, String> {
-    let text = String::from_utf8_lossy(bytes);
-    let mut mesh = Mesh::default();
-    for line in text.lines() {
-        let line = line.trim();
-        let mut it = line.split_whitespace();
-        match it.next() {
-            Some("v") => {
-                let c: Vec<f32> = it.take(3).filter_map(|s| s.parse().ok()).collect();
-                if c.len() == 3 {
-                    mesh.v.push(Vec3::new(c[0], c[1], c[2]));
-                }
-            }
-            Some("f") => {
-                let n = mesh.v.len() as i64;
-                let idx: Vec<u32> = it
-                    .filter_map(|s| s.split('/').next()?.parse::<i64>().ok())
-                    .filter_map(|i| {
-                        let r = if i < 0 { n + i } else { i - 1 };
-                        (r >= 0 && r < n).then_some(r as u32)
-                    })
-                    .collect();
-                for k in 1..idx.len().saturating_sub(1) {
-                    mesh.t.push([idx[0], idx[k], idx[k + 1]]);
-                }
-            }
-            _ => {}
-        }
-    }
-    Ok(mesh)
+    // Material libraries only colour the model, so they are not looked for.
+    let scene = craft_mesh::obj::read(bytes, &limits(), &mut craft_mesh::no_external).map_err(mesh_error)?;
+    from_scene(&scene, &craft_mesh::IDENTITY)
 }
 
 pub fn parse_ply(bytes: &[u8]) -> Result<Mesh, String> {
-    let header_end = bytes
-        .windows(10)
-        .position(|w| w == b"end_header")
-        .ok_or("this doesn't look like a valid PLY file")?;
-    let header = String::from_utf8_lossy(&bytes[..header_end]);
-    let mut format = "";
-    let mut nv = 0usize;
-    let mut nf = 0usize;
-    let mut vprops: Vec<(String, String)> = Vec::new();
-    let mut in_vertex = false;
-    let mut f_types: Option<(String, String)> = None;
-    for line in header.lines() {
-        let p: Vec<&str> = line.split_whitespace().collect();
-        match p.as_slice() {
-            ["format", f, ..] => format = if f.contains("big") { "be" } else if f.contains("little") { "le" } else { "ascii" },
-            ["element", "vertex", n] => {
-                nv = n.parse().unwrap_or(0);
-                in_vertex = true;
-            }
-            ["element", "face", n] => {
-                nf = n.parse().unwrap_or(0);
-                in_vertex = false;
-            }
-            ["element", ..] => in_vertex = false,
-            ["property", "list", a, b, _] if !in_vertex => {
-                f_types = Some((a.to_string(), b.to_string()));
-            }
-            ["property", ty, name] if in_vertex => vprops.push((ty.to_string(), name.to_string())),
-            _ => {}
-        }
-    }
-    let ix = vprops.iter().position(|p| p.1 == "x").ok_or("the PLY file has no x coordinates")?;
-    let iy = vprops.iter().position(|p| p.1 == "y").ok_or("the PLY file has no y coordinates")?;
-    let iz = vprops.iter().position(|p| p.1 == "z").ok_or("the PLY file has no z coordinates")?;
-    let mut mesh = Mesh::default();
-    let body_start = header_end + 10 + bytes[header_end + 10..].iter().position(|b| *b == b'\n').unwrap_or(0) + 1;
-    if format == "ascii" {
-        let text = String::from_utf8_lossy(&bytes[body_start.min(bytes.len())..]);
-        let mut lines = text.lines();
-        for _ in 0..nv {
-            let line = lines.next().ok_or("the PLY file ended early")?;
-            let c: Vec<f32> = line.split_whitespace().filter_map(|s| s.parse().ok()).collect();
-            if c.len() > ix.max(iy).max(iz) {
-                mesh.v.push(Vec3::new(c[ix], c[iy], c[iz]));
-            }
-        }
-        for _ in 0..nf {
-            let line = lines.next().ok_or("the PLY file ended early")?;
-            let c: Vec<u32> = line.split_whitespace().filter_map(|s| s.parse().ok()).collect();
-            if c.len() > 3 {
-                for k in 2..c[0] as usize {
-                    if k < c.len() - 1 {
-                        mesh.t.push([c[1], c[k], c[k + 1]]);
-                    }
-                }
-            }
-        }
-    } else {
-        let be = format == "be";
-        let size = |t: &str| match t {
-            "char" | "uchar" | "int8" | "uint8" => 1,
-            "short" | "ushort" | "int16" | "uint16" => 2,
-            "int" | "uint" | "int32" | "uint32" | "float" | "float32" => 4,
-            _ => 8,
-        };
-        let read_f = |b: &[u8], t: &str| -> f64 {
-            let mut buf = [0u8; 8];
-            let n = b.len().min(8);
-            buf[..n].copy_from_slice(&b[..n]);
-            if be {
-                buf[..n].reverse();
-            }
-            match t {
-                "float" | "float32" => f32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as f64,
-                "double" | "float64" => f64::from_le_bytes(buf),
-                "uchar" | "uint8" => buf[0] as f64,
-                "char" | "int8" => buf[0] as i8 as f64,
-                "short" | "int16" => i16::from_le_bytes([buf[0], buf[1]]) as f64,
-                "ushort" | "uint16" => u16::from_le_bytes([buf[0], buf[1]]) as f64,
-                "int" | "int32" => i32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as f64,
-                _ => u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as f64,
-            }
-        };
-        let stride: usize = vprops.iter().map(|p| size(&p.0)).sum();
-        let mut o = body_start;
-        let offs: Vec<usize> = vprops
-            .iter()
-            .scan(0, |acc, p| {
-                let cur = *acc;
-                *acc += size(&p.0);
-                Some(cur)
-            })
-            .collect();
-        for _ in 0..nv {
-            if o + stride > bytes.len() {
-                return Err("the PLY file ended early".into());
-            }
-            let get = |i: usize| read_f(&bytes[o + offs[i]..o + offs[i] + size(&vprops[i].0)], &vprops[i].0) as f32;
-            mesh.v.push(Vec3::new(get(ix), get(iy), get(iz)));
-            o += stride;
-        }
-        let (ct, it) = f_types.ok_or("the PLY file has no face list")?;
-        let (cs, is) = (size(&ct), size(&it));
-        for _ in 0..nf {
-            if o + cs > bytes.len() {
-                break;
-            }
-            let c = read_f(&bytes[o..o + cs], &ct) as usize;
-            o += cs;
-            if o + c * is > bytes.len() {
-                break;
-            }
-            let idx: Vec<u32> = (0..c)
-                .map(|k| read_f(&bytes[o + k * is..o + (k + 1) * is], &it) as u32)
-                .collect();
-            for k in 1..c.saturating_sub(1) {
-                mesh.t.push([idx[0], idx[k], idx[k + 1]]);
-            }
-            o += c * is;
-        }
-    }
-    let nvert = mesh.v.len() as u32;
-    mesh.t.retain(|t| t.iter().all(|i| *i < nvert));
-    Ok(mesh)
+    from_scene(&craft_mesh::ply::read(bytes, &limits()).map_err(mesh_error)?, &craft_mesh::IDENTITY)
+}
+
+/// glTF and GLB: metres, Y up. A `.gltf` whose buffers sit in other files
+/// can't be read on its own; GLB and embedded buffers can.
+pub fn parse_gltf(bytes: &[u8]) -> Result<Mesh, String> {
+    let scene = craft_mesh::gltf::read(bytes, &limits(), &mut craft_mesh::no_external).map_err(mesh_error)?;
+    from_scene(&scene, &scaled(&Y_UP_TO_Z_UP, 1000.0))
+}
+
+/// FBX: the file names its axes and its unit (centimetres when it doesn't).
+pub fn parse_fbx(bytes: &[u8]) -> Result<Mesh, String> {
+    let doc = craft_mesh::fbx::read_document(bytes, &limits()).map_err(mesh_error)?;
+    let scene = doc.scene(&limits(), &mut craft_mesh::no_external).map_err(mesh_error)?;
+    let mm = doc.unit_scale().unwrap_or(1.0) * 10.0;
+    let root = craft_mesh::mat_mul(&scaled(&Y_UP_TO_Z_UP, mm), &doc.axes_to_y_up());
+    from_scene(&scene, &root)
 }
 
 /// Small pull parser: enough XML to read 3MF model parts.
@@ -1011,16 +903,17 @@ fn parse_transform(s: Option<&str>) -> Mat4 {
 }
 
 pub fn parse_3mf(bytes: &[u8]) -> Result<Mesh, String> {
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .map_err(|_| "this .3mf isn't a readable package".to_string())?;
+    // Model parts are XML, about a hundred bytes a vertex; the bounds leave room for
+    // very large prints and still stop a package that inflates without end.
+    let limits = craft_zip::Limits { max_entries: 10_000, max_total_bytes: 8 << 30 };
+    let mut archive = craft_zip::Archive::open(bytes, limits).map_err(|_| "this .3mf isn't a readable package".to_string())?;
     let mut files: AHashMap<String, String> = AHashMap::new();
     for i in 0..archive.len() {
-        let mut f = archive.by_index(i).map_err(|e| e.to_string())?;
-        let name = f.name().map_err(|e| e.to_string())?.to_string();
+        let Some(name) = archive.entry_name(i).map_err(|e| e.to_string())? else { continue };
         if name.ends_with(".model") {
-            let mut s = String::new();
-            f.read_to_string(&mut s).map_err(|e| e.to_string())?;
-            files.insert(name, s);
+            let raw = archive.read_index(i, 4 << 30).map_err(|e| e.to_string())?.unwrap_or_default();
+            let text = String::from_utf8(raw).map_err(|_| format!("{name} in this .3mf isn't text"))?;
+            files.insert(name, text);
         }
     }
     #[derive(Default, Clone)]
@@ -1541,6 +1434,43 @@ mod tests {
         bad.repair();
         bad.compact();
         assert!(bad.v.iter().all(|p| p.is_finite() && p.abs().max_element() < 1e7));
+    }
+
+    #[test]
+    fn gltf_in_metres_with_y_up_opens_in_millimetres_with_z_up() {
+        // A 10 × 20 × 30 mm box written the glTF way: metres, and its height along Y.
+        let b = make_box(Vec3::new(10.0, 30.0, 20.0));
+        let corners = b.t.iter().flatten().map(|&i| craft_mesh::Corner::at(i)).collect();
+        let mesh = craft_mesh::Mesh {
+            positions: b.v.iter().map(|v| (v.as_dvec3() / 1000.0).to_array()).collect(),
+            parts: vec![craft_mesh::Part { corners, ..Default::default() }],
+            ..Default::default()
+        };
+        let scene = craft_mesh::Scene::from_meshes(vec![mesh], Vec::new());
+        let glb = craft_mesh::gltf::write_glb(&scene, &limits()).unwrap();
+        // The signature is found whatever the file is called.
+        for ext in ["glb", "stl", ""] {
+            let m = parse(&glb, ext).unwrap();
+            assert_eq!(m.t.len(), 12);
+            let (lo, hi) = m.bounds();
+            let size = hi - lo;
+            assert!((size - Vec3::new(10.0, 20.0, 30.0)).abs().max_element() < 1e-3, "{size:?}");
+            assert!(m.volume() > 0.0, "turning to Z up must keep the faces outward");
+        }
+    }
+
+    #[test]
+    fn stl_written_and_read_back_keeps_every_triangle_in_order() {
+        let mut m = make_sphere(Vec3::new(1.0, 2.0, 3.0), 7.0, 24, 12);
+        m.t.swap(0, 5);
+        let back = parse_stl(&m.stl_bytes().unwrap()).unwrap();
+        assert_eq!(back.t.len(), m.t.len());
+        for i in 0..m.t.len() {
+            let (a, b) = (m.tri(i), back.tri(i));
+            assert!((0..3).all(|k| (a[k] - b[k]).length() < 1e-5), "triangle {i}");
+        }
+        assert!(parse("solid x\nendsolid x\n".as_bytes(), "stl").is_err());
+        assert!(parse(b"anything", "xyz").is_err());
     }
 
     #[test]

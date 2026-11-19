@@ -52,7 +52,6 @@ glam = { version = "0.30", features = ["bytemuck"] }
 bytemuck = { version = "1", features = ["derive"] }
 rayon = "1"
 clipper2-rust = "1.2"
-rfd = "0.17"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 png = "0.18"
@@ -66,6 +65,16 @@ truck-stepio = "0.3"
 truck-meshalgo = { version = "0.4", default-features = false, features = ["analyzers", "filters", "tessellation"] }
 truck-topology = "0.6"
 ruststep = "0.4"
+
+# Shared Craft libraries (MIT OR Apache-2.0), pinned to one commit of
+# https://github.com/storytold/craft-libs. Update every pin together.
+craft-atomic = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f" }
+craft-mesh = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f", default-features = false, features = ["stl", "obj", "ply", "gltf", "fbx"] }
+craft-mcp-server = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f" }
+craft-zip = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f" }
+craft-dialogs = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f" }
+craft-quit = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f", features = ["egui"] }
+craft-sniff = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f" }
 
 [dev-dependencies]
 truck-modeling = "0.6"

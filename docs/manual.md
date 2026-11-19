@@ -58,7 +58,7 @@ HybridSliceCraft slices models for **filament (FDM)** printers and **resin (MSLA
 
 ![The workspace: printer and settings on the left, the plate in the middle, the model on the right](manual/images/fdm-prepare.png)
 
-1. **Add a model** with **File → Add models…** (Ctrl+O), by dropping a file onto the window, or from the **Add** menu (a starter bear, a cube, a cylinder or a sphere). The program opens STL, OBJ, 3MF, PLY and STEP (.step, .stp) files.
+1. **Add a model** with **File → Add models…** (Ctrl+O), by dropping a file onto the window, or from the **Add** menu (a starter bear, a cube, a cylinder or a sphere). The program opens STL, OBJ, 3MF, PLY, glTF (.gltf, .glb), FBX and STEP (.step, .stp) files. glTF files are in metres and FBX files name their own unit; both are turned into millimetres with Z up.
 2. **Choose Filament or Resin** at the top. The two modes keep their own printer, material and settings.
 3. Pick the **printer** and **material** in the left panel, then the **print quality** preset.
 4. Press **Slice plate** (Ctrl+R). When it is done the view switches to **Preview**; Tab flips between *Prepare* and *Preview*.

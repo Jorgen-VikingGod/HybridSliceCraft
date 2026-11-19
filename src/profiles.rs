@@ -1417,10 +1417,8 @@ impl Catalogue {
             resin_processes: custom(&self.resin_processes, &base.resin_processes, |p| p.name.clone()),
             hidden: self.hidden.clone(),
         };
-        let dir = config_dir();
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let text = serde_json::to_string_pretty(&keep).map_err(|e| e.to_string())?;
-        std::fs::write(dir.join("custom_profiles.json"), text).map_err(|e| e.to_string())
+        crate::save::write_private(&config_dir().join("custom_profiles.json"), text.as_bytes())
     }
 }
 
