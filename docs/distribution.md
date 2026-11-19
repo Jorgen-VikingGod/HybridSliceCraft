@@ -76,8 +76,80 @@ Before the first submission:
 The app id uses underscores because Flatpak ids can't contain hyphens. The window takes this id
 from the `FLATPAK_ID` variable, so the launcher and icon match.
 
-## Signing the Windows and macOS installers
+## Signing the installers
 
-Not done yet. It needs a Windows code-signing certificate (or Azure Trusted Signing) and an Apple
-Developer account, both of which only the project owner can get. Once they exist, the secrets go into
-`.github/workflows/release.yml` and the `[package.metadata.packager]` section of `Cargo.toml`.
+`.github/workflows/release.yml` signs the installers as soon as the secrets below exist
+(Settings > Secrets and variables > Actions). Until then it builds them unsigned and shows a
+warning. The signing steps come from
+[storytold/craft-common-actions](https://github.com/storytold/craft-common-actions), pinned to a
+commit; cargo-packager does the signing itself, with the settings the workflow adds to
+`Cargo.toml` on the build machine.
+
+### Windows
+
+The program is signed before it goes into the `.msi`, then the `.msi` itself, with `signtool` and
+a SHA-256 timestamp. After signing, the workflow checks both signatures. Either of these:
+
+- **A code-signing certificate** (a `.pfx` file):
+  - `WINDOWS_CERTIFICATE`: the file in base64 (`base64 -w0 cert.pfx`, or in PowerShell
+    `[Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx"))`)
+  - `WINDOWS_CERTIFICATE_PASSWORD`: its password
+- **Azure Trusted Signing** (used when no certificate is set): `AZURE_TENANT_ID`,
+  `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (an app registration allowed to sign),
+  `AZURE_SIGNING_ENDPOINT` (for example `https://eus.codesigning.azure.net`),
+  `AZURE_SIGNING_ACCOUNT` and `AZURE_CERT_PROFILE`.
+
+The signature names the program "HybridSliceCraft" and links to the GitHub page.
+
+### macOS
+
+Needs an Apple Developer account and a "Developer ID Application" certificate.
+
+- `APPLE_CERTIFICATE`: the certificate with its key, exported from Keychain Access as `.p12`, in
+  base64 (`base64 -i cert.p12`)
+- `APPLE_CERTIFICATE_PASSWORD`: the password chosen on export
+- `KEYCHAIN_PASSWORD` (optional): for the build machine's temporary keychain; random if unset
+
+With these the app and the `.dmg` are signed. For notarization, so that Gatekeeper opens the app
+without a warning, also set:
+
+- `APPLE_ID`: the Apple account's e-mail address
+- `APPLE_PASSWORD`: an app-specific password for it (appleid.apple.com > Sign-In and Security)
+- `APPLE_TEAM_ID`: the 10-character team id from the developer account
+
+Without these three, the app is signed but not notarized.
+
+### Linux files and checksums
+
+Each release gets a `SHA256SUMS.txt` with the checksum of every installer. With the secret
+`LINUX_SIGNING_KEY`, the `.deb`, the AppImage, its `.zsync` and `SHA256SUMS.txt` also get an
+OpenPGP signature (`<file>.asc`), and the public key is attached as `release-signing-key.asc`.
+Users check a download with:
+
+    gpg --import release-signing-key.asc
+    gpg --verify SHA256SUMS.txt.asc SHA256SUMS.txt
+    sha256sum --check --ignore-missing SHA256SUMS.txt
+
+The key must sign without a passphrase, so keep the main key offline and store only a signing
+subkey. (The apt key has a passphrase, and a subkey exported from it keeps that passphrase, so
+use a separate key, or remove the passphrase from the exported copy only.)
+
+    gpg --quick-add-key <main key fingerprint> ed25519 sign 2y
+    gpg --armor --export-secret-subkeys <subkey fingerprint>! | gh secret set LINUX_SIGNING_KEY
+
+The current key: main key `5F4457D5DABAB93A244D8BCE1D502DF1F94D6543` (certify only, kept offline
+in an encrypted backup), signing subkey `79236CA1FD557DB6953BFD14271FF2CDE5029BF6`, which expires
+on 2028-11-18. Its public key is `packaging/release-signing-key.asc` and its fingerprint is in the
+README. Before the subkey expires, extend it with the main key and set the secret again:
+
+    gpg --quick-set-expire 5F4457D5DABAB93A244D8BCE1D502DF1F94D6543 2y 79236CA1FD557DB6953BFD14271FF2CDE5029BF6
+    gpg --armor --export-secret-subkeys 79236CA1FD557DB6953BFD14271FF2CDE5029BF6! | gh secret set LINUX_SIGNING_KEY
+
+then commit the new `gpg --armor --export 5F4457D5DABAB93A244D8BCE1D502DF1F94D6543` as
+`packaging/release-signing-key.asc`.
+
+### Trying it
+
+Run "Release installers" by hand (Actions > Release installers > Run workflow) on a branch: the
+installers are kept with the run, not attached to a release. The log of "Build installers" shows
+what was signed. Once signing works, change the line about warnings on first launch in the README.
