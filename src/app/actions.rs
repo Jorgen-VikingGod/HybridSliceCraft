@@ -5,6 +5,9 @@ use crate::fdm::{self, FdmJob, JobObject};
 use crate::mesh;
 use crate::project;
 use crate::resin::{self, export, hollow, supports};
+use super::dialogs::Pick;
+use craft_dialogs::FileDialog;
+use crate::resin::export::ResinFormat;
 use glam::{Mat4, Vec2};
 
 /// Fast non-cryptographic fingerprint, to spot when a slice has gone stale.
@@ -137,15 +140,11 @@ impl App {
     }
 
     pub fn import_dialog(&mut self) {
-        let Some(files) = rfd::FileDialog::new()
-            .add_filter("3D models", &["stl", "obj", "3mf", "ply", "step", "stp"])
-            .add_filter("All files", &["*"])
-            .set_title("Add models to the plate")
-            .pick_files()
-        else {
-            return;
-        };
-        self.import_files(files);
+        let dialog = FileDialog::open_many()
+            .filter("3D models", crate::mesh::EXTENSIONS)
+            .filter("All files", &["*"])
+            .title("Add models to the plate");
+        self.dialogs.ask(dialog, Pick::AddModels);
     }
 
     pub fn import_files(&mut self, files: Vec<PathBuf>) {
@@ -911,7 +910,7 @@ impl App {
                 eprintln!("Nothing was sliced, so nothing was saved.");
                 std::process::exit(1);
             };
-            if let Err(e) = std::fs::write(&path, res.gcode.as_bytes()) {
+            if let Err(e) = crate::save::write(&path, res.gcode.as_bytes()) {
                 eprintln!("Couldn't save: {e}");
                 std::process::exit(1);
             }
@@ -935,39 +934,46 @@ impl App {
     }
 
     fn export_gcode(&mut self, ctx: &egui::Context) {
+        if self.fdm_result.is_none() {
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("Slice the plate first."));
+            return;
+        }
+        let dialog = FileDialog::save()
+            .filter("G-code", &["gcode"])
+            .file_name(format!("{}.gcode", self.default_name()))
+            .title("Save printer instructions");
+        self.dialogs.ask(dialog, Pick::SaveGcode);
+    }
+
+    pub(super) fn export_gcode_to(&mut self, ctx: &egui::Context, path: PathBuf) {
         let Some(res) = self.fdm_result.clone() else {
             self.toast(ctx, ToastKind::Info, crate::i18n::tr("Slice the plate first."));
             return;
         };
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("G-code", &["gcode"])
-            .set_file_name(format!("{}.gcode", self.default_name()))
-            .set_title("Save printer instructions")
-            .save_file()
-        else {
-            return;
-        };
         self.last_export_gcode = Some(path.clone());
         self.spawn_job("Saving", move |_| {
-            let tmp = path.with_extension("partial");
-            std::fs::write(&tmp, res.gcode.as_bytes()).map_err(|e| format!("Couldn't save the file: {e}"))?;
-            std::fs::rename(&tmp, &path).map_err(|e| format!("Couldn't save the file: {e}"))?;
+            crate::save::write(&path, res.gcode.as_bytes())?;
             Ok(JobOutcome::Saved(format!("Saved {}", path.display())))
         });
     }
 
     fn export_resin(&mut self, ctx: &egui::Context) {
-        let (Some(res), Some(job)) = (self.resin_result.clone(), self.resin_job.clone()) else {
+        if self.resin_result.is_none() || self.resin_job.is_none() {
             self.toast(ctx, ToastKind::Info, crate::i18n::tr("Slice the plate first."));
             return;
-        };
+        }
         let format = self.resin_format;
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter(format.label(), &[format.extension_for(&self.resin_printer.format)])
-            .set_file_name(format!("{}.{}", self.default_name(), format.extension_for(&self.resin_printer.format)))
-            .set_title("Save the print")
-            .save_file()
-        else {
+        let ext = format.extension_for(&self.resin_printer.format);
+        let dialog = FileDialog::save()
+            .filter(format.label(), &[ext])
+            .file_name(format!("{}.{ext}", self.default_name()))
+            .title("Save the print");
+        self.dialogs.ask(dialog, Pick::SaveResin(format));
+    }
+
+    pub(super) fn export_resin_to(&mut self, ctx: &egui::Context, format: ResinFormat, path: PathBuf) {
+        let (Some(res), Some(job)) = (self.resin_result.clone(), self.resin_job.clone()) else {
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("Slice the plate first."));
             return;
         };
         let tint = self.resin_mat.color;
@@ -995,13 +1001,7 @@ impl App {
 
     /// Save the plate, or only the selected models, as one STL file.
     pub fn export_stl(&mut self, ctx: &egui::Context, only_selection: bool) {
-        let objects: Vec<PlateObject> = self
-            .plate()
-            .objects
-            .iter()
-            .filter(|o| o.visible && (!only_selection || self.selection.contains(&o.id)))
-            .cloned()
-            .collect();
+        let objects = self.stl_objects(only_selection);
         if objects.is_empty() {
             let text = if only_selection { "Select the models to save first." } else { "There's nothing on the plate to save." };
             self.toast(ctx, ToastKind::Info, crate::i18n::tr(text));
@@ -1012,13 +1012,26 @@ impl App {
             (true, many) => merged_name(many.iter().map(|o| o.name.as_str())),
             _ => self.default_name(),
         };
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("STL", &["stl"])
-            .set_file_name(format!("{}.stl", name.replace(['/', '\\'], "-")))
-            .save_file()
-        else {
+        let dialog = FileDialog::save().filter("STL", &["stl"]).file_name(format!("{}.stl", name.replace(['/', '\\'], "-")));
+        self.dialogs.ask(dialog, Pick::SaveStl { only_selection });
+    }
+
+    /// The models [`Self::export_stl`] saves: the visible ones, or only the selected.
+    fn stl_objects(&self, only_selection: bool) -> Vec<PlateObject> {
+        self.plate()
+            .objects
+            .iter()
+            .filter(|o| o.visible && (!only_selection || self.selection.contains(&o.id)))
+            .cloned()
+            .collect()
+    }
+
+    pub(super) fn export_stl_to(&mut self, ctx: &egui::Context, only_selection: bool, path: PathBuf) {
+        let objects = self.stl_objects(only_selection);
+        if objects.is_empty() {
+            self.toast(ctx, ToastKind::Info, crate::i18n::tr("There's nothing on the plate to save."));
             return;
-        };
+        }
         let supports: Vec<Arc<Mesh>> = objects
             .iter()
             .filter_map(|o| self.supports.get(&o.id).map(|c| c.mesh.clone()))
@@ -1040,19 +1053,18 @@ impl App {
     }
 
     pub fn save_project(&mut self, ctx: &egui::Context, force_dialog: bool) {
-        let path = match (&self.project_path, force_dialog) {
-            (Some(p), false) => p.clone(),
+        match (&self.project_path, force_dialog) {
+            (Some(p), false) => self.save_project_to(ctx, p.clone()),
             _ => {
-                let Some(p) = rfd::FileDialog::new()
-                    .add_filter("HybridSliceCraft project", &["hscproject"])
-                    .set_file_name(format!("{}.hscproject", self.default_name()))
-                    .save_file()
-                else {
-                    return;
-                };
-                p
+                let dialog = FileDialog::save()
+                    .filter("HybridSliceCraft project", &["hscproject"])
+                    .file_name(format!("{}.hscproject", self.default_name()));
+                self.dialogs.ask(dialog, Pick::SaveProject);
             }
-        };
+        }
+    }
+
+    pub(super) fn save_project_to(&mut self, ctx: &egui::Context, path: PathBuf) {
         let s = project::ProjectSettings {
             resin_mode: self.resin(),
             fdm_printer: self.fdm_printer.clone(),
@@ -1072,14 +1084,9 @@ impl App {
         }
     }
 
-    pub fn open_project(&mut self, ctx: &egui::Context) {
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("HybridSliceCraft project", &["hscproject"])
-            .pick_file()
-        else {
-            return;
-        };
-        self.load_project_from(ctx, path);
+    pub fn open_project(&mut self, _ctx: &egui::Context) {
+        let dialog = FileDialog::open().filter("HybridSliceCraft project", &["hscproject"]);
+        self.dialogs.ask(dialog, Pick::OpenProject);
     }
 
     pub fn load_project_from(&mut self, ctx: &egui::Context, path: PathBuf) {
@@ -1233,14 +1240,8 @@ impl App {
             resin_mat: Some(self.resin_mat.clone()),
             layout: Some(self.layout.to_saved()),
         };
-        let dir = config_dir();
-        if std::fs::create_dir_all(&dir).is_ok() {
-            if let Ok(text) = serde_json::to_string_pretty(&s) {
-                let tmp = dir.join("session.partial");
-                if std::fs::write(&tmp, text).is_ok() {
-                    let _ = std::fs::rename(&tmp, dir.join("session.json"));
-                }
-            }
+        if let Ok(text) = serde_json::to_string_pretty(&s) {
+            let _ = crate::save::write_private(&config_dir().join("session.json"), text.as_bytes());
         }
     }
 

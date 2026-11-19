@@ -319,16 +319,16 @@ impl App {
         }
     }
 
-    fn import_profiles(&mut self, ctx: &egui::Context) {
-        let Some(files) = rfd::FileDialog::new()
-            .add_filter("Slicer presets", &["json", "orca_printer", "orca_filament", "bbscfg", "bbsflmt", "zip", "ini"])
-            .add_filter("All files", &["*"])
-            .set_title("Import printer, filament and process presets")
-            .pick_files()
-        else {
-            return;
-        };
-        let imp = crate::import::load_files(&files);
+    fn import_profiles(&mut self, _ctx: &egui::Context) {
+        let dialog = craft_dialogs::FileDialog::open_many()
+            .filter("Slicer presets", &["json", "orca_printer", "orca_filament", "bbscfg", "bbsflmt", "zip", "ini"])
+            .filter("All files", &["*"])
+            .title("Import printer, filament and process presets");
+        self.dialogs.ask(dialog, super::dialogs::Pick::ImportProfiles);
+    }
+
+    pub(super) fn import_profiles_from(&mut self, ctx: &egui::Context, files: &[std::path::PathBuf]) {
+        let imp = crate::import::load_files(files);
         if imp.count() == 0 {
             let mut notes = imp.notes;
             notes.insert(0, "No presets were found in the chosen files.".into());

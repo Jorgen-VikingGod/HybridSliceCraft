@@ -37,12 +37,8 @@ impl Prefs {
     }
 
     pub fn save(&self) {
-        let p = path();
-        if let Some(dir) = p.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
         if let Ok(text) = serde_json::to_string_pretty(self) {
-            let _ = std::fs::write(p, text);
+            let _ = crate::save::write_private(&path(), text.as_bytes());
         }
     }
 

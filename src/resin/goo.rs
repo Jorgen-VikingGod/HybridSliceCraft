@@ -261,9 +261,7 @@ pub fn write(path: &Path, job: &ResinJob, res: &ResinResult, thumb: Option<&Thum
     f.0.extend_from_slice(&MAGIC);
 
     progress.set(0.9, "Saving file");
-    let tmp = path.with_extension("partial");
-    std::fs::write(&tmp, &f.0).map_err(|e| format!("couldn't save the file: {e}"))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("couldn't save the file: {e}"))
+    crate::save::write(path, &f.0)
 }
 
 /// Read a layer back. Only used to check what `encode_layer` wrote.

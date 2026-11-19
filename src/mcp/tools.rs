@@ -517,7 +517,7 @@ pub fn slice_filament(state: &mut State, args: &Value) -> Result<Output, String>
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         std::fs::create_dir_all(dir).map_err(|e| format!("can't make {}: {e}", dir.display()))?;
     }
-    std::fs::write(&path, res.gcode.as_bytes()).map_err(|e| format!("can't write {}: {e}", path.display()))?;
+    crate::save::write(&path, res.gcode.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut by_feature = Map::new();
     for f in Feature::ALL {
         let t = res.time_by_feature[f as usize];

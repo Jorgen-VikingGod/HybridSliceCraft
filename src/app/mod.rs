@@ -2,6 +2,7 @@
 //! heavy work to background threads so the interface never freezes.
 
 mod actions;
+mod dialogs;
 mod dock;
 pub mod frame;
 mod mixes;
@@ -305,6 +306,8 @@ pub struct App {
 
     pub supports: AHashMap<u64, SupportCache>,
     pub toasts: Vec<Toast>,
+    /// File dialogs asked for and not answered yet.
+    pub dialogs: craft_dialogs::Dialogs<dialogs::Pick>,
     pub settings_filter: String,
     pub advanced: bool,
     pub settings_tab: usize,
@@ -477,6 +480,10 @@ impl App {
             layer_pan: egui::Vec2::ZERO,
             supports: AHashMap::new(),
             toasts: Vec::new(),
+            dialogs: {
+                let ctx = cc.egui_ctx.clone();
+                craft_dialogs::Dialogs::new(std::sync::Arc::new(move || ctx.request_repaint()))
+            },
             settings_filter: String::new(),
             advanced: false,
             settings_tab: 0,
@@ -789,6 +796,13 @@ impl eframe::App for App {
         self.save_session();
     }
 
+    /// Closing the window quits the way the system expects (on macOS through
+    /// the application, which otherwise can crash while the window goes away).
+    /// The session is still saved in `on_exit`.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        craft_quit::on_close_request(ctx);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let now = ctx.input(|i| i.time);
@@ -800,6 +814,7 @@ impl eframe::App for App {
         theme::follow_system(&ctx);
         self.poll_updates(&ctx);
         self.poll_job(&ctx);
+        self.take_dialog_answers(&ctx);
         self.handle_keys(&ctx);
         self.handle_dropped_files(&ctx);
         self.toasts.retain(|t| t.until > now);
@@ -841,6 +856,8 @@ impl eframe::App for App {
         self.windows(&ctx);
         self.draw_toasts(&ctx);
         frame::window_edges(&ctx);
+        // Last, so a dialog asked for anywhere this frame shows now, over this window.
+        self.dialogs.show_pending(Some(&*frame));
     }
 
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
@@ -889,5 +906,5 @@ fn save_png(path: &std::path::Path, w: u32, h: u32, rgba: &[u8]) -> Result<(), S
         }
     }
     let bytes = crate::resin::export::encode_png(w, h, rgba, png::ColorType::Rgba)?;
-    std::fs::write(path, bytes).map_err(|e| e.to_string())
+    crate::save::write(path, &bytes)
 }

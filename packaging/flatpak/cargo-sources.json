@@ -1,5 +1,11 @@
 [
     {
+        "type": "git",
+        "url": "https://github.com/storytold/craft-libs",
+        "commit": "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f",
+        "dest": "flatpak-cargo/git/craft-libs-48c57b5"
+    },
+    {
         "type": "archive",
         "archive-type": "tar-gzip",
         "url": "https://static.crates.io/crates/Inflector/Inflector-0.11.4.crate",
@@ -933,6 +939,132 @@
         "type": "inline",
         "contents": "{\"package\": \"45390e6114f68f718cc7a830514a96f903cccd70d02a8f6d9f643ac4ba45afaf\", \"files\": {}}",
         "dest": "cargo/vendor/core-graphics-types-0.1.3",
+        "dest-filename": ".cargo-checksum.json"
+    },
+    {
+        "type": "shell",
+        "commands": [
+            "cp -r --reflink=auto \"flatpak-cargo/git/craft-libs-48c57b5/crates/atomic\" \"cargo/vendor/craft-atomic\""
+        ]
+    },
+    {
+        "type": "inline",
+        "contents": "[package]\nname = \"craft-atomic\"\nversion = \"0.1.0\"\nedition = \"2024\"\nlicense = \"MIT OR Apache-2.0\"\nrust-version = \"1.95\"\nrepository = \"https://github.com/storytold/craft-libs\"\ndescription = \"Crash-safe atomic file writing and replacement for the Craft suite\"\n\n[lints.rust]\nunsafe_code = \"forbid\"\n\n[lints.rust.unexpected_cfgs]\nlevel = \"warn\"\ncheck-cfg = [\"cfg(craft_pdf_unicode_fixtures)\"]\n\n[lints.cargo]\nunused_workspace_dependencies = \"allow\"\n\n[lints.clippy]\ncognitive_complexity = \"deny\"\ntoo_many_arguments = \"deny\"\nwildcard_imports = \"deny\"\ndbg_macro = \"warn\"\ntodo = \"warn\"\n\n[target.\"cfg(target_vendor = \\\"apple\\\")\".dependencies.rustix]\nversion = \"1.1\"\ndefault-features = false\nfeatures = [\"std\", \"fs\"]\n",
+        "dest": "cargo/vendor/craft-atomic",
+        "dest-filename": "Cargo.toml"
+    },
+    {
+        "type": "inline",
+        "contents": "{\"package\": null, \"files\": {}}",
+        "dest": "cargo/vendor/craft-atomic",
+        "dest-filename": ".cargo-checksum.json"
+    },
+    {
+        "type": "shell",
+        "commands": [
+            "cp -r --reflink=auto \"flatpak-cargo/git/craft-libs-48c57b5/crates/dialogs\" \"cargo/vendor/craft-dialogs\""
+        ]
+    },
+    {
+        "type": "inline",
+        "contents": "[package]\nname = \"craft-dialogs\"\ndescription = \"Native file and message dialogs that never block the event loop: queued requests, shown at the end of the frame, answered on a later frame.\"\nversion = \"0.1.0\"\nedition = \"2024\"\nlicense = \"MIT OR Apache-2.0\"\nrust-version = \"1.95\"\nrepository = \"https://github.com/storytold/craft-libs\"\n\n[dependencies]\nraw-window-handle = \"0.6.2\"\n\n[dependencies.rfd]\nversion = \"0.17.2\"\ndefault-features = false\nfeatures = [\"xdg-portal\"]\n\n[target.\"cfg(target_os = \\\"macos\\\")\".dependencies]\nblock2 = \"0.6.2\"\n\n[target.\"cfg(target_os = \\\"macos\\\")\".dependencies.objc2]\nversion = \"0.6.4\"\ndefault-features = false\nfeatures = [\"std\"]\n\n[target.\"cfg(target_os = \\\"macos\\\")\".dependencies.objc2-app-kit]\nversion = \"0.3.2\"\ndefault-features = false\nfeatures = [\"std\", \"block2\", \"NSApplication\", \"NSOpenPanel\", \"NSPanel\", \"NSResponder\", \"NSSavePanel\", \"NSView\", \"NSWindow\"]\n\n[target.\"cfg(target_os = \\\"macos\\\")\".dependencies.objc2-foundation]\nversion = \"0.3.2\"\ndefault-features = false\nfeatures = [\"std\", \"NSArray\", \"NSString\", \"NSURL\"]\n\n[lints.rust]\nunsafe_code = \"forbid\"\n\n[lints.rust.unexpected_cfgs]\nlevel = \"warn\"\ncheck-cfg = [\"cfg(craft_pdf_unicode_fixtures)\"]\n\n[lints.cargo]\nunused_workspace_dependencies = \"allow\"\n\n[lints.clippy]\ncognitive_complexity = \"deny\"\ntoo_many_arguments = \"deny\"\nwildcard_imports = \"deny\"\ndbg_macro = \"warn\"\ntodo = \"warn\"\n",
+        "dest": "cargo/vendor/craft-dialogs",
+        "dest-filename": "Cargo.toml"
+    },
+    {
+        "type": "inline",
+        "contents": "{\"package\": null, \"files\": {}}",
+        "dest": "cargo/vendor/craft-dialogs",
+        "dest-filename": ".cargo-checksum.json"
+    },
+    {
+        "type": "shell",
+        "commands": [
+            "cp -r --reflink=auto \"flatpak-cargo/git/craft-libs-48c57b5/crates/mcp-server\" \"cargo/vendor/craft-mcp-server\""
+        ]
+    },
+    {
+        "type": "inline",
+        "contents": "[package]\nname = \"craft-mcp-server\"\ndescription = \"MCP server machinery any app may share: JSON-RPC 2.0 over stdio, the MCP lifecycle, tool and resource methods, tool schemas and argument checks, image results\"\nversion = \"0.1.0\"\nedition = \"2024\"\nlicense = \"MIT OR Apache-2.0\"\nrust-version = \"1.95\"\nrepository = \"https://github.com/storytold/craft-libs\"\n\n[lints.rust]\nunsafe_code = \"forbid\"\n\n[lints.rust.unexpected_cfgs]\nlevel = \"warn\"\ncheck-cfg = [\"cfg(craft_pdf_unicode_fixtures)\"]\n\n[lints.cargo]\nunused_workspace_dependencies = \"allow\"\n\n[lints.clippy]\ncognitive_complexity = \"deny\"\ntoo_many_arguments = \"deny\"\nwildcard_imports = \"deny\"\ndbg_macro = \"warn\"\ntodo = \"warn\"\n\n[dependencies]\nserde_json = \"1\"\n\n[dev-dependencies]\nproptest = \"1\"\n",
+        "dest": "cargo/vendor/craft-mcp-server",
+        "dest-filename": "Cargo.toml"
+    },
+    {
+        "type": "inline",
+        "contents": "{\"package\": null, \"files\": {}}",
+        "dest": "cargo/vendor/craft-mcp-server",
+        "dest-filename": ".cargo-checksum.json"
+    },
+    {
+        "type": "shell",
+        "commands": [
+            "cp -r --reflink=auto \"flatpak-cargo/git/craft-libs-48c57b5/crates/mesh\" \"cargo/vendor/craft-mesh\""
+        ]
+    },
+    {
+        "type": "inline",
+        "contents": "[package]\nname = \"craft-mesh\"\ndescription = \"3D mesh file formats behind one neutral model: STL and Wavefront OBJ/MTL readers and writers, a glTF 2.0 / GLB reader and GLB writer, and PLY, FBX and 3MF readers, bounded on hostile input\"\nversion = \"0.1.0\"\nedition = \"2024\"\nlicense = \"MIT OR Apache-2.0\"\nrust-version = \"1.95\"\nrepository = \"https://github.com/storytold/craft-libs\"\n\n[lints.rust]\nunsafe_code = \"forbid\"\n\n[lints.rust.unexpected_cfgs]\nlevel = \"warn\"\ncheck-cfg = [\"cfg(craft_pdf_unicode_fixtures)\"]\n\n[lints.cargo]\nunused_workspace_dependencies = \"allow\"\n\n[lints.clippy]\ncognitive_complexity = \"deny\"\ntoo_many_arguments = \"deny\"\nwildcard_imports = \"deny\"\ndbg_macro = \"warn\"\ntodo = \"warn\"\n\n[features]\ndefault = [\"stl\", \"obj\", \"ply\", \"gltf\", \"fbx\", \"threemf\"]\nstl = []\nobj = []\nply = []\ngltf = [\"dep:serde_json\"]\nfbx = [\"dep:miniz_oxide\", \"dep:craft-zip\"]\nthreemf = [\"dep:craft-opc\", \"dep:craft-xml\"]\n\n[dependencies.serde_json]\noptional = true\nversion = \"1\"\n\n[dependencies.miniz_oxide]\nversion = \"0.9\"\noptional = true\n\n[dependencies.craft-zip]\noptional = true\npath = \"crates/zip\"\n\n[dependencies.craft-opc]\noptional = true\npath = \"crates/opc\"\n\n[dependencies.craft-xml]\noptional = true\npath = \"crates/xml\"\n",
+        "dest": "cargo/vendor/craft-mesh",
+        "dest-filename": "Cargo.toml"
+    },
+    {
+        "type": "inline",
+        "contents": "{\"package\": null, \"files\": {}}",
+        "dest": "cargo/vendor/craft-mesh",
+        "dest-filename": ".cargo-checksum.json"
+    },
+    {
+        "type": "shell",
+        "commands": [
+            "cp -r --reflink=auto \"flatpak-cargo/git/craft-libs-48c57b5/crates/quit\" \"cargo/vendor/craft-quit\""
+        ]
+    },
+    {
+        "type": "inline",
+        "contents": "[package]\nname = \"craft-quit\"\ndescription = \"Quit a Craft app the platform's own way: on macOS through `-[NSApplication terminate:]`.\"\nversion = \"0.1.0\"\nedition = \"2024\"\nlicense = \"MIT OR Apache-2.0\"\nrust-version = \"1.95\"\nrepository = \"https://github.com/storytold/craft-libs\"\n\n[features]\negui = [\"dep:egui\"]\nmenu = [\"egui\", \"dep:muda\"]\n\n[dependencies.egui]\noptional = true\nversion = \"0.37\"\ndefault-features = false\n\n[target.\"cfg(target_os = \\\"macos\\\")\".dependencies.dispatch2]\nversion = \"0.3.1\"\ndefault-features = false\nfeatures = [\"std\"]\n\n[target.\"cfg(target_os = \\\"macos\\\")\".dependencies.objc2]\nversion = \"0.6.4\"\ndefault-features = false\nfeatures = [\"std\"]\n\n[target.\"cfg(target_os = \\\"macos\\\")\".dependencies.objc2-app-kit]\nversion = \"0.3.2\"\ndefault-features = false\nfeatures = [\"std\", \"NSApplication\", \"NSResponder\"]\n\n[target.\"cfg(target_os = \\\"macos\\\")\".dependencies.muda]\nversion = \"0.21.2\"\ndefault-features = false\noptional = true\n\n[lints.rust]\nunsafe_code = \"forbid\"\n\n[lints.rust.unexpected_cfgs]\nlevel = \"warn\"\ncheck-cfg = [\"cfg(craft_pdf_unicode_fixtures)\"]\n\n[lints.cargo]\nunused_workspace_dependencies = \"allow\"\n\n[lints.clippy]\ncognitive_complexity = \"deny\"\ntoo_many_arguments = \"deny\"\nwildcard_imports = \"deny\"\ndbg_macro = \"warn\"\ntodo = \"warn\"\n",
+        "dest": "cargo/vendor/craft-quit",
+        "dest-filename": "Cargo.toml"
+    },
+    {
+        "type": "inline",
+        "contents": "{\"package\": null, \"files\": {}}",
+        "dest": "cargo/vendor/craft-quit",
+        "dest-filename": ".cargo-checksum.json"
+    },
+    {
+        "type": "shell",
+        "commands": [
+            "cp -r --reflink=auto \"flatpak-cargo/git/craft-libs-48c57b5/crates/sniff\" \"cargo/vendor/craft-sniff\""
+        ]
+    },
+    {
+        "type": "inline",
+        "contents": "[package]\nname = \"craft-sniff\"\ndescription = \"What a file is from its first bytes: a dependency-free signature table naming the format, its media type, extension and family, for images, audio, video, 3D models, archives, executables and databases.\"\nversion = \"0.1.0\"\nedition = \"2024\"\nlicense = \"MIT OR Apache-2.0\"\nrust-version = \"1.95\"\nrepository = \"https://github.com/storytold/craft-libs\"\n\n[lints.rust]\nunsafe_code = \"forbid\"\n\n[lints.rust.unexpected_cfgs]\nlevel = \"warn\"\ncheck-cfg = [\"cfg(craft_pdf_unicode_fixtures)\"]\n\n[lints.cargo]\nunused_workspace_dependencies = \"allow\"\n\n[lints.clippy]\ncognitive_complexity = \"deny\"\ntoo_many_arguments = \"deny\"\nwildcard_imports = \"deny\"\ndbg_macro = \"warn\"\ntodo = \"warn\"\n",
+        "dest": "cargo/vendor/craft-sniff",
+        "dest-filename": "Cargo.toml"
+    },
+    {
+        "type": "inline",
+        "contents": "{\"package\": null, \"files\": {}}",
+        "dest": "cargo/vendor/craft-sniff",
+        "dest-filename": ".cargo-checksum.json"
+    },
+    {
+        "type": "shell",
+        "commands": [
+            "cp -r --reflink=auto \"flatpak-cargo/git/craft-libs-48c57b5/crates/zip\" \"cargo/vendor/craft-zip\""
+        ]
+    },
+    {
+        "type": "inline",
+        "contents": "[package]\nname = \"craft-zip\"\ndescription = \"ZIP archives from untrusted files: a preflight of the end records and central directory before anything is indexed, entry reads that don't trust declared sizes, duplicate-name detection, and a deterministic writer.\"\nversion = \"0.1.0\"\nedition = \"2024\"\nlicense = \"MIT OR Apache-2.0\"\nrust-version = \"1.95\"\nrepository = \"https://github.com/storytold/craft-libs\"\n\n[lints.rust]\nunsafe_code = \"forbid\"\n\n[lints.rust.unexpected_cfgs]\nlevel = \"warn\"\ncheck-cfg = [\"cfg(craft_pdf_unicode_fixtures)\"]\n\n[lints.cargo]\nunused_workspace_dependencies = \"allow\"\n\n[lints.clippy]\ncognitive_complexity = \"deny\"\ntoo_many_arguments = \"deny\"\nwildcard_imports = \"deny\"\ndbg_macro = \"warn\"\ntodo = \"warn\"\n\n[dependencies]\nthiserror = \"2\"\n\n[dependencies.zip]\nversion = \"9\"\ndefault-features = false\nfeatures = [\"deflate-flate2\"]\n\n[dependencies.flate2]\nversion = \"1\"\ndefault-features = false\nfeatures = [\"rust_backend\"]\n\n[dependencies.miniz_oxide]\noptional = true\nversion = \"0.8\"\n\n[dependencies.bzip2-rs]\nversion = \"0.1\"\noptional = true\n\n[dependencies.lzma-rs]\nversion = \"0.3\"\noptional = true\n\n[dependencies.ruzstd]\nversion = \"0.9.1\"\ndefault-features = false\nfeatures = [\"std\"]\noptional = true\n\n[dependencies.serde]\noptional = true\nversion = \"1\"\nfeatures = [\"derive\"]\n\n[features]\ntest-support = []\nlenient = [\"dep:miniz_oxide\"]\nlenient-bzip2 = [\"lenient\", \"dep:bzip2-rs\"]\nlenient-lzma = [\"lenient\", \"dep:lzma-rs\"]\nlenient-zstd = [\"lenient\", \"dep:ruzstd\"]\nserde = [\"dep:serde\"]\n\n[dev-dependencies]\nserde_json = \"1\"\n\n[dev-dependencies.craft-zip]\npath = \".\"\nfeatures = [\"test-support\", \"lenient-bzip2\", \"lenient-lzma\", \"lenient-zstd\", \"serde\"]\n",
+        "dest": "cargo/vendor/craft-zip",
+        "dest-filename": "Cargo.toml"
+    },
+    {
+        "type": "inline",
+        "contents": "{\"package\": null, \"files\": {}}",
+        "dest": "cargo/vendor/craft-zip",
         "dest-filename": ".cargo-checksum.json"
     },
     {
@@ -5968,7 +6100,7 @@
     },
     {
         "type": "inline",
-        "contents": "[source.vendored-sources]\ndirectory = \"cargo/vendor\"\n\n[source.crates-io]\nreplace-with = \"vendored-sources\"\n",
+        "contents": "[source.vendored-sources]\ndirectory = \"cargo/vendor\"\n\n[source.crates-io]\nreplace-with = \"vendored-sources\"\n\n[source.\"https://github.com/storytold/craft-libs\"]\ngit = \"https://github.com/storytold/craft-libs\"\nreplace-with = \"vendored-sources\"\nrev = \"48c57b5fafa170eb9c77c1d9fef0be0f09876f1f\"\n",
         "dest": "cargo",
         "dest-filename": "config"
     }

@@ -86,36 +86,33 @@ fn write_zip_of_layers(
     progress: &Progress,
 ) -> Result<(), String> {
     let spec = res.spec.ok_or("Slice the plate first.")?;
-    let tmp = path.with_extension("partial");
-    let file = std::fs::File::create(&tmp).map_err(|e| format!("couldn't create the file: {e}"))?;
-    let mut zip = zip::ZipWriter::new(std::io::BufWriter::new(file));
-    let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
-    let deflated = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-    for (name, bytes) in extras {
-        zip.start_file(name, deflated).map_err(|e| e.to_string())?;
-        zip.write_all(&bytes).map_err(|e| e.to_string())?;
-    }
-    let n = res.layers.len();
-    for start in (0..n).step_by(64) {
-        if progress.cancelled() {
-            drop(zip);
-            let _ = std::fs::remove_file(&tmp);
-            return Err("Cancelled".into());
+    crate::save::write_with(path, |file| {
+        let mut zip = zip::ZipWriter::new(std::io::BufWriter::new(file));
+        let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let deflated = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        for (name, bytes) in extras {
+            zip.start_file(name, deflated).map_err(|e| e.to_string())?;
+            zip.write_all(&bytes).map_err(|e| e.to_string())?;
         }
-        let end = (start + 64).min(n);
-        let pngs: Result<Vec<Vec<u8>>, String> = (start..end)
-            .into_par_iter()
-            .map(|i| layer_png(&res.layers[i], spec.width, spec.height))
-            .collect();
-        for (k, png) in pngs?.into_iter().enumerate() {
-            // PNG is already compressed, so it's stored as-is.
-            zip.start_file(name_for(start + k), opts).map_err(|e| e.to_string())?;
-            zip.write_all(&png).map_err(|e| e.to_string())?;
+        let n = res.layers.len();
+        for start in (0..n).step_by(64) {
+            if progress.cancelled() {
+                return Err(crate::save::CANCELLED.into());
+            }
+            let end = (start + 64).min(n);
+            let pngs: Result<Vec<Vec<u8>>, String> = (start..end)
+                .into_par_iter()
+                .map(|i| layer_png(&res.layers[i], spec.width, spec.height))
+                .collect();
+            for (k, png) in pngs?.into_iter().enumerate() {
+                // PNG is already compressed, so it's stored as-is.
+                zip.start_file(name_for(start + k), opts).map_err(|e| e.to_string())?;
+                zip.write_all(&png).map_err(|e| e.to_string())?;
+            }
+            progress.set(end as f32 / n as f32 * 0.95, "Saving layers");
         }
-        progress.set(end as f32 / n as f32 * 0.95, "Saving layers");
-    }
-    zip.finish().map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("couldn't save the file: {e}"))
+        zip.finish().map_err(|e| e.to_string())?.flush().map_err(|e| e.to_string())
+    })
 }
 
 fn sl1_config(job: &ResinJob, res: &ResinResult) -> String {
@@ -467,9 +464,7 @@ fn write_ctb(path: &Path, job: &ResinJob, res: &ResinResult, thumb: Option<&Thum
         f.0.extend_from_slice(data);
     }
     progress.set(0.9, "Saving file");
-    let tmp = path.with_extension("partial");
-    std::fs::write(&tmp, &f.0).map_err(|e| format!("couldn't save the file: {e}"))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("couldn't save the file: {e}"))
+    crate::save::write(path, &f.0)
 }
 
 #[cfg(test)]

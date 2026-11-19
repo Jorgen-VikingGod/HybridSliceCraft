@@ -8,10 +8,9 @@
 mod render;
 mod tools;
 
+use craft_mcp_server::{Contents, Info, Options, Server};
 use serde_json::{json, Value};
-use std::io::{BufRead, Write};
 
-const SUPPORTED: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const MANUAL: &str = include_str!("../../docs/manual.md");
 const MANUAL_URI: &str = "hybridslicecraft://manual";
 
@@ -19,7 +18,7 @@ const MANUAL_URI: &str = "hybridslicecraft://manual";
 fn tool_list() -> Value {
     let models = json!({
         "type": "array",
-        "description": "Model files (STL, OBJ, 3MF, PLY, STEP). Each is a path, or an object {path, scale, rotate_z (degrees), x, y (mm, centre on the bed), filament (1-based tool), copies}. Models without x and y are arranged automatically.",
+        "description": "Model files (STL, OBJ, 3MF, PLY, glTF/GLB, FBX, STEP). Each is a path, or an object {path, scale, rotate_z (degrees), x, y (mm, centre on the bed), filament (1-based tool), copies}. Models without x and y are arranged automatically.",
         "items": {
             "oneOf": [
                 {"type": "string"},
@@ -108,130 +107,102 @@ fn tool_list() -> Value {
     ])
 }
 
-fn ok(id: &Value, result: Value) -> Value {
-    json!({"jsonrpc": "2.0", "id": id, "result": result})
-}
-
-fn fail(id: &Value, code: i64, message: &str) -> Value {
-    json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}})
-}
-
 fn tool_result(r: Result<tools::Output, String>) -> Value {
     match r {
         Ok(out) => {
             let mut content = vec![json!({"type": "text", "text": serde_json::to_string_pretty(&out.value).unwrap_or_default()})];
             if let Some(png) = out.image {
-                content.push(json!({"type": "image", "data": render::base64(&png), "mimeType": "image/png"}));
+                content.push(json!({"type": "image", "data": craft_mcp_server::base64(&png), "mimeType": "image/png"}));
             }
             json!({"content": content, "structuredContent": out.value, "isError": false})
         }
-        Err(e) => json!({"content": [{"type": "text", "text": e}], "isError": true}),
+        Err(e) => craft_mcp_server::text_result(e, true),
     }
 }
 
-fn call_tool(state: &mut tools::State, name: &str, args: &Value) -> Value {
-    // A shape the slicer can't handle must come back as an error, not end the server.
-    let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match name {
-        "list_catalog" => tools::list_catalog(args),
-        "describe_settings" => tools::describe_settings(args),
-        "inspect_model" => tools::inspect_model(args),
-        "slice_filament" => tools::slice_filament(state, args),
-        "slice_resin" => tools::slice_resin(state, args),
-        "render_layer" => tools::render_layer(state, args),
-        other => Err(format!("unknown tool \"{other}\"")),
-    }));
-    tool_result(run.unwrap_or_else(|_| Err("the slicer stopped on this input; check the model file and the settings".into())))
+/// The slicer's side of the protocol: its tools and its manual. The protocol
+/// itself (JSON-RPC framing, the lifecycle, argument checks) is craft-mcp-server's.
+#[derive(Default)]
+struct Slicer {
+    state: tools::State,
 }
 
-/// Answer one message. `None` for notifications, which get no answer.
-fn handle(state: &mut tools::State, msg: &Value) -> Option<Value> {
-    let method = msg.get("method").and_then(|m| m.as_str());
-    let id = msg.get("id");
-    let (Some(method), Some(id)) = (method, id) else {
-        // A notification, or a reply to something we never asked.
-        return None;
+impl craft_mcp_server::Tools for Slicer {
+    fn instructions(&self) -> String {
+        "Slices 3D models for filament (FDM) and resin (MSLA) printers. Start with list_catalog to see printers, materials and profiles, inspect_model to check a file, then slice_filament or slice_resin. describe_settings lists every setting that can be changed. render_layer shows a layer of a finished slice. The manual is the resource hybridslicecraft://manual.".into()
+    }
+
+    fn list(&mut self) -> Vec<Value> {
+        match tool_list() {
+            Value::Array(tools) => tools,
+            _ => Vec::new(),
+        }
+    }
+
+    fn call(&mut self, name: &str, args: &Value) -> Value {
+        let state = &mut self.state;
+        // A shape the slicer can't handle must come back as an error, not end the server.
+        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match name {
+            "list_catalog" => tools::list_catalog(args),
+            "describe_settings" => tools::describe_settings(args),
+            "inspect_model" => tools::inspect_model(args),
+            "slice_filament" => tools::slice_filament(state, args),
+            "slice_resin" => tools::slice_resin(state, args),
+            "render_layer" => tools::render_layer(state, args),
+            other => Err(format!("unknown tool \"{other}\"")),
+        }));
+        tool_result(run.unwrap_or_else(|_| Err("the slicer stopped on this input; check the model file and the settings".into())))
+    }
+
+    fn resources(&self) -> Vec<Value> {
+        vec![json!({"uri": MANUAL_URI, "name": "manual", "title": "HybridSliceCraft manual", "description": "Every feature, with examples and hints.", "mimeType": "text/markdown"})]
+    }
+
+    fn read_resource(&mut self, uri: &str) -> Option<Result<Contents, String>> {
+        (uri == MANUAL_URI).then(|| Ok(Contents::Text { mime_type: "text/markdown".into(), text: MANUAL.into() }))
+    }
+}
+
+fn server() -> Server<Slicer> {
+    let info = Info {
+        name: "hybridslicecraft",
+        title: "HybridSliceCraft",
+        version: env!("CARGO_PKG_VERSION"),
+        // Settings and model lists are small; a request this long is a mistake.
+        max_line: 16 << 20,
     };
-    let params = msg.get("params").cloned().unwrap_or(Value::Null);
-    Some(match method {
-        "initialize" => {
-            let asked = params.get("protocolVersion").and_then(|v| v.as_str()).unwrap_or("");
-            let version = if SUPPORTED.contains(&asked) { asked } else { SUPPORTED[0] };
-            ok(
-                id,
-                json!({
-                    "protocolVersion": version,
-                    "capabilities": {"tools": {"listChanged": false}, "resources": {"listChanged": false, "subscribe": false}},
-                    "serverInfo": {"name": "hybridslicecraft", "title": "HybridSliceCraft", "version": env!("CARGO_PKG_VERSION")},
-                    "instructions": "Slices 3D models for filament (FDM) and resin (MSLA) printers. Start with list_catalog to see printers, materials and profiles, inspect_model to check a file, then slice_filament or slice_resin. describe_settings lists every setting that can be changed. render_layer shows a layer of a finished slice. The manual is the resource hybridslicecraft://manual."
-                }),
-            )
-        }
-        "ping" => ok(id, json!({})),
-        "tools/list" => ok(id, json!({"tools": tool_list()})),
-        "tools/call" => {
-            let Some(name) = params.get("name").and_then(|n| n.as_str()) else {
-                return Some(fail(id, -32602, "tools/call needs a tool name"));
-            };
-            let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
-            ok(id, call_tool(state, name, &args))
-        }
-        "resources/list" => ok(
-            id,
-            json!({"resources": [{"uri": MANUAL_URI, "name": "manual", "title": "HybridSliceCraft manual", "description": "Every feature, with examples and hints.", "mimeType": "text/markdown"}]}),
-        ),
-        "resources/read" => match params.get("uri").and_then(|u| u.as_str()) {
-            Some(MANUAL_URI) => ok(id, json!({"contents": [{"uri": MANUAL_URI, "mimeType": "text/markdown", "text": MANUAL}]})),
-            Some(other) => fail(id, -32002, &format!("no resource {other}")),
-            None => fail(id, -32602, "resources/read needs a uri"),
-        },
-        "prompts/list" => ok(id, json!({"prompts": []})),
-        other => fail(id, -32601, &format!("method not found: {other}")),
-    })
+    // Agents read a failed call best from the tool result, as before.
+    Server::new(info, Slicer::default()).with_options(Options { tool_errors_as_results: true, ..Options::default() })
 }
 
 /// Run until the client closes standard input. Returns the exit code.
 pub fn run() -> i32 {
     let stdin = std::io::stdin();
-    let mut out = std::io::stdout().lock();
-    let mut state = tools::State::default();
-    for line in stdin.lock().lines() {
-        let Ok(line) = line else { break };
-        if line.trim().is_empty() {
-            continue;
-        }
-        let reply = match serde_json::from_str::<Value>(&line) {
-            Ok(Value::Array(batch)) => {
-                let replies: Vec<Value> = batch.iter().filter_map(|m| handle(&mut state, m)).collect();
-                (!replies.is_empty()).then(|| Value::Array(replies))
-            }
-            Ok(msg) => handle(&mut state, &msg),
-            Err(e) => Some(fail(&Value::Null, -32700, &format!("not valid JSON: {e}"))),
-        };
-        if let Some(r) = reply {
-            if writeln!(out, "{r}").and_then(|_| out.flush()).is_err() {
-                break;
-            }
+    match server().serve(stdin.lock(), std::io::stdout().lock()) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("MCP server stopped: {e}");
+            1
         }
     }
-    0
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn ask(state: &mut tools::State, method: &str, params: Value) -> Value {
-        handle(state, &json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})).expect("an answer")
+    fn ask(s: &mut Server<Slicer>, method: &str, params: Value) -> Value {
+        s.handle(json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})).expect("an answer")
     }
 
     #[test]
     fn it_introduces_itself_and_lists_its_tools() {
-        let mut s = tools::State::default();
+        let mut s = server();
         let r = ask(&mut s, "initialize", json!({"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}));
         assert_eq!(r["result"]["protocolVersion"], "2024-11-05");
         assert_eq!(r["result"]["serverInfo"]["name"], "hybridslicecraft");
         let r = ask(&mut s, "initialize", json!({"protocolVersion": "1999-01-01"}));
-        assert_eq!(r["result"]["protocolVersion"], SUPPORTED[0], "an unknown version gets our newest");
+        assert_eq!(r["result"]["protocolVersion"], craft_mcp_server::PROTOCOL_VERSION, "an unknown version gets our newest");
         let r = ask(&mut s, "tools/list", json!({}));
         let names: Vec<&str> = r["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
         for want in ["list_catalog", "describe_settings", "inspect_model", "slice_filament", "slice_resin", "render_layer"] {
@@ -245,8 +216,8 @@ mod tests {
 
     #[test]
     fn notifications_get_no_answer_and_unknown_methods_are_errors() {
-        let mut s = tools::State::default();
-        assert!(handle(&mut s, &json!({"jsonrpc": "2.0", "method": "notifications/initialized"})).is_none());
+        let mut s = server();
+        assert!(s.handle(json!({"jsonrpc": "2.0", "method": "notifications/initialized"})).is_none());
         let r = ask(&mut s, "nonsense/method", json!({}));
         assert_eq!(r["error"]["code"], -32601);
         assert_eq!(ask(&mut s, "ping", json!({}))["result"], json!({}));
@@ -254,7 +225,7 @@ mod tests {
 
     #[test]
     fn the_catalogue_and_settings_can_be_read() {
-        let mut s = tools::State::default();
+        let mut s = server();
         let r = ask(&mut s, "tools/call", json!({"name": "list_catalog", "arguments": {"kind": "filament_printers"}}));
         assert_eq!(r["result"]["isError"], false);
         let printers = r["result"]["structuredContent"]["filament_printers"].as_array().unwrap();
@@ -271,7 +242,7 @@ mod tests {
 
     #[test]
     fn the_manual_is_offered_as_a_resource() {
-        let mut s = tools::State::default();
+        let mut s = server();
         let r = ask(&mut s, "resources/list", json!({}));
         assert_eq!(r["result"]["resources"][0]["uri"], MANUAL_URI);
         let r = ask(&mut s, "resources/read", json!({"uri": MANUAL_URI}));
@@ -287,14 +258,14 @@ mod tests {
         let (_, dome) = ball.cut_z(0.0);
         let model = dir.join("dome.stl");
         dome.write_stl(&model).unwrap();
-        let mut s = tools::State::default();
+        let mut s = server();
         let r = ask(&mut s, "tools/call", json!({"name": "describe_settings", "arguments": {"group": "filament_process"}}));
         let v = &r["result"]["structuredContent"];
         for k in ["zaa_enabled", "zaa_min_z", "zaa_wall_angle", "zaa_keep_direction"] {
             assert!(!v["defaults"][k].is_null(), "{k} missing");
             assert!(v["explained"][k].as_str().is_some_and(|t| t.len() > 20), "{k} not explained");
         }
-        let call = |s: &mut tools::State, on: bool| {
+        let call = |s: &mut Server<Slicer>, on: bool| {
             let out = dir.join(format!("dome-{on}.gcode"));
             ask(s, "tools/call", json!({"name": "slice_filament", "arguments": {
                 "models": [model.display().to_string()],

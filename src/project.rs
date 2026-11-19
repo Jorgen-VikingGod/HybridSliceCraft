@@ -8,7 +8,7 @@ use crate::scene::{DrainHole, Plate, PlateObject};
 use glam::{Quat, Vec3};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 use zip::write::SimpleFileOptions;
@@ -75,8 +75,10 @@ pub struct ProjectSettings {
 }
 
 pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), String> {
-    let tmp = path.with_extension("partial");
-    let file = std::fs::File::create(&tmp).map_err(|e| format!("couldn't create the file: {e}"))?;
+    crate::save::write_with(path, |file| write_project(file, plates, s))
+}
+
+fn write_project(file: &mut std::fs::File, plates: &[Plate], s: &ProjectSettings) -> Result<(), String> {
     let mut zip = zip::ZipWriter::new(std::io::BufWriter::new(file));
     let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     let mut saved = Vec::new();
@@ -87,20 +89,7 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
             let file = format!("meshes/{next}.stl");
             next += 1;
             zip.start_file(&file, opts).map_err(|e| e.to_string())?;
-            let mut bytes = Vec::with_capacity(84 + o.mesh.t.len() * 50);
-            bytes.extend_from_slice(&[0u8; 80]);
-            bytes.extend_from_slice(&(o.mesh.t.len() as u32).to_le_bytes());
-            for i in 0..o.mesh.t.len() {
-                let [a, b, c] = o.mesh.tri(i);
-                bytes.extend_from_slice(&[0u8; 12]);
-                for v in [a, b, c] {
-                    for f in v.to_array() {
-                        bytes.extend_from_slice(&f.to_le_bytes());
-                    }
-                }
-                bytes.extend_from_slice(&[0, 0]);
-            }
-            zip.write_all(&bytes).map_err(|e| e.to_string())?;
+            zip.write_all(&o.mesh.stl_bytes()?).map_err(|e| e.to_string())?;
             let mut paint_file = None;
             if let Some(p) = o.paint.as_ref().filter(|p| p.len() == o.mesh.t.len()) {
                 let name = format!("paint/{}.bin", next - 1);
@@ -160,47 +149,43 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
     zip.start_file("project.json", opts).map_err(|e| e.to_string())?;
     let text = serde_json::to_vec_pretty(&project).map_err(|e| e.to_string())?;
     zip.write_all(&text).map_err(|e| e.to_string())?;
-    zip.finish().map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("couldn't save the file: {e}"))
+    zip.finish().map_err(|e| e.to_string())?.flush().map_err(|e| e.to_string())
 }
 
+/// The largest part of a project read back: a mesh of about 40 million triangles.
+const MAX_PART: u64 = 2 << 30;
+
 pub fn load(path: &Path) -> Result<(Vec<Plate>, ProjectSettings), String> {
-    let file = std::fs::File::open(path).map_err(|e| format!("couldn't open the file: {e}"))?;
-    let mut zip = zip::ZipArchive::new(std::io::BufReader::new(file)).map_err(|_| "This isn't a readable project file.".to_string())?;
-    let mut text = String::new();
-    zip.by_name("project.json")
-        .map_err(|_| "This project file has no settings inside.".to_string())?
-        .read_to_string(&mut text)
-        .map_err(|e| e.to_string())?;
-    let project: SavedProject = serde_json::from_str(&text).map_err(|e| format!("couldn't read the project settings: {e}"))?;
+    let bytes = std::fs::read(path).map_err(|e| format!("couldn't open the file: {e}"))?;
+    // A project is read within bounds, so a damaged or hostile file can't fill the memory.
+    let limits = craft_zip::Limits { max_entries: 100_000, max_total_bytes: 8 << 30 };
+    let mut zip = craft_zip::Archive::open(&bytes, limits).map_err(|_| "This isn't a readable project file.".to_string())?;
+    let text = zip
+        .read("project.json", 256 << 20)
+        .map_err(|e| e.to_string())?
+        .ok_or("This project file has no settings inside.")?;
+    let project: SavedProject = serde_json::from_slice(&text).map_err(|e| format!("couldn't read the project settings: {e}"))?;
     let mut plates = Vec::new();
     for list in project.plates {
         let mut plate = Plate::default();
         for s in list {
-            let mut bytes = Vec::new();
-            zip.by_name(&s.file)
-                .map_err(|_| format!("the model {} is missing from the project", s.name))?
-                .read_to_end(&mut bytes)
-                .map_err(|e| e.to_string())?;
+            let bytes = zip
+                .read(&s.file, MAX_PART)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("the model {} is missing from the project", s.name))?;
             let mut mesh: Mesh = parse_stl(&bytes)?;
             let kept = mesh.weld_tracked(1e-4);
             // Paint is stored per triangle of the saved mesh; follow the welding.
             let mut paint: Option<Vec<u8>> = None;
             if let Some(name) = &s.paint_file {
-                let mut raw = Vec::new();
-                if let Ok(mut f) = zip.by_name(name) {
-                    let _ = f.read_to_end(&mut raw);
-                }
+                let raw = zip.read(name, MAX_PART).ok().flatten().unwrap_or_default();
                 if raw.len() == kept.len() {
                     paint = Some(raw.iter().zip(&kept).filter(|(_, k)| **k).map(|(v, _)| *v).collect());
                 }
             }
             let mut marks: Option<Vec<u8>> = None;
             if let Some(name) = &s.marks_file {
-                let mut raw = Vec::new();
-                if let Ok(mut f) = zip.by_name(name) {
-                    let _ = f.read_to_end(&mut raw);
-                }
+                let raw = zip.read(name, MAX_PART).ok().flatten().unwrap_or_default();
                 if raw.len() == kept.len() {
                     marks = Some(raw.iter().zip(&kept).filter(|(_, k)| **k).map(|(v, _)| *v).collect());
                 }
@@ -488,6 +473,7 @@ pub fn send_to_printer(kind: HostKind, host: &str, api_key: &str, filename: &str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
     use crate::mesh::make_box;
 
     #[test]

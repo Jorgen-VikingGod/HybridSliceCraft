@@ -747,6 +747,71 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-atomic"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=48c57b5fafa170eb9c77c1d9fef0be0f09876f1f#48c57b5fafa170eb9c77c1d9fef0be0f09876f1f"
+dependencies = [
+ "rustix 1.1.6",
+]
+
+[[package]]
+name = "craft-dialogs"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=48c57b5fafa170eb9c77c1d9fef0be0f09876f1f#48c57b5fafa170eb9c77c1d9fef0be0f09876f1f"
+dependencies = [
+ "block2 0.6.2",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "raw-window-handle",
+ "rfd",
+]
+
+[[package]]
+name = "craft-mcp-server"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=48c57b5fafa170eb9c77c1d9fef0be0f09876f1f#48c57b5fafa170eb9c77c1d9fef0be0f09876f1f"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "craft-mesh"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=48c57b5fafa170eb9c77c1d9fef0be0f09876f1f#48c57b5fafa170eb9c77c1d9fef0be0f09876f1f"
+dependencies = [
+ "craft-zip",
+ "miniz_oxide 0.9.1",
+ "serde_json",
+]
+
+[[package]]
+name = "craft-quit"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=48c57b5fafa170eb9c77c1d9fef0be0f09876f1f#48c57b5fafa170eb9c77c1d9fef0be0f09876f1f"
+dependencies = [
+ "dispatch2",
+ "egui",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+]
+
+[[package]]
+name = "craft-sniff"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=48c57b5fafa170eb9c77c1d9fef0be0f09876f1f#48c57b5fafa170eb9c77c1d9fef0be0f09876f1f"
+
+[[package]]
+name = "craft-zip"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=48c57b5fafa170eb9c77c1d9fef0be0f09876f1f#48c57b5fafa170eb9c77c1d9fef0be0f09876f1f"
+dependencies = [
+ "flate2",
+ "thiserror 2.0.21",
+ "zip",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1539,6 +1604,13 @@ dependencies = [
  "ahash",
  "bytemuck",
  "clipper2-rust",
+ "craft-atomic",
+ "craft-dialogs",
+ "craft-mcp-server",
+ "craft-mesh",
+ "craft-quit",
+ "craft-sniff",
+ "craft-zip",
  "eframe",
  "egui",
  "egui-wgpu",
@@ -1547,7 +1619,6 @@ dependencies = [
  "png",
  "pollster 0.4.0",
  "rayon",
- "rfd",
  "ruststep",
  "serde",
  "serde_json",
@@ -2916,9 +2987,6 @@ dependencies = [
  "raw-window-handle",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wayland-backend",
- "wayland-client",
- "wayland-protocols",
  "web-sys",
  "windows-sys 0.61.2",
 ]

@@ -8,7 +8,6 @@
 use crate::profiles::*;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::io::Read;
 use std::path::Path;
 
 #[derive(Default, Debug)]
@@ -62,18 +61,20 @@ fn read_docs(path: &Path) -> Result<Vec<(String, Map)>, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
     let label = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     if bytes.starts_with(b"PK") {
-        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
+        // Bundles hold a few hundred small presets; anything far beyond that isn't one.
+        let limits = craft_zip::Limits { max_entries: 20_000, max_total_bytes: 256 << 20 };
+        let mut zip = craft_zip::Archive::open(&bytes, limits).map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for i in 0..zip.len() {
-            let mut f = zip.by_index(i).map_err(|e| e.to_string())?;
-            let n = f.name_raw().iter().map(|&b| b as char).collect::<String>();
+            let Ok(Some(n)) = zip.entry_name(i) else { continue };
             let lower = n.to_lowercase();
             let ini = lower.ends_with(".ini");
-            if !(lower.ends_with(".json") || ini) || f.size() > 8 << 20 {
+            if !(lower.ends_with(".json") || ini) {
                 continue;
             }
-            let mut text = String::new();
-            if f.read_to_string(&mut text).is_ok() {
+            // A preset that is too large or damaged is passed over, like any other unreadable entry.
+            let Ok(Some(raw)) = zip.read_index(i, 8 << 20) else { continue };
+            if let Ok(text) = String::from_utf8(raw) {
                 if ini {
                     out.append(&mut parse_ini(&text, &n));
                 } else if let Some(m) = parse_object(&text) {

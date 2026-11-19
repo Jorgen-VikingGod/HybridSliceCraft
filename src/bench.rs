@@ -252,7 +252,7 @@ pub fn run_fdm(o: &BenchOptions) -> Result<(), String> {
         );
         if let Some(path) = &o.export {
             let t = Instant::now();
-            std::fs::write(path, r.gcode.as_bytes()).map_err(|e| e.to_string())?;
+            crate::save::write(path, r.gcode.as_bytes())?;
             println!("       export: {:.2}s", t.elapsed().as_secs_f32());
         }
     }
