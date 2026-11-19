@@ -137,7 +137,16 @@ use a separate key, or remove the passphrase from the exported copy only.)
     gpg --quick-add-key <main key fingerprint> ed25519 sign 2y
     gpg --armor --export-secret-subkeys <subkey fingerprint>! | gh secret set LINUX_SIGNING_KEY
 
-Publish the key's fingerprint somewhere users can check it, such as the README.
+The current key: main key `5F4457D5DABAB93A244D8BCE1D502DF1F94D6543` (certify only, kept offline
+in an encrypted backup), signing subkey `79236CA1FD557DB6953BFD14271FF2CDE5029BF6`, which expires
+on 2028-11-18. Its public key is `packaging/release-signing-key.asc` and its fingerprint is in the
+README. Before the subkey expires, extend it with the main key and set the secret again:
+
+    gpg --quick-set-expire 5F4457D5DABAB93A244D8BCE1D502DF1F94D6543 2y 79236CA1FD557DB6953BFD14271FF2CDE5029BF6
+    gpg --armor --export-secret-subkeys 79236CA1FD557DB6953BFD14271FF2CDE5029BF6! | gh secret set LINUX_SIGNING_KEY
+
+then commit the new `gpg --armor --export 5F4457D5DABAB93A244D8BCE1D502DF1F94D6543` as
+`packaging/release-signing-key.asc`.
 
 ### Trying it
 

@@ -91,7 +91,13 @@ There is also a Flatpak file (`HybridSliceCraft-<version>-x86_64.flatpak`) on ea
 
 **Updates.** At start the program asks GitHub once for the newest release (nothing else is sent; turn it off in Help → Check for updates). When there is one, Help → Update installs it: the AppImage replaces itself, Windows starts the new installer, macOS opens the new disk image. The `.deb` and Flatpak show how to update them. AppImageUpdate also works, from the `.zsync` file on each release.
 
-The installers aren't code-signed yet. Windows SmartScreen and macOS Gatekeeper will warn on first launch; on macOS, right-click the app and choose Open.
+The Windows and macOS installers aren't code-signed yet. Windows SmartScreen and macOS Gatekeeper will warn on first launch; on macOS, right-click the app and choose Open.
+
+**Checking a download.** Each release has a `SHA256SUMS.txt`, signed with the project's release key (`SHA256SUMS.txt.asc`), and the Linux files have their own `.asc` signatures. The key is attached to each release and kept in [packaging/release-signing-key.asc](packaging/release-signing-key.asc); its fingerprint is `5F44 57D5 DABA B93A 244D  8BCE 1D50 2DF1 F94D 6543`.
+
+    gpg --import release-signing-key.asc
+    gpg --verify SHA256SUMS.txt.asc SHA256SUMS.txt
+    sha256sum --check --ignore-missing SHA256SUMS.txt
 
 To make installers yourself, install `cargo-packager` (`cargo install cargo-packager --locked`) and run `cargo packager --release` on the system you're building for. They appear in `dist/`.
 
