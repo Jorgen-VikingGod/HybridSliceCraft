@@ -77,7 +77,7 @@ impl Command {
     }
 
     /// Stable name for the settings file.
-    fn id(self) -> &'static str {
+    pub fn id(self) -> &'static str {
         match self {
             Command::AddModels => "add_models",
             Command::SaveProject => "save_project",
@@ -101,7 +101,7 @@ impl Command {
         }
     }
 
-    fn from_id(id: &str) -> Option<Command> {
+    pub fn from_id(id: &str) -> Option<Command> {
         Command::ALL.into_iter().find(|c| c.id() == id)
     }
 }

@@ -1137,6 +1137,12 @@ impl App {
         if self.capturing.is_some() || ctx.egui_wants_keyboard_input() {
             return;
         }
+        // An open menu, or the menu bar holding the keyboard (Alt or F10), drives
+        // the keys; a command shortcut such as Ctrl+S still leaves the bar and runs.
+        craft_menu::bar::leave_for_shortcut(ctx);
+        if craft_menu::bar::is_open(ctx) || craft_menu::bar::is_focused(ctx) {
+            return;
+        }
         let mut commands = Vec::new();
         ctx.input_mut(|i| {
             for (command, b) in self.keys.in_matching_order() {
