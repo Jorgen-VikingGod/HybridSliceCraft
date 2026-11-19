@@ -44,13 +44,14 @@ impl Rows {
             Layout::right_to_left(Align::Center),
             |ui| {
                 widget(ui);
-                if changed
-                    && ui
-                        .add(egui::Button::new(RichText::new("⟲").size(12.0)).frame(false))
-                        .on_hover_text(crate::i18n::tr("Back to the preset's value"))
-                        .clicked()
-                {
-                    *on_reset = true;
+                if changed {
+                    // Drawn, because egui's built-in fonts have no ⟲.
+                    let (rect, r) = ui.allocate_exact_size(Vec2::splat(16.0), egui::Sense::click());
+                    let colour = if r.hovered() { ui_strong() } else { ui_dim() };
+                    draw_icon(ui.painter(), rect.shrink(1.0), Icon::Rotate, colour);
+                    if r.on_hover_text(crate::i18n::tr("Back to the preset's value")).clicked() {
+                        *on_reset = true;
+                    }
                 }
                 // The label takes what's left, so long names shorten rather than push.
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {

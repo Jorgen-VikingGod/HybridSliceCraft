@@ -4,6 +4,7 @@
 mod actions;
 mod dialogs;
 mod dock;
+mod menu;
 pub mod frame;
 mod mixes;
 mod panels;
