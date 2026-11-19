@@ -4,6 +4,19 @@
 #
 # It can also be started by hand from the Actions tab ("Run workflow"); then
 # the installers are kept as downloadable build artifacts instead.
+#
+# Signing (see docs/distribution.md). Each part is skipped with a warning while
+# its secrets are missing, so the installers are then built unsigned:
+#   Windows: WINDOWS_CERTIFICATE (base64 .pfx) and WINDOWS_CERTIFICATE_PASSWORD,
+#            or Azure Trusted Signing: AZURE_TENANT_ID, AZURE_CLIENT_ID,
+#            AZURE_CLIENT_SECRET, AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT,
+#            AZURE_CERT_PROFILE
+#   macOS:   APPLE_CERTIFICATE (base64 .p12) and APPLE_CERTIFICATE_PASSWORD
+#            (KEYCHAIN_PASSWORD optional); for notarization also APPLE_ID,
+#            APPLE_PASSWORD (an app-specific password) and APPLE_TEAM_ID
+#   Linux:   LINUX_SIGNING_KEY (OpenPGP key or subkey without a passphrase) signs
+#            the .deb, AppImage and .zsync (.asc files) and SHA256SUMS.txt
+# The signing steps come from storytold/craft-common-actions, pinned to a commit.
 
 name: Release installers
 
@@ -46,8 +59,16 @@ jobs:
             formats: -f deb -f appimage
     env:
       CARGO_BUILD_TARGET: ${{ matrix.target }}
+      # Whether Windows signing secrets exist ("true"/"false" only): the signature check
+      # below runs only then. Secrets can't be read in a step's `if`.
+      WINDOWS_SIGNING_SET: ${{ (secrets.WINDOWS_CERTIFICATE != '' || secrets.AZURE_CLIENT_SECRET != '') && 'true' || 'false' }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Harden the runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Take the version from the release tag
         if: github.event_name == 'release' || github.ref_type == 'tag'
@@ -63,11 +84,12 @@ jobs:
             echo "Tag '$GITHUB_REF_NAME' isn't a plain version like v1.2.3; keeping the version in Cargo.toml"
           fi
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: step-security/dtolnay-rust-toolchain@8dd607977d06adf4ed49b190381e74c17a9dd25f # v1.0.0
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: ${{ matrix.target }}
 
@@ -89,12 +111,70 @@ jobs:
         if: matrix.target != 'x86_64-apple-darwin'
         run: cargo test --release --locked
 
+      - name: Set up Windows signing
+        if: runner.os == 'Windows'
+        uses: storytold/craft-common-actions/actions/setup-windows-signing@ecb64b2acb8731f0e2eb8f55fd2f45424bef75d0 # main, 2026-11-19
+        with:
+          product-name: HybridSliceCraft
+
+      - name: Let cargo-packager sign on Windows
+        # cargo-packager runs this on the program before it builds the .msi, then on the .msi,
+        # with %1 replaced by the file. The script signs with whichever secrets are set, or
+        # warns and leaves the files unsigned.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # cargo-packager splits the command at spaces, so the path must have none.
+          if ($env:CRAFT_SIGN_SCRIPT -match '\s') { throw "The signing script's path contains a space: $env:CRAFT_SIGN_SCRIPT" }
+          "`n[package.metadata.packager.windows]`nsign-command = 'pwsh -NoProfile -NonInteractive -File $env:CRAFT_SIGN_SCRIPT %1'`n" | Add-Content -Path Cargo.toml
+          Get-Content Cargo.toml -Tail 3
+          # cargo-packager keeps the script's own output to itself, so warn here.
+          if ($env:WINDOWS_SIGNING_SET -ne 'true') { Write-Output "::warning::No Windows signing secrets (WINDOWS_CERTIFICATE or AZURE_*): the program and the .msi stay unsigned." }
+
+      - name: Import the macOS signing certificate
+        if: runner.os == 'macOS'
+        uses: storytold/craft-common-actions/actions/import-macos-certificate@ecb64b2acb8731f0e2eb8f55fd2f45424bef75d0 # main, 2026-11-19
+        with:
+          certificate: ${{ secrets.APPLE_CERTIFICATE }}
+          certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          keychain-password: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+      - name: Let cargo-packager sign on macOS
+        # With an identity, cargo-packager signs the app (hardened runtime, timestamp) and the
+        # .dmg, and notarizes the app when APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID are set.
+        if: runner.os == 'macOS' && env.MACOS_SIGN_IDENTITY != ''
+        shell: bash
+        run: printf '\n[package.metadata.packager.macos]\nsigning-identity = "%s"\n' "$MACOS_SIGN_IDENTITY" >> Cargo.toml
+
       - name: Build installers
         shell: bash
         env:
           # The AppImage tools run without needing FUSE on the build machine.
           APPIMAGE_EXTRACT_AND_RUN: 1
+          # Each signing secret reaches only the build machine that uses it.
+          WINDOWS_CERTIFICATE: ${{ runner.os == 'Windows' && secrets.WINDOWS_CERTIFICATE || '' }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ runner.os == 'Windows' && secrets.WINDOWS_CERTIFICATE_PASSWORD || '' }}
+          AZURE_TENANT_ID: ${{ runner.os == 'Windows' && secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ runner.os == 'Windows' && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ runner.os == 'Windows' && secrets.AZURE_CLIENT_SECRET || '' }}
+          AZURE_SIGNING_ENDPOINT: ${{ runner.os == 'Windows' && secrets.AZURE_SIGNING_ENDPOINT || '' }}
+          AZURE_SIGNING_ACCOUNT: ${{ runner.os == 'Windows' && secrets.AZURE_SIGNING_ACCOUNT || '' }}
+          AZURE_CERT_PROFILE: ${{ runner.os == 'Windows' && secrets.AZURE_CERT_PROFILE || '' }}
+          APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ runner.os == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
         run: cargo packager --release ${{ matrix.formats }} --target ${{ matrix.target }}
+
+      - name: Check the Windows signatures
+        # Only when signing secrets are set; otherwise the files are unsigned on purpose.
+        if: runner.os == 'Windows' && env.WINDOWS_SIGNING_SET == 'true'
+        shell: pwsh
+        run: |
+          foreach ($f in @(Get-ChildItem dist/*.msi) + @(Get-Item target/${{ matrix.target }}/release/hybridslicecraft.exe)) {
+            $sig = Get-AuthenticodeSignature -LiteralPath $f.FullName
+            Write-Output "$($f.Name): $($sig.Status) ($($sig.SignerCertificate.Subject))"
+            if ($sig.Status -ne 'Valid') { throw "$($f.Name) is not validly signed" }
+          }
 
       - name: Make the AppImage usable by every user
         # cargo-packager leaves the files inside the AppImage readable and runnable by their
@@ -161,7 +241,7 @@ jobs:
           ls -la
 
       - name: Keep the installers with this run
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installers-${{ matrix.target }}
           path: |
@@ -174,14 +254,82 @@ jobs:
 
       - name: Attach the installers to the release
         if: github.event_name == 'release' || github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(dist/*.msi dist/*.dmg dist/*.deb dist/*.AppImage dist/*.AppImage.zsync)
+          gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+
+  # A SHA256SUMS.txt of every installer, and OpenPGP signatures (.asc) for the Linux files and
+  # the checksums, with LINUX_SIGNING_KEY (a signing key or subkey without a passphrase; see
+  # docs/distribution.md). Without the key the checksums are still made, unsigned.
+  # The .flatpak comes later from its own workflow, so it isn't in the list.
+  checksums:
+    name: Checksums and Linux signatures
+    needs: package
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
-          files: |
-            dist/*.msi
-            dist/*.dmg
-            dist/*.deb
-            dist/*.AppImage
-            dist/*.AppImage.zsync
+          egress-policy: audit
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: installers-*
+          merge-multiple: true
+          path: dist
+
+      - name: Import the Linux signing key
+        id: key
+        uses: storytold/craft-common-actions/actions/import-signing-key@ecb64b2acb8731f0e2eb8f55fd2f45424bef75d0 # main, 2026-11-19
+        with:
+          key: ${{ secrets.LINUX_SIGNING_KEY }}
+
+      - name: Sign and list the files
+        shell: bash
+        env:
+          SIGNED: ${{ steps.key.outputs.enabled }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          cd dist
+          if [ "$SIGNED" = true ]; then
+            for f in *.deb *.AppImage *.AppImage.zsync; do
+              gpg --batch --yes --local-user "$SIGNING_FPR" --armor --detach-sign -o "$f.asc" "$f"
+            done
+            gpg --batch --armor --export "$SIGNING_FPR" > release-signing-key.asc
+          else
+            echo "::warning::LINUX_SIGNING_KEY isn't set: the Linux files and SHA256SUMS.txt are not signed."
+          fi
+          files=(*.msi *.dmg *.deb *.AppImage *.AppImage.zsync *.asc)
+          sha256sum -- "${files[@]}" > SHA256SUMS.txt
+          if [ "$SIGNED" = true ]; then
+            gpg --batch --yes --local-user "$SIGNING_FPR" --armor --detach-sign -o SHA256SUMS.txt.asc SHA256SUMS.txt
+            gpg --batch --verify SHA256SUMS.txt.asc SHA256SUMS.txt
+          fi
+          cat SHA256SUMS.txt
+          ls -la
+
+      - name: Keep them with this run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: checksums
+          path: |
+            dist/SHA256SUMS.txt*
+            dist/*.asc
+          if-no-files-found: error
+
+      - name: Attach them to the release
+        if: github.event_name == 'release' || github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          gh release upload "$GITHUB_REF_NAME" dist/SHA256SUMS.txt* dist/*.asc --clobber --repo "$GITHUB_REPOSITORY"
 
   # Starts the AppImage the way the AppImage catalogue (appimage.github.io) tests it: a
   # fresh Ubuntu 22.04 without our build libraries, a small virtual screen with no graphics
@@ -193,7 +341,12 @@ jobs:
     env:
       DISPLAY: ":99"
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Harden the runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: installers-x86_64-unknown-linux-gnu
           path: dist
@@ -234,7 +387,7 @@ jobs:
 
       - name: Keep the screen picture and log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: appimage-test
           path: |

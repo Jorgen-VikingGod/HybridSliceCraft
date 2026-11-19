@@ -1,0 +1,21 @@
+# Keeps the actions in .github/workflows/ up to date. They are pinned to commits
+# (with the version as a comment), as in storytold/craft-common-actions; this
+# opens one pull request that moves the pins together.
+#
+# storytold/craft-common-actions has no releases, so its pin is moved by hand:
+# replace the commit after "@" with the newest one on its main branch.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci(deps)"
+    # Wait a week after a release before proposing it.
+    cooldown:
+      default-days: 7
