@@ -329,7 +329,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           shopt -s nullglob
-          gh release upload "$GITHUB_REF_NAME" dist/SHA256SUMS.txt* dist/*.asc --clobber --repo "$GITHUB_REPOSITORY"
+          # Each file once: gh uploads in parallel, and two uploads of one name with --clobber
+          # delete each other (SHA256SUMS.txt.asc matched both SHA256SUMS.txt* and *.asc).
+          gh release upload "$GITHUB_REF_NAME" dist/SHA256SUMS.txt dist/*.asc --clobber --repo "$GITHUB_REPOSITORY"
 
   # Starts the AppImage the way the AppImage catalogue (appimage.github.io) tests it: a
   # fresh Ubuntu 22.04 without our build libraries, a small virtual screen with no graphics
