@@ -187,7 +187,65 @@ pub fn accent(resin: bool) -> Color32 {
     }
 }
 
+/// Whether resin's colour is the accent of the controls right now (filament's otherwise).
+static RESIN_ACCENT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Called every frame: focused fields, the selected row of a list and selected text take the
+/// colour of the printer type in use (amber for filament, teal for resin).
+pub fn follow_mode(ctx: &egui::Context, resin: bool) {
+    if RESIN_ACCENT.swap(resin, Ordering::Relaxed) != resin {
+        apply_style(ctx);
+    }
+}
+
+/// The fill of a selected tab, plate or mode button, which carries white text. On dark panels a
+/// see-through accent (`dark_alpha`); on light ones the full accent, as a tint of it on white
+/// looks washed out.
+pub fn selected_fill(accent: Color32, dark_alpha: f32) -> Color32 {
+    if theme() == Theme::Dark { accent.gamma_multiply(dark_alpha) } else { accent }
+}
+
+/// The fill of a selected row that keeps the normal text colour (an object in the list).
+pub fn selected_row_fill(accent: Color32) -> Color32 {
+    if theme() == Theme::Dark { accent.gamma_multiply(0.22) } else { ui_panel().lerp_to_gamma(accent, 0.32) }
+}
+
+/// egui's own text field look, with a border on light panels: there the field is as white as the
+/// panel, and without one only the hovered field could be seen.
+struct FieldBorder;
+
+impl egui::theme::StyleProvider<egui::widget_style::TextEditStyle> for FieldBorder {
+    fn style(&mut self, args: &egui::widget_style::StyleArgs<'_>) -> egui::widget_style::TextEditStyle {
+        use egui::theme::StyleProvider;
+        let mut style: egui::widget_style::TextEditStyle = StyleProvider::style(&mut egui::theme::DefaultStyle, args);
+        let frame = &mut style.atom_layout.frame;
+        if theme() == Theme::Light && frame.stroke.width == 0.0 {
+            *frame = frame.apply_stroke_and_expansion_without_layout_shift(Stroke::new(1.0, Color32::from_rgb(176, 184, 198)), 0.0);
+        }
+        style
+    }
+}
+
+/// egui's own button look, with the selected row of a list or drop-down outlined in the accent,
+/// like a focused text field.
+struct SelectedOutline;
+
+impl egui::theme::StyleProvider<egui::widget_style::ButtonStyle> for SelectedOutline {
+    fn style(&mut self, args: &egui::widget_style::StyleArgs<'_>) -> egui::widget_style::ButtonStyle {
+        use egui::class::HasClasses as _;
+        use egui::theme::StyleProvider;
+        let mut style: egui::widget_style::ButtonStyle = StyleProvider::style(&mut egui::theme::DefaultStyle, args);
+        if args.classes.has_class(&egui::Button::CLASS_SELECTED) {
+            let frame = &mut style.atom_layout.frame;
+            *frame = frame.apply_stroke_and_expansion_without_layout_shift(args.style.visuals.selection.stroke, 0.0);
+        }
+        style
+    }
+}
+
 pub fn apply_style(ctx: &egui::Context) {
+    ctx.add_widget_theme::<egui::widget_style::ButtonStyle>(SelectedOutline);
+    ctx.add_widget_theme::<egui::widget_style::TextEditStyle>(FieldBorder);
     use egui::{FontFamily, TextStyle};
     let mut style = (*ctx.global_style()).clone();
     style.text_styles = [
@@ -213,6 +271,7 @@ pub fn apply_style(ctx: &egui::Context) {
     let (text, panel, panel_2, line) = (ui_text(), ui_panel(), ui_panel_2(), ui_line());
     let mut v = if dark { egui::Visuals::dark() } else { egui::Visuals::light() };
     // Fills for buttons and fields in the neutral, hovered and pressed states.
+    // `select` is how much of the accent colours the fill of a selected row or selected text.
     let (idle, hover, press, hover_edge, press_edge, select, extreme) = if dark {
         (
             Color32::from_rgb(48, 54, 66),
@@ -220,7 +279,7 @@ pub fn apply_style(ctx: &egui::Context) {
             Color32::from_rgb(56, 62, 75),
             Color32::from_rgb(78, 86, 102),
             Color32::from_rgb(110, 120, 140),
-            Color32::from_rgb(58, 66, 82),
+            0.22,
             Color32::from_rgb(14, 16, 20),
         )
     } else {
@@ -230,7 +289,7 @@ pub fn apply_style(ctx: &egui::Context) {
             Color32::from_rgb(198, 205, 219),
             Color32::from_rgb(150, 160, 180),
             Color32::from_rgb(110, 122, 148),
-            Color32::from_rgb(176, 198, 232),
+            0.14,
             Color32::from_rgb(255, 255, 255),
         )
     };
@@ -243,8 +302,13 @@ pub fn apply_style(ctx: &egui::Context) {
     v.window_stroke = Stroke::new(1.0, line);
     v.window_corner_radius = CornerRadius::same(8);
     v.menu_corner_radius = CornerRadius::same(6);
-    v.selection.bg_fill = select;
-    v.selection.stroke = Stroke::new(1.0, text);
+    let tint = accent(RESIN_ACCENT.load(Ordering::Relaxed));
+    v.selection.bg_fill = panel.lerp_to_gamma(tint, select);
+    // Also the outline of a focused field and the text of a selected row.
+    // On light panels the accent is too pale for text, so it is darkened there.
+    let ink = if dark { tint } else { tint.lerp_to_gamma(Color32::BLACK, 0.3) };
+    v.selection.stroke = Stroke::new(1.0, ink);
+    v.text_cursor.stroke = Stroke::new(2.0, tint);
     v.hyperlink_color = accent(true);
     let round = CornerRadius::same(4);
     let w = &mut v.widgets;

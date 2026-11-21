@@ -818,6 +818,7 @@ impl eframe::App for App {
         self.frames += 1;
 
         theme::follow_system(&ctx);
+        theme::follow_mode(&ctx, self.resin());
         self.poll_updates(&ctx);
         self.poll_job(&ctx);
         self.take_dialog_answers(&ctx);

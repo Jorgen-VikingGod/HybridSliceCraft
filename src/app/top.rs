@@ -20,7 +20,7 @@ fn segmented<T: Copy + PartialEq>(ui: &mut egui::Ui, value: &mut T, options: &[(
         let size = Vec2::new(galley.size().x + 22.0, 28.0);
         let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
         let fill = if on {
-            accent.gamma_multiply(0.85)
+            selected_fill(accent, 0.85)
         } else if resp.hovered() {
             ui_hover()
         } else {

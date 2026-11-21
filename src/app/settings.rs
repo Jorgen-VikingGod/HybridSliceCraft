@@ -175,7 +175,7 @@ impl App {
             for (i, t) in tabs.iter().enumerate() {
                 let on = self.settings_tab == i;
                 let text = RichText::new(crate::i18n::tr(*t)).color(if on { Color32::WHITE } else { ui_dim() });
-                let r = ui.add(egui::Button::new(text).fill(if on { accent.gamma_multiply(0.45) } else { Color32::TRANSPARENT }));
+                let r = ui.add(egui::Button::new(text).fill(if on { selected_fill(accent, 0.45) } else { Color32::TRANSPARENT }));
                 if r.clicked() {
                     self.settings_tab = i;
                 }
