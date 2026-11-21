@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.20.0" date="2026-11-21">
+      <description>
+        <p>A title bar that fits each desktop with all window buttons, a window that reopens where it was, the system's language and theme followed at once, and focus and selection in the colour of the printer type.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.20.0</url>
+    </release>
     <release version="0.19.0" date="2026-11-19">
       <description>
         <p>Menus that work like desktop menus: shortcuts in their own column, moving between menus without an extra click, and full keyboard use. Linux downloads come with signed checksums.</p>
