@@ -87,7 +87,7 @@ On Debian and Ubuntu you can also install from the apt repository, which keeps t
 
 There is also a Flatpak file (`HybridSliceCraft-<version>-x86_64.flatpak`) on each release:
 
-    flatpak install --user HybridSliceCraft-0.19.0-x86_64.flatpak
+    flatpak install --user HybridSliceCraft-0.20.0-x86_64.flatpak
 
 **Updates.** At start the program asks GitHub once for the newest release (nothing else is sent; turn it off in Help → Check for updates). When there is one, Help → Update installs it: the AppImage replaces itself, Windows starts the new installer, macOS opens the new disk image. The `.deb` and Flatpak show how to update them. AppImageUpdate also works, from the `.zsync` file on each release.
 
