@@ -29,7 +29,7 @@ impl Theme {
     /// The look this choice stands for right now: Dark or Light, never System.
     pub fn resolve(self, ctx: &egui::Context) -> Theme {
         match self {
-            Theme::System => match ctx.system_theme().or_else(desktop_theme) {
+            Theme::System => match desktop_theme(ctx).or_else(|| ctx.system_theme()) {
                 Some(egui::Theme::Dark) => Theme::Dark,
                 _ => Theme::Light,
             },
@@ -38,49 +38,38 @@ impl Theme {
     }
 }
 
-/// The dark-mode setting of the desktop, for systems where the window library
-/// cannot tell (X11). Read once: it starts programs, which is too slow per frame.
-fn desktop_theme() -> Option<egui::Theme> {
-    static FOUND: std::sync::OnceLock<Option<egui::Theme>> = std::sync::OnceLock::new();
-    *FOUND.get_or_init(|| {
-        if !cfg!(target_os = "linux") {
-            return None;
-        }
-        let dark = |v: &str| v.to_lowercase().contains("dark");
-        // GTK_THEME=Adwaita:dark
-        if let Ok(v) = std::env::var("GTK_THEME") {
-            return Some(if dark(&v) { egui::Theme::Dark } else { egui::Theme::Light });
-        }
-        let gsettings = |key: &str| {
-            std::process::Command::new("gsettings")
-                .args(["get", "org.gnome.desktop.interface", key])
-                .stderr(std::process::Stdio::null())
-                .output()
-                .ok()
-                .filter(|o| o.status.success())
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().trim_matches('\'').to_string())
-        };
-        // 'prefer-dark' / 'prefer-light' / 'default' (GNOME 42 and later, also set by KDE)
-        match gsettings("color-scheme").as_deref() {
-            Some(v) if dark(v) => return Some(egui::Theme::Dark),
-            Some("prefer-light") => return Some(egui::Theme::Light),
-            _ => {}
-        }
-        if let Some(v) = gsettings("gtk-theme") {
-            if dark(&v) {
-                return Some(egui::Theme::Dark);
-            }
-        }
-        // KDE Plasma: ColorScheme=BreezeDark
-        let home = std::env::var_os("XDG_CONFIG_HOME")
-            .map(std::path::PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".config")));
-        if let Some(text) = home.and_then(|d| std::fs::read_to_string(d.join("kdeglobals")).ok()) {
-            if let Some(line) = text.lines().find(|l| l.starts_with("ColorScheme=")) {
-                return Some(if dark(line) { egui::Theme::Dark } else { egui::Theme::Light });
-            }
-        }
-        None
+/// The desktop's dark or light setting, watched through the XDG Settings portal (craft-platform),
+/// so a change in the system settings shows at once. `None` where there is no portal (macOS and
+/// Windows, where the window library tells instead) or the desktop states no preference.
+fn desktop_theme(ctx: &egui::Context) -> Option<egui::Theme> {
+    use craft_platform::appearance::{Theme as Desktop, Watcher, sync_native_window_theme};
+    use std::sync::{Arc, OnceLock};
+    type Watched = Option<(Watcher, Arc<OnceLock<egui::Context>>)>;
+    thread_local! {
+        static WATCHED: std::cell::OnceCell<Watched> = const { std::cell::OnceCell::new() };
+    }
+    WATCHED.with(|w| {
+        let (watcher, wake) = w
+            .get_or_init(|| {
+                let wake = Arc::new(OnceLock::<egui::Context>::new());
+                let target = Arc::clone(&wake);
+                let watcher = Watcher::start(move || {
+                    if let Some(ctx) = target.get() {
+                        ctx.request_repaint();
+                    }
+                })?;
+                // So the first frame already has the desktop's look.
+                watcher.wait_first(std::time::Duration::from_millis(250));
+                Some((watcher, wake))
+            })
+            .as_ref()?;
+        let _ = wake.set(ctx.clone());
+        let observed = watcher.current();
+        sync_native_window_theme(ctx, observed);
+        observed.map(|t| match t {
+            Desktop::Dark => egui::Theme::Dark,
+            Desktop::Light => egui::Theme::Light,
+        })
     })
 }
 
@@ -198,7 +187,65 @@ pub fn accent(resin: bool) -> Color32 {
     }
 }
 
+/// Whether resin's colour is the accent of the controls right now (filament's otherwise).
+static RESIN_ACCENT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Called every frame: focused fields, the selected row of a list and selected text take the
+/// colour of the printer type in use (amber for filament, teal for resin).
+pub fn follow_mode(ctx: &egui::Context, resin: bool) {
+    if RESIN_ACCENT.swap(resin, Ordering::Relaxed) != resin {
+        apply_style(ctx);
+    }
+}
+
+/// The fill of a selected tab, plate or mode button, which carries white text. On dark panels a
+/// see-through accent (`dark_alpha`); on light ones the full accent, as a tint of it on white
+/// looks washed out.
+pub fn selected_fill(accent: Color32, dark_alpha: f32) -> Color32 {
+    if theme() == Theme::Dark { accent.gamma_multiply(dark_alpha) } else { accent }
+}
+
+/// The fill of a selected row that keeps the normal text colour (an object in the list).
+pub fn selected_row_fill(accent: Color32) -> Color32 {
+    if theme() == Theme::Dark { accent.gamma_multiply(0.22) } else { ui_panel().lerp_to_gamma(accent, 0.32) }
+}
+
+/// egui's own text field look, with a border on light panels: there the field is as white as the
+/// panel, and without one only the hovered field could be seen.
+struct FieldBorder;
+
+impl egui::theme::StyleProvider<egui::widget_style::TextEditStyle> for FieldBorder {
+    fn style(&mut self, args: &egui::widget_style::StyleArgs<'_>) -> egui::widget_style::TextEditStyle {
+        use egui::theme::StyleProvider;
+        let mut style: egui::widget_style::TextEditStyle = StyleProvider::style(&mut egui::theme::DefaultStyle, args);
+        let frame = &mut style.atom_layout.frame;
+        if theme() == Theme::Light && frame.stroke.width == 0.0 {
+            *frame = frame.apply_stroke_and_expansion_without_layout_shift(Stroke::new(1.0, Color32::from_rgb(176, 184, 198)), 0.0);
+        }
+        style
+    }
+}
+
+/// egui's own button look, with the selected row of a list or drop-down outlined in the accent,
+/// like a focused text field.
+struct SelectedOutline;
+
+impl egui::theme::StyleProvider<egui::widget_style::ButtonStyle> for SelectedOutline {
+    fn style(&mut self, args: &egui::widget_style::StyleArgs<'_>) -> egui::widget_style::ButtonStyle {
+        use egui::class::HasClasses as _;
+        use egui::theme::StyleProvider;
+        let mut style: egui::widget_style::ButtonStyle = StyleProvider::style(&mut egui::theme::DefaultStyle, args);
+        if args.classes.has_class(&egui::Button::CLASS_SELECTED) {
+            let frame = &mut style.atom_layout.frame;
+            *frame = frame.apply_stroke_and_expansion_without_layout_shift(args.style.visuals.selection.stroke, 0.0);
+        }
+        style
+    }
+}
+
 pub fn apply_style(ctx: &egui::Context) {
+    ctx.add_widget_theme::<egui::widget_style::ButtonStyle>(SelectedOutline);
+    ctx.add_widget_theme::<egui::widget_style::TextEditStyle>(FieldBorder);
     use egui::{FontFamily, TextStyle};
     let mut style = (*ctx.global_style()).clone();
     style.text_styles = [
@@ -224,6 +271,7 @@ pub fn apply_style(ctx: &egui::Context) {
     let (text, panel, panel_2, line) = (ui_text(), ui_panel(), ui_panel_2(), ui_line());
     let mut v = if dark { egui::Visuals::dark() } else { egui::Visuals::light() };
     // Fills for buttons and fields in the neutral, hovered and pressed states.
+    // `select` is how much of the accent colours the fill of a selected row or selected text.
     let (idle, hover, press, hover_edge, press_edge, select, extreme) = if dark {
         (
             Color32::from_rgb(48, 54, 66),
@@ -231,7 +279,7 @@ pub fn apply_style(ctx: &egui::Context) {
             Color32::from_rgb(56, 62, 75),
             Color32::from_rgb(78, 86, 102),
             Color32::from_rgb(110, 120, 140),
-            Color32::from_rgb(58, 66, 82),
+            0.22,
             Color32::from_rgb(14, 16, 20),
         )
     } else {
@@ -241,7 +289,7 @@ pub fn apply_style(ctx: &egui::Context) {
             Color32::from_rgb(198, 205, 219),
             Color32::from_rgb(150, 160, 180),
             Color32::from_rgb(110, 122, 148),
-            Color32::from_rgb(176, 198, 232),
+            0.14,
             Color32::from_rgb(255, 255, 255),
         )
     };
@@ -254,8 +302,13 @@ pub fn apply_style(ctx: &egui::Context) {
     v.window_stroke = Stroke::new(1.0, line);
     v.window_corner_radius = CornerRadius::same(8);
     v.menu_corner_radius = CornerRadius::same(6);
-    v.selection.bg_fill = select;
-    v.selection.stroke = Stroke::new(1.0, text);
+    let tint = accent(RESIN_ACCENT.load(Ordering::Relaxed));
+    v.selection.bg_fill = panel.lerp_to_gamma(tint, select);
+    // Also the outline of a focused field and the text of a selected row.
+    // On light panels the accent is too pale for text, so it is darkened there.
+    let ink = if dark { tint } else { tint.lerp_to_gamma(Color32::BLACK, 0.3) };
+    v.selection.stroke = Stroke::new(1.0, ink);
+    v.text_cursor.stroke = Stroke::new(2.0, tint);
     v.hyperlink_color = accent(true);
     let round = CornerRadius::same(4);
     let w = &mut v.widgets;

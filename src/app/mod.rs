@@ -6,6 +6,7 @@ mod dialogs;
 mod dock;
 mod menu;
 pub mod frame;
+pub mod placement;
 mod mixes;
 mod panels;
 mod preview;
@@ -329,6 +330,8 @@ pub struct App {
 
     pub screenshot: Option<PathBuf>,
     pub frames: u32,
+    /// macOS: what `NSWindow.movable` was last set to (craft-window's title bar).
+    title_bar_movable: Option<bool>,
     pub screenshot_sent: bool,
     pub auto_slice: bool,
     pub frame_times: [f32; 30],
@@ -502,6 +505,7 @@ impl App {
             last_export_gcode: None,
             screenshot: opts.screenshot.clone(),
             frames: 0,
+            title_bar_movable: None,
             screenshot_sent: false,
             auto_slice: opts.slice,
             frame_times: [0.016; 30],
@@ -522,7 +526,7 @@ impl App {
         if !automated {
             app.load_session();
             // A quiet look for a newer release; says something only if there is one.
-            if !app.prefs.no_update_check && std::env::var_os("HYBRIDSLICECRAFT_NO_UPDATE_CHECK").is_none() {
+            if app.prefs.updates.check_at_start && std::env::var_os("HYBRIDSLICECRAFT_NO_UPDATE_CHECK").is_none() {
                 app.updater.check(true);
             }
         }
@@ -795,6 +799,7 @@ impl eframe::App for App {
 
     fn on_exit(&mut self) {
         self.save_session();
+        placement::save();
     }
 
     /// Closing the window quits the way the system expects (on macOS through
@@ -813,6 +818,7 @@ impl eframe::App for App {
         self.frames += 1;
 
         theme::follow_system(&ctx);
+        theme::follow_mode(&ctx, self.resin());
         self.poll_updates(&ctx);
         self.poll_job(&ctx);
         self.take_dialog_answers(&ctx);
@@ -838,7 +844,7 @@ impl eframe::App for App {
         self.drive_screenshot(&ctx);
 
         // The window is transparent so its corners can be round; fill the rest.
-        if frame::enabled() {
+        if frame::rounded() {
             ui.painter().rect_filled(ctx.content_rect(), frame::window_corners(&ctx), theme::ui_bg());
         }
         let title = match &self.project_path {
@@ -857,12 +863,16 @@ impl eframe::App for App {
         self.windows(&ctx);
         self.draw_toasts(&ctx);
         frame::window_edges(&ctx);
+        frame::after_ui(&ctx, &mut self.title_bar_movable);
+        if self.screenshot.is_none() {
+            placement::track(&ctx);
+        }
         // Last, so a dialog asked for anywhere this frame shows now, over this window.
         self.dialogs.show_pending(Some(&*frame));
     }
 
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        if frame::enabled() {
+        if frame::rounded() {
             return [0.0; 4];
         }
         visuals.panel_fill.to_normalized_gamma_f32()

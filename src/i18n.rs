@@ -1,70 +1,72 @@
-//! Interface languages. Text in the code is English; `tr` looks it up in the
-//! table and falls back to the English when a line has no translation yet.
+//! Interface languages, through craft-i18n. Text in the code is English; `tr` looks it up in the
+//! catalogs and falls back to the English when a line has no translation yet.
+//!
+//! The catalogs come from `src/i18n/translations.tsv` (English, German, French, Spanish per
+//! line); `build.rs` turns it into one craft-i18n catalog per language.
 
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::OnceLock;
+use std::sync::{LazyLock, RwLock};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
-pub enum Lang {
-    #[default]
-    English,
-    German,
-    French,
-    Spanish,
-}
+pub use craft_i18n::Lang;
 
-impl Lang {
-    pub const ALL: [Lang; 4] = [Lang::English, Lang::German, Lang::French, Lang::Spanish];
+include!(concat!(env!("OUT_DIR"), "/craft_i18n.rs"));
 
-    /// The language's own name, so it can be found whatever language is on.
-    pub fn name(self) -> &'static str {
-        match self {
-            Lang::English => "English",
-            Lang::German => "Deutsch",
-            Lang::French => "Français",
-            Lang::Spanish => "Español",
-        }
+/// The languages the interface is ready for, besides English.
+const OFFERED: [&str; 3] = ["de", "fr", "es"];
+
+/// The setting that means "the system's language".
+pub const AUTO: &str = "auto";
+
+pub static I18N: LazyLock<craft_i18n::I18n> = LazyLock::new(|| {
+    let (i18n, problems) = craft_i18n::I18n::new(CRAFT_I18N, &OFFERED);
+    for p in problems {
+        eprintln!("translation catalog: {p}");
     }
+    i18n
+});
 
-    fn column(self) -> Option<usize> {
-        match self {
-            Lang::English => None,
-            Lang::German => Some(0),
-            Lang::French => Some(1),
-            Lang::Spanish => Some(2),
-        }
-    }
+static CURRENT: RwLock<Lang> = RwLock::new(Lang::EN);
 
-    /// From a locale such as `de_DE.UTF-8`, if the language is one we have.
-    pub fn from_locale(locale: &str) -> Option<Lang> {
-        match locale.get(..2)?.to_ascii_lowercase().as_str() {
-            "en" => Some(Lang::English),
-            "de" => Some(Lang::German),
-            "fr" => Some(Lang::French),
-            "es" => Some(Lang::Spanish),
-            _ => None,
-        }
-    }
-}
-
-static CURRENT: AtomicU8 = AtomicU8::new(0);
-
-pub fn set_lang(l: Lang) {
-    CURRENT.store(Lang::ALL.iter().position(|x| *x == l).unwrap_or(0) as u8, Ordering::Relaxed);
+/// Show the interface in the language of this setting: a code such as `de`, or [`AUTO`] (also
+/// anything unknown) for the system's language.
+pub fn set_language(setting: &str) {
+    let lang = I18N.from_code(setting).unwrap_or_else(|| I18N.system_lang());
+    *CURRENT.write().unwrap_or_else(|e| e.into_inner()) = lang;
 }
 
 pub fn lang() -> Lang {
-    Lang::ALL.get(CURRENT.load(Ordering::Relaxed) as usize).copied().unwrap_or_default()
+    *CURRENT.read().unwrap_or_else(|e| e.into_inner())
 }
 
-const TABLE: &str = include_str!("i18n/translations.tsv");
+/// The languages to offer, English first: (code, the language's own name).
+pub fn languages() -> Vec<(&'static str, &'static str)> {
+    I18N.languages().into_iter().map(|l| (I18N.code(l), I18N.name(l))).collect()
+}
 
-/// English -> [German, French, Spanish].
-fn table() -> &'static HashMap<&'static str, [&'static str; 3]> {
-    static T: OnceLock<HashMap<&'static str, [&'static str; 3]>> = OnceLock::new();
-    T.get_or_init(|| {
+/// The code of a language name the older preferences file stored (`"German"`).
+pub fn code_from_old_name(name: &str) -> Option<&'static str> {
+    match name {
+        "English" => Some("en"),
+        "German" => Some("de"),
+        "French" => Some("fr"),
+        "Spanish" => Some("es"),
+        _ => None,
+    }
+}
+
+/// The text in the chosen language, or as given when there's no translation.
+pub fn tr(text: &str) -> &str {
+    I18N.t(lang(), text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    const TABLE: &str = include_str!("i18n/translations.tsv");
+
+    /// English -> [German, French, Spanish].
+    fn table() -> HashMap<&'static str, [&'static str; 3]> {
         TABLE
             .lines()
             .filter_map(|line| {
@@ -72,20 +74,7 @@ fn table() -> &'static HashMap<&'static str, [&'static str; 3]> {
                 Some((c.next()?, [c.next()?, c.next()?, c.next()?]))
             })
             .collect()
-    })
-}
-
-/// The text in the chosen language, or as given when there's no translation.
-pub fn tr(text: &str) -> &str {
-    match lang().column() {
-        None => text,
-        Some(col) => table().get(text).map(|t| t[col]).unwrap_or(text),
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 
     /// `{name}` parts that must survive translation untouched.
     fn placeholders(s: &str) -> Vec<&str> {
@@ -125,39 +114,48 @@ mod tests {
 
     #[test]
     fn lookup_translates_and_falls_back() {
-        set_lang(Lang::German);
+        set_language("de");
         assert_eq!(tr("Delete"), "Löschen");
         assert_eq!(tr("Something nobody translated"), "Something nobody translated");
-        set_lang(Lang::French);
+        set_language("fr");
         assert_eq!(tr("Delete"), "Supprimer");
-        set_lang(Lang::Spanish);
+        set_language("es");
         assert_eq!(tr("Delete"), "Eliminar");
-        set_lang(Lang::English);
+        set_language("en");
         assert_eq!(tr("Delete"), "Delete");
     }
 
     #[test]
     fn locale_names_pick_a_language() {
-        assert_eq!(Lang::from_locale("de_DE.UTF-8"), Some(Lang::German));
-        assert_eq!(Lang::from_locale("fr"), Some(Lang::French));
-        assert_eq!(Lang::from_locale("ES_mx"), Some(Lang::Spanish));
-        assert_eq!(Lang::from_locale("C"), None);
-        assert_eq!(Lang::from_locale("pt_BR"), None);
+        let code = |tag: &str| I18N.match_tag(tag).map(|l| I18N.code(l));
+        assert_eq!(code("de_DE.UTF-8"), Some("de"));
+        assert_eq!(code("fr"), Some("fr"));
+        assert_eq!(code("es-MX"), Some("es"));
+        assert_eq!(code("C"), Some("en"));
+        assert_eq!(code("pt_BR"), None);
+    }
+
+    #[test]
+    fn the_catalogs_have_no_problems_and_name_their_languages() {
+        assert!(I18N.check_all().is_empty(), "{:?}", I18N.check_all());
+        let names: Vec<_> = languages().into_iter().map(|(_, n)| n).collect();
+        assert_eq!(names, ["English", "Deutsch", "Español", "Français"]);
     }
 
     #[test]
     fn every_translatable_string_in_the_ui_is_in_the_table() {
         // Every literal passed to `tr(...)` in the interface must have a line,
         // so nothing quietly stays English in a translated window.
+        let table = table();
         let mut missing = Vec::new();
-        for file in ["mod", "top", "panels", "dock", "view", "settings", "preview", "actions"] {
+        for file in ["mod", "top", "panels", "dock", "view", "settings", "preview", "actions", "frame"] {
             let src = std::fs::read_to_string(format!("{}/src/app/{file}.rs", env!("CARGO_MANIFEST_DIR"))).unwrap();
             let mut rest = src.as_str();
             while let Some(i) = rest.find("i18n::tr(\"") {
                 rest = &rest[i + 10..];
                 let end = rest.find("\")").unwrap_or(0);
                 let key = rest[..end].replace("\\\"", "\"").replace("\\'", "'");
-                if !table().contains_key(key.as_str()) && !EXEMPT.contains(&key.as_str()) {
+                if !table.contains_key(key.as_str()) && !EXEMPT.contains(&key.as_str()) {
                     missing.push(key);
                 }
             }

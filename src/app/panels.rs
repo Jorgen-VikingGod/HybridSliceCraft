@@ -26,7 +26,7 @@ impl App {
             for i in 0..self.plates.len() {
                 let on = i == self.active;
                 let b = egui::Button::new(RichText::new(format!("{}", i + 1)).color(if on { Color32::WHITE } else { ui_dim() }))
-                    .fill(if on { accent.gamma_multiply(0.55) } else { ui_panel_2() })
+                    .fill(if on { selected_fill(accent, 0.55) } else { ui_panel_2() })
                     .min_size(Vec2::new(26.0, 22.0));
                 if ui.add(b).clicked() {
                     switch = Some(i);
@@ -64,7 +64,7 @@ impl App {
             let selected = self.selection.contains(&o.id);
             let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.0), Sense::click());
             let fill = if selected {
-                accent.gamma_multiply(0.22)
+                selected_row_fill(accent)
             } else if resp.hovered() {
                 ui_panel_2()
             } else {

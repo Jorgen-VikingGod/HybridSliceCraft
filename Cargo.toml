@@ -47,7 +47,8 @@ eframe = { version = "0.37", default-features = false, features = ["wgpu", "defa
 egui-wgpu = "0.37"
 # Without this the system clipboard is off, and nothing copied elsewhere can be pasted.
 egui-winit = { version = "0.37", default-features = false, features = ["clipboard"] }
-egui = "0.37"
+# `experimental`: the widget theme hook, for the outline of a selected row (theme.rs).
+egui = { version = "0.37", features = ["experimental"] }
 glam = { version = "0.30", features = ["bytemuck"] }
 bytemuck = { version = "1", features = ["derive"] }
 rayon = "1"
@@ -77,6 +78,10 @@ craft-quit = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fa
 craft-sniff = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f" }
 craft-menu = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f" }
 craft-keymap = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f", features = ["egui"] }
+craft-window = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f", features = ["egui", "restore"] }
+craft-settings = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f" }
+craft-i18n = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f" }
+craft-platform = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f", features = ["appearance", "egui"] }
 
 [dev-dependencies]
 truck-modeling = "0.6"

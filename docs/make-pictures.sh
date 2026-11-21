@@ -6,6 +6,26 @@ BIN=./target/release/hybridslicecraft
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
+# The pictures don't depend on the settings of whoever runs this: a fresh settings folder,
+# English, no update check, dark theme unless a step switches to light.
+export HYBRIDSLICECRAFT_CONFIG="$TMP/config"
+mkdir -p "$HYBRIDSLICECRAFT_CONFIG"
+theme() {
+  cat > "$HYBRIDSLICECRAFT_CONFIG/config.toml" <<EOT
+schema_version = 1
+
+[appearance]
+theme = "$1"
+
+[general]
+language = "en"
+
+[updates]
+check_at_start = false
+EOT
+}
+theme Dark
+
 # Full-size picture for the README.
 big() { out=$1; shift; $BIN --screenshot "$TMP/$out" "$@" >/dev/null; rm -f "docs/$out"; optipng -quiet -o2 -out "docs/$out" "$TMP/$out"; echo "docs/$out"; }
 # Smaller picture for the manual.
@@ -47,3 +67,7 @@ man resin-hollow.png --resin --hollow --cut-view
 man resin-drain-holes.png --resin --hollow --tool drain-hole
 man resin-preview.png --resin --supports --hollow --slice
 man resin-cut.png --resin --supports --slice --cut-view
+
+# One picture in the light theme, for comparison.
+theme Light
+man fdm-prepare-light.png

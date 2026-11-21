@@ -249,16 +249,17 @@ fn main() {
 
     // In a Flatpak the window must carry the app's id, or the desktop can't match
     // it to its icon and launcher.
-    let csd = app::frame::wanted();
-    app::frame::set_enabled(csd);
-    let mut viewport = egui::ViewportBuilder::default()
-        .with_decorations(!csd)
-        .with_transparent(csd)
+    // Who draws the title bar: the app or the system (craft-window), decided once.
+    let frame = app::frame::decide(prefs::Prefs::load().appearance.system_title_bar);
+    let viewport = egui::ViewportBuilder::default()
         .with_title("HybridSliceCraft")
-        .with_inner_size([1440.0, 900.0])
-        .with_min_inner_size([960.0, 600.0])
+        .with_inner_size(app::placement::SIZE)
+        .with_min_inner_size(app::placement::MIN)
         .with_drag_and_drop(true)
         .with_icon(window_icon());
+    // Picture-taking runs keep the default size, so the pictures always match.
+    let viewport = if opts.screenshot.is_none() { app::placement::apply(viewport) } else { viewport };
+    let mut viewport = app::frame::install(frame, viewport);
     if let Ok(id) = std::env::var("FLATPAK_ID") {
         viewport = viewport.with_app_id(id);
     }

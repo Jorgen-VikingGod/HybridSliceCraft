@@ -83,7 +83,7 @@ impl App {
             State::Checking(rx) => match rx.try_recv() {
                 Ok(Ok(r)) => {
                     if crate::update::is_newer(&r.version, current) {
-                        if u.quiet && self.prefs.skip_version != r.version {
+                        if u.quiet && self.prefs.updates.skip_version != r.version {
                             note = Some(tr("Version {version} is available: Help → Check for updates.").replace("{version}", &r.version));
                         }
                         u.state = State::Available(r);
@@ -185,9 +185,9 @@ impl App {
                 }
             }
             ui.add_space(8.0);
-            let mut on = !self.prefs.no_update_check;
+            let mut on = self.prefs.updates.check_at_start;
             if ui.checkbox(&mut on, tr("Check for updates at start")).on_hover_text(tr("Asks GitHub for the newest release once at each start. Nothing else is sent.")).changed() {
-                self.prefs.no_update_check = !on;
+                self.prefs.updates.check_at_start = on;
                 self.prefs.save();
             }
         }, |ui| {
@@ -232,7 +232,7 @@ impl App {
             self.updater.state = State::Installing(r, rx, done);
         }
         if let Some(v) = skip {
-            self.prefs.skip_version = v;
+            self.prefs.updates.skip_version = v;
             self.prefs.save();
             open = false;
         }
