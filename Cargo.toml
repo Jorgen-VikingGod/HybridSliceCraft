@@ -77,6 +77,10 @@ craft-quit = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fa
 craft-sniff = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f" }
 craft-menu = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f" }
 craft-keymap = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f", features = ["egui"] }
+craft-window = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f", features = ["egui", "restore"] }
+craft-settings = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f" }
+craft-i18n = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f" }
+craft-platform = { git = "https://github.com/storytold/craft-libs", rev = "48c57b5fafa170eb9c77c1d9fef0be0f09876f1f", features = ["appearance", "egui"] }
 
 [dev-dependencies]
 truck-modeling = "0.6"

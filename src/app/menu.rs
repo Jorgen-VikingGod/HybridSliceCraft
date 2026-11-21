@@ -99,10 +99,13 @@ impl App {
         view.push(Node::Separator);
         view.push(item("view.overhangs", "Highlight overhangs").check(self.show_overhang).into());
         view.push(Node::Separator);
-        let themes = Theme::ALL.iter().enumerate().map(|(k, t)| with("view.theme", k, tr(t.label())).radio(self.prefs.theme == *t).into()).collect();
+        let themes = Theme::ALL.iter().enumerate().map(|(k, t)| with("view.theme", k, tr(t.label())).radio(self.prefs.appearance.theme == *t).into()).collect();
         view.push(Node::submenu(tr("Theme"), themes).role(ItemRole::Appearance));
-        let langs = crate::i18n::Lang::ALL.iter().enumerate().map(|(k, l)| with("view.language", k, l.name()).radio(self.prefs.language == *l).into()).collect();
+        let chosen = self.prefs.general.language.as_str();
+        let mut langs: Vec<Node> = vec![item("view.language_auto", "System language").radio(chosen == crate::i18n::AUTO).into(), Node::Separator];
+        langs.extend(crate::i18n::languages().into_iter().enumerate().map(|(k, (code, name))| with("view.language", k, name).radio(chosen == code).into()));
         view.push(Node::submenu(tr("Language"), langs).role(ItemRole::Language));
+        view.push(item("view.system_title_bar", "Use system title bar").check(self.prefs.appearance.system_title_bar).into());
         view.push(Node::Separator);
         view.push(item("view.restore_layout", "Restore default layout").into());
 
@@ -187,16 +190,23 @@ impl App {
                 }
             }
             "view.overhangs" => self.show_overhang = !self.show_overhang,
-            "view.theme" | "view.language" => {
+            "view.theme" | "view.language" | "view.language_auto" => {
                 if command.id == "view.theme" {
                     if let Some(t) = Theme::ALL.get(n) {
-                        self.prefs.theme = *t;
+                        self.prefs.appearance.theme = *t;
                     }
-                } else if let Some(l) = crate::i18n::Lang::ALL.get(n) {
-                    self.prefs.language = *l;
+                } else if command.id == "view.language_auto" {
+                    self.prefs.general.language = crate::i18n::AUTO.into();
+                } else if let Some((code, _)) = crate::i18n::languages().get(n) {
+                    self.prefs.general.language = (*code).into();
                 }
                 self.prefs.apply(ctx);
                 self.prefs.save();
+            }
+            "view.system_title_bar" => {
+                self.prefs.appearance.system_title_bar = !self.prefs.appearance.system_title_bar;
+                self.prefs.save();
+                self.toast(ctx, super::ToastKind::Info, tr("The title bar changes when HybridSliceCraft starts again."));
             }
             "view.restore_layout" => {
                 self.layout = super::dock::DockLayout::default();

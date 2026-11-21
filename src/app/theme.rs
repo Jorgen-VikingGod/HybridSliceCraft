@@ -29,7 +29,7 @@ impl Theme {
     /// The look this choice stands for right now: Dark or Light, never System.
     pub fn resolve(self, ctx: &egui::Context) -> Theme {
         match self {
-            Theme::System => match ctx.system_theme().or_else(desktop_theme) {
+            Theme::System => match desktop_theme(ctx).or_else(|| ctx.system_theme()) {
                 Some(egui::Theme::Dark) => Theme::Dark,
                 _ => Theme::Light,
             },
@@ -38,49 +38,38 @@ impl Theme {
     }
 }
 
-/// The dark-mode setting of the desktop, for systems where the window library
-/// cannot tell (X11). Read once: it starts programs, which is too slow per frame.
-fn desktop_theme() -> Option<egui::Theme> {
-    static FOUND: std::sync::OnceLock<Option<egui::Theme>> = std::sync::OnceLock::new();
-    *FOUND.get_or_init(|| {
-        if !cfg!(target_os = "linux") {
-            return None;
-        }
-        let dark = |v: &str| v.to_lowercase().contains("dark");
-        // GTK_THEME=Adwaita:dark
-        if let Ok(v) = std::env::var("GTK_THEME") {
-            return Some(if dark(&v) { egui::Theme::Dark } else { egui::Theme::Light });
-        }
-        let gsettings = |key: &str| {
-            std::process::Command::new("gsettings")
-                .args(["get", "org.gnome.desktop.interface", key])
-                .stderr(std::process::Stdio::null())
-                .output()
-                .ok()
-                .filter(|o| o.status.success())
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().trim_matches('\'').to_string())
-        };
-        // 'prefer-dark' / 'prefer-light' / 'default' (GNOME 42 and later, also set by KDE)
-        match gsettings("color-scheme").as_deref() {
-            Some(v) if dark(v) => return Some(egui::Theme::Dark),
-            Some("prefer-light") => return Some(egui::Theme::Light),
-            _ => {}
-        }
-        if let Some(v) = gsettings("gtk-theme") {
-            if dark(&v) {
-                return Some(egui::Theme::Dark);
-            }
-        }
-        // KDE Plasma: ColorScheme=BreezeDark
-        let home = std::env::var_os("XDG_CONFIG_HOME")
-            .map(std::path::PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".config")));
-        if let Some(text) = home.and_then(|d| std::fs::read_to_string(d.join("kdeglobals")).ok()) {
-            if let Some(line) = text.lines().find(|l| l.starts_with("ColorScheme=")) {
-                return Some(if dark(line) { egui::Theme::Dark } else { egui::Theme::Light });
-            }
-        }
-        None
+/// The desktop's dark or light setting, watched through the XDG Settings portal (craft-platform),
+/// so a change in the system settings shows at once. `None` where there is no portal (macOS and
+/// Windows, where the window library tells instead) or the desktop states no preference.
+fn desktop_theme(ctx: &egui::Context) -> Option<egui::Theme> {
+    use craft_platform::appearance::{Theme as Desktop, Watcher, sync_native_window_theme};
+    use std::sync::{Arc, OnceLock};
+    type Watched = Option<(Watcher, Arc<OnceLock<egui::Context>>)>;
+    thread_local! {
+        static WATCHED: std::cell::OnceCell<Watched> = const { std::cell::OnceCell::new() };
+    }
+    WATCHED.with(|w| {
+        let (watcher, wake) = w
+            .get_or_init(|| {
+                let wake = Arc::new(OnceLock::<egui::Context>::new());
+                let target = Arc::clone(&wake);
+                let watcher = Watcher::start(move || {
+                    if let Some(ctx) = target.get() {
+                        ctx.request_repaint();
+                    }
+                })?;
+                // So the first frame already has the desktop's look.
+                watcher.wait_first(std::time::Duration::from_millis(250));
+                Some((watcher, wake))
+            })
+            .as_ref()?;
+        let _ = wake.set(ctx.clone());
+        let observed = watcher.current();
+        sync_native_window_theme(ctx, observed);
+        observed.map(|t| match t {
+            Desktop::Dark => egui::Theme::Dark,
+            Desktop::Light => egui::Theme::Light,
+        })
     })
 }
 

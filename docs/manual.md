@@ -64,7 +64,9 @@ HybridSliceCraft slices models for **filament (FDM)** printers and **resin (MSLA
 4. Press **Slice plate** (Ctrl+R). When it is done the view switches to **Preview**; Tab flips between *Prepare* and *Preview*.
 5. **Save G-code** (filament) or **Save print** (resin), or send it to a network printer.
 
-**Your workspace.** Both side panels are made of cards: drag a card by its title to reorder it or move it to the other panel, click a title to fold it away, right-click for *Move up, down, to the other panel*. **View → Restore default layout** puts everything back. The program remembers your layout, language and theme (View → Theme, View → Language). The theme follows the system at first: light, or dark when the system is set to dark mode.
+**Your workspace.** Both side panels are made of cards: drag a card by its title to reorder it or move it to the other panel, click a title to fold it away, right-click for *Move up, down, to the other panel*. **View → Restore default layout** puts everything back. The program remembers your layout, language and theme (View → Theme, View → Language), and the window's size and place. At first the language and the theme follow the system: the system's language if there is a translation for it, and light or dark as the system is set, switching when the system does.
+
+**The title bar.** On most desktops the program draws its own title bar, with the window buttons in your desktop's style and order (GNOME, KDE, Windows) and the traffic lights on macOS; on tiling desktops such as Sway or Hyprland the system's frame stays. **View → Use system title bar** gives it to the system everywhere, from the next start.
 
 **Hint:** the search box above the print settings (*Find a setting…*) finds a setting in every tab. Turn on **Advanced** to see the settings that are hidden by default.
 
@@ -575,4 +577,5 @@ Run `hybridslicecraft --help` for every option. Useful ones:
 - `--resin` starts in resin mode; `--slice` slices at start; `--supports`, `--hollow` and `--cut-view` set up a resin model.
 - `--bench-fdm model.stl` and `--bench-resin model.stl` time the slicers.
 - `--mcp` runs the program as an MCP server for AI agents, with no window (see [Use with AI agents](#use-with-ai-agents-mcp)).
+- `HYBRIDSLICECRAFT_TITLEBAR=system` (or `=app`) chooses who draws the title bar for one run, whatever the setting says.
 - `--screenshot file.png` saves a picture of the window; with `--tool`, `--tab`, `--window`, `--scheme`, `--demo-paint` and `--demo-mixes` it can open the tool, tab or window you want, which is how the pictures in this manual were made.
