@@ -66,6 +66,8 @@ HybridSliceCraft slices models for **filament (FDM)** printers and **resin (MSLA
 
 **Your workspace.** Both side panels are made of cards: drag a card by its title to reorder it or move it to the other panel, click a title to fold it away, right-click for *Move up, down, to the other panel*. **View → Restore default layout** puts everything back. The program remembers your layout, language and theme (View → Theme, View → Language), and the window's size and place. At first the language and the theme follow the system: the system's language if there is a translation for it, and light or dark as the system is set, switching when the system does.
 
+![The same workspace in the light theme](manual/images/fdm-prepare-light.png)
+
 **The title bar.** On most desktops the program draws its own title bar, with the window buttons in your desktop's style and order (GNOME, KDE, Windows) and the traffic lights on macOS; on tiling desktops such as Sway or Hyprland the system's frame stays. **View → Use system title bar** gives it to the system everywhere, from the next start.
 
 **Hint:** the search box above the print settings (*Find a setting…*) finds a setting in every tab. Turn on **Advanced** to see the settings that are hidden by default.
