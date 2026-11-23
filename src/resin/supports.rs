@@ -440,7 +440,7 @@ pub fn build_structure(points: &[Target], model: &Mesh, p: &ResinProcess) -> Str
 }
 
 /// The raft under all pillar feet: a convex outline around them, optionally
-/// with a sloped outer edge and vent holes between the pillars.
+/// with a sloped outer edge and round vent holes between the pillars.
 pub fn build_raft(feet: &[(DVec2, f64)], base_r: f64, p: &ResinProcess) -> Mesh {
     let circles: geom::Region = feet.iter().map(|(c, r)| geom::circle(*c, *r, 16)).collect();
     let hull = convex_hull(&circles);
@@ -450,36 +450,33 @@ pub fn build_raft(feet: &[(DVec2, f64)], base_r: f64, p: &ResinProcess) -> Mesh 
     let hull_region: geom::Region = vec![geom::path_from(&hull)];
     let h = p.raft_height.max(0.1);
 
-    // Vent holes sit on a grid. They stay clear of every pillar base and of
-    // the raft's rim, so the raft keeps its strength where it matters.
+    // Vent holes are round and sit on a staggered grid, which leaves even webs
+    // between them and takes out the most resin. They stay clear of every
+    // pillar base and of the raft's rim, so the raft keeps its strength where
+    // it matters.
     let mut vents: geom::Region = Vec::new();
     if p.raft_vents && p.raft_vent_width > 0.2 {
-        let w = p.raft_vent_width as f64;
-        let pitch = (p.raft_vent_pitch as f64).max(w * 2.0);
-        let rim = geom::offset(&hull_region, -(p.raft_margin as f64).max(1.0));
-        if let Some((mn, mx)) = geom::bbox(&rim) {
-            let keep_out = base_r + 0.8 + w * 0.5;
-            let mut y = mn.y + pitch * 0.5;
-            while y < mx.y {
-                let mut x = mn.x + pitch * 0.5;
-                while x < mx.x {
-                    let c = DVec2::new(x, y);
-                    if feet.iter().all(|(f, _)| f.distance(c) > keep_out) {
-                        vents.push(geom::rect(c - DVec2::splat(w * 0.5), c + DVec2::splat(w * 0.5)));
+        let d = p.raft_vent_width as f64;
+        let pitch = (p.raft_vent_pitch as f64).max(d + 0.8);
+        // A hole whose centre lies inside this inset sits fully inside the rim.
+        let rim = geom::offset(&hull_region, -((p.raft_margin as f64).max(1.0) + d * 0.5));
+        let inside = geom::EdgeIndex::new(&rim);
+        if let (Some((mn, mx)), false) = (geom::bbox(&rim), inside.is_empty()) {
+            let keep_out = base_r + 0.8 + d * 0.5;
+            let row = pitch * 3f64.sqrt() * 0.5;
+            let centre = (mn + mx) * 0.5;
+            let rows = ((mx.y - mn.y) * 0.5 / row).ceil() as i64;
+            let cols = ((mx.x - mn.x) * 0.5 / pitch).ceil() as i64 + 1;
+            for j in -rows..=rows {
+                let shift = if j.rem_euclid(2) == 1 { pitch * 0.5 } else { 0.0 };
+                for i in -cols..=cols {
+                    let c = DVec2::new(centre.x + i as f64 * pitch + shift, centre.y + j as f64 * row);
+                    if inside.inside(c) && feet.iter().all(|(f, _)| f.distance(c) > keep_out) {
+                        vents.push(geom::circle(c, d * 0.5, 16));
                     }
-                    x += pitch;
                 }
-                y += pitch;
             }
         }
-        // Keep only vents that sit fully inside the rim.
-        vents = vents
-            .into_iter()
-            .filter(|v| {
-                let r = vec![v.clone()];
-                (geom::region_area(&geom::inter(&r, &rim)) - geom::region_area(&r)).abs() < 1e-6
-            })
-            .collect();
     }
 
     // The slope is a few nested slabs, wide and short at the bottom and
@@ -536,24 +533,9 @@ pub fn extrude_region(region: &geom::Region, z0: f32, z1: f32) -> Mesh {
                 m.t.push([base + i, base + n + j, base + n + i]);
             }
         }
-        // Lids. The ear clipper loses track with many holes, so an island with
-        // holes is cut into horizontal bands at every hole edge. Inside a band
-        // no hole is left (each one spans the whole band), so every piece is
-        // a plain polygon. Only the walls matter to the slicer, so the seams
-        // between bands are harmless.
+        // Lids. The ear clipper loses track with many holes; see `lid_pieces`.
         let mut pieces: Vec<geom::Island> = Vec::new();
-        if holes.is_empty() {
-            pieces.push(geom::Island { outer: geom::path_from(&outer), holes: Vec::new() });
-        } else {
-            let mut ys: Vec<f64> = outer.iter().chain(holes.iter().flatten()).map(|p| p.y).collect();
-            ys.sort_by(|a, b| a.total_cmp(b));
-            ys.dedup_by(|a, b| (*a - *b).abs() < 1e-4);
-            let (mn, mx) = geom::bbox(&isl.region()).unwrap_or((DVec2::ZERO, DVec2::ZERO));
-            for w in ys.windows(2) {
-                let band = vec![geom::rect(DVec2::new(mn.x - 1.0, w[0]), DVec2::new(mx.x + 1.0, w[1]))];
-                pieces.extend(geom::islands(&geom::inter(&isl.region(), &band)));
-            }
-        }
+        lid_pieces(geom::Island { outer: geom::path_from(&outer), holes: isl.holes }, 0, &mut pieces);
         for flat in pieces {
             let (pts, tris) = crate::mesh::triangulate(&flat);
             let base = m.v.len() as u32;
@@ -571,6 +553,47 @@ pub fn extrude_region(region: &geom::Region, z0: f32, z1: f32) -> Mesh {
         }
     }
     m
+}
+
+/// Cut an island into plain polygons the ear clipper can fill. With only a few
+/// holes it is cut into horizontal bands at every hole edge: inside a band no
+/// hole is left (each one spans the whole band), so every piece is a plain
+/// polygon. With many holes (a vented raft has hundreds) the island is first
+/// halved along its longer side until each part holds only a few, so the
+/// banding stays cheap. Only the walls matter to the slicer, so the seams
+/// between pieces are harmless.
+fn lid_pieces(isl: geom::Island, depth: u32, out: &mut Vec<geom::Island>) {
+    if isl.holes.is_empty() {
+        out.push(isl);
+        return;
+    }
+    let region = isl.region();
+    let Some((mn, mx)) = geom::bbox(&region) else {
+        return;
+    };
+    let pad = DVec2::splat(1.0);
+    if isl.holes.len() > 4 && depth < 24 {
+        let halves = if mx.x - mn.x >= mx.y - mn.y {
+            let m = (mn.x + mx.x) * 0.5;
+            [geom::rect(mn - pad, DVec2::new(m, mx.y + 1.0)), geom::rect(DVec2::new(m, mn.y - 1.0), mx + pad)]
+        } else {
+            let m = (mn.y + mx.y) * 0.5;
+            [geom::rect(mn - pad, DVec2::new(mx.x + 1.0, m)), geom::rect(DVec2::new(mn.x - 1.0, m), mx + pad)]
+        };
+        for half in halves {
+            for part in geom::islands(&geom::inter(&region, &vec![half])) {
+                lid_pieces(part, depth + 1, out);
+            }
+        }
+        return;
+    }
+    let mut ys: Vec<f64> = region.iter().flatten().map(|p| geom::from_pt(p).y).collect();
+    ys.sort_by(|a, b| a.total_cmp(b));
+    ys.dedup_by(|a, b| (*a - *b).abs() < 1e-4);
+    for w in ys.windows(2) {
+        let band = vec![geom::rect(DVec2::new(mn.x - 1.0, w[0]), DVec2::new(mx.x + 1.0, w[1]))];
+        out.extend(geom::islands(&geom::inter(&region, &band)));
+    }
 }
 
 fn convex_hull(region: &geom::Region) -> Vec<DVec2> {
@@ -639,9 +662,13 @@ mod tests {
         v
     }
 
+    fn solid() -> ResinProcess {
+        ResinProcess { raft_vents: false, ..proc() }
+    }
+
     #[test]
     fn plain_raft_is_a_solid_slab() {
-        let r = build_raft(&feet(), 2.5, &proc());
+        let r = build_raft(&feet(), 2.5, &solid());
         let (mn, mx) = r.bounds();
         assert!(mn.z.abs() < 1e-4 && (mx.z - 1.0).abs() < 1e-4);
         // 36 mm square plus the pillar margin on each side, roughly.
@@ -650,28 +677,56 @@ mod tests {
 
     #[test]
     fn vent_holes_remove_raft_but_keep_the_rim_and_pillar_feet() {
-        let solid = build_raft(&feet(), 2.5, &proc());
-        let p = ResinProcess { raft_vents: true, ..proc() };
+        let solid = build_raft(&feet(), 2.5, &solid());
+        let p = proc();
+        assert!(p.raft_vents, "vent holes are on by default");
         let vented = build_raft(&feet(), 2.5, &p);
-        assert!(vented.volume() < solid.volume() * 0.97, "{} vs {}", vented.volume(), solid.volume());
-        assert!(vented.volume() > solid.volume() * 0.5);
         // Same outline: holes never reach the edge.
         let (a0, a1) = solid.bounds();
         let (b0, b1) = vented.bounds();
         assert!(a0.distance(b0) < 1e-3 && a1.distance(b1) < 1e-3);
-        // 27 square vents of 1.5 mm on this layout: 60.75 mm2 off a 1837.5 mm2 slab, 1 mm thick.
-        assert!((vented.volume() - (solid.volume() - 60.75)).abs() < 1.0, "{} vs {}", vented.volume(), solid.volume());
+        // The volume taken out is a whole number of round holes.
+        let hole = geom::path_area_mm2(&geom::circle(DVec2::ZERO, p.raft_vent_width as f64 * 0.5, 16)) as f32 * p.raft_height;
+        let holes = (solid.volume() - vented.volume()) / hole;
+        assert!(holes > 10.0 && (holes - holes.round()).abs() < 0.02, "{holes} holes");
+        // No hole sits on a pillar foot.
+        let bvh = Bvh::new(&vented);
+        for (f, _) in feet() {
+            for side in [DVec2::X, DVec2::Y, -DVec2::X, -DVec2::Y] {
+                let q = f + side * (2.5 + 0.7);
+                let hit = bvh.cast(Vec3::new(q.x as f32, q.y as f32, 5.0), -Vec3::Z, 10.0);
+                assert!(hit.is_some(), "raft is solid next to the foot at {q:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn dense_vents_save_a_good_share_of_resin_on_a_large_raft() {
+        // A 120 x 70 mm raft with pillars every 15 mm.
+        let mut feet = Vec::new();
+        for x in 0..9 {
+            for y in 0..5 {
+                feet.push((DVec2::new(x as f64 * 15.0, y as f64 * 15.0), 3.5));
+            }
+        }
+        let start = std::time::Instant::now();
+        let vented = build_raft(&feet, 2.5, &proc());
+        let took = start.elapsed();
+        let solid = build_raft(&feet, 2.5, &solid());
+        let saved = 1.0 - vented.volume() / solid.volume();
+        assert!(saved > 0.2, "saves {:.0} % of the raft", saved * 100.0);
+        assert!(took.as_secs_f32() < 2.0, "built in {took:?}");
     }
 
     #[test]
     fn sloped_edge_makes_the_foot_wider_than_the_top() {
-        let p = ResinProcess { raft_chamfer: 1.0, ..proc() };
+        let p = ResinProcess { raft_chamfer: 1.0, ..solid() };
         let r = build_raft(&feet(), 2.5, &p);
         let (mn, mx) = r.bounds();
-        let (fmn, fmx) = build_raft(&feet(), 2.5, &proc()).bounds();
+        let (fmn, fmx) = build_raft(&feet(), 2.5, &solid()).bounds();
         assert!(mn.x < fmn.x - 0.9 && mx.x > fmx.x + 0.9, "foot grows by the slope");
         // Wider at the bottom than at the top: more resin than the plain slab.
-        assert!(r.volume() > build_raft(&feet(), 2.5, &proc()).volume());
+        assert!(r.volume() > build_raft(&feet(), 2.5, &solid()).volume());
     }
 
     #[test]

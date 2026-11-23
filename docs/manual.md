@@ -439,6 +439,7 @@ Other buttons there: **Lay a face flat** (then click a surface) and **Arrange pl
 - **Place by hand**: pick the *support point* tool in the toolbar, then click the model where a support should touch it.
   ![Placing supports by hand](manual/images/resin-support-points.png)
 - *Print settings → Supports*: **Support needed from** (angle), **Spacing**, **Tip diameter**, **Contact depth** (shallower snaps off more cleanly, deeper holds better), **Tip length**, **Pillar diameter**, **Base diameter**, **Join pillars within**, **Cross-bracing**, **Allow on the model**, and the **Raft** (thickness, margin, edge slope, vent holes).
+- **Raft vent holes** (on by default) punch round holes on a staggered grid through the raft, clear of the pillar feet and the raft's edge. They save resin (about a quarter of the raft with the default 2 mm holes every 3 mm), let resin flow through and lower the pull while peeling. Larger holes or closer spacing save more; turn them off for a solid raft.
 
 **Examples:** tip 0.4 mm and contact depth 0.15 mm for minis; tip 0.8 mm for big heavy parts.
 
