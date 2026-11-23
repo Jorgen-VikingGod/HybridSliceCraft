@@ -934,7 +934,7 @@ fn resin_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut ResinProcess, 
             r.num(ui, "Raft thickness", "", &mut p.raft_height, b.raft_height, 0.2..=5.0, "mm", 1, true);
             r.num(ui, "Raft margin", "", &mut p.raft_margin, b.raft_margin, 0.0..=15.0, "mm", 1, true);
             r.num(ui, "Raft edge slope", "Makes the raft's foot wider than its top, so the edge doesn't peel off the plate.", &mut p.raft_chamfer, b.raft_chamfer, 0.0..=3.0, "mm", 1, true);
-            r.flag(ui, "Raft vent holes", "Holes through the raft let resin flow and lower the pull while peeling.", &mut p.raft_vents, b.raft_vents, true);
+            r.flag(ui, "Raft vent holes", "Round holes through the raft save resin, let it flow and lower the pull while peeling.", &mut p.raft_vents, b.raft_vents, true);
             r.num(ui, "Vent hole size", "", &mut p.raft_vent_width, b.raft_vent_width, 0.5..=5.0, "mm", 1, true);
             r.num(ui, "Vent hole spacing", "", &mut p.raft_vent_pitch, b.raft_vent_pitch, 2.0..=20.0, "mm", 1, true);
         }

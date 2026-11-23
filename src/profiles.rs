@@ -1039,7 +1039,8 @@ pub struct ResinProcess {
     pub raft_margin: f32,
     /// Slope on the raft's outer edge: how much wider the foot is than the top.
     pub raft_chamfer: f32,
-    /// Punch vent holes through the raft so resin can flow and suction drops.
+    /// Punch round vent holes through the raft: it uses less resin, resin can
+    /// flow through and suction drops while peeling.
     pub raft_vents: bool,
     pub raft_vent_width: f32,
     pub raft_vent_pitch: f32,
@@ -1144,9 +1145,9 @@ impl Default for ResinProcess {
             raft_height: 1.0,
             raft_margin: 2.5,
             raft_chamfer: 0.0,
-            raft_vents: false,
-            raft_vent_width: 1.5,
-            raft_vent_pitch: 6.0,
+            raft_vents: true,
+            raft_vent_width: 2.0,
+            raft_vent_pitch: 3.0,
             hollow_wall: 2.0,
             hollow_voxel: 0.6,
             hollow_infill: false,
