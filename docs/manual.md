@@ -233,6 +233,7 @@ A contoured line gets the plastic for its own thickness: lower lines get less. I
 - **Support type**: none, normal (grid) or tree. Tree supports use less plastic and are easier to remove.
 - **Support style** (normal supports): *Snug* follows the outline of what it holds up; *Grid* fills a rectangle around it.
 - **Support from angle**, **Only from the plate**, **Top gap** (empty layers between support and model), **Side gap**, **Support spacing**, **Interface layers** and **Interface spacing** (dense layers just under the model), and for tree supports **Tree branch angle** and **Tree tip radius**.
+- Support that stands on the model leaves the *Top gap* below it too, so it comes off the surface it rests on. With *Only from the plate*, tree branches steer around the model to reach the plate; a branch that can't is left out whole instead of standing on the model.
 - A different filament for the support and its interface (for example soluble) is chosen under [A filament for each feature](#a-filament-for-each-feature).
 - To add or forbid supports in chosen places, [paint support enforcers and blockers](#painting-supports-seams-and-fuzzy-skin).
 
@@ -436,6 +437,11 @@ Other buttons there: **Lay a face flat** (then click a surface) and **Arrange pl
 
 - **Strength**: *Light* (fewer, thinner supports, small marks, for sturdy models), *Medium* (a balance for most models) or *Heavy* (many thick supports for big, heavy or delicate overhangs).
 - **Add automatically** lifts the model and places supports wherever it needs holding: thin, shallow tips that snap off cleanly, kept clear of the model along their whole length, with branches, cross-bracing and an optional raft. **Remove all** clears them.
+  - Every part that would start in mid-air is held at its lowest point first.
+  - The sharp outer rims of down-facing areas, where a layer starts to peel, get supports all along, a little closer together than the rest.
+  - The rest of each down-facing surface is filled in evenly. Flat undersides get the full density; slopes that nearly hold themselves get fewer supports and fewer marks.
+  - Pillars taller than 20 mm get thicker, up to half as thick again at 50 mm, so they don't sway in the peel.
+  - The raft keeps clear of any part of the model that stands on the plate.
 - **Place by hand**: pick the *support point* tool in the toolbar, then click the model where a support should touch it.
   ![Placing supports by hand](manual/images/resin-support-points.png)
 - *Print settings → Supports*: **Support needed from** (angle), **Spacing**, **Tip diameter**, **Contact depth** (shallower snaps off more cleanly, deeper holds better), **Tip length**, **Pillar diameter**, **Base diameter**, **Join pillars within**, **Cross-bracing**, **Allow on the model**, and the **Raft** (thickness, margin, edge slope, vent holes).

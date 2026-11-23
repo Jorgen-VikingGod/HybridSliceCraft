@@ -38,8 +38,170 @@ impl From<(Vec3, Vec3)> for Target {
     }
 }
 
-/// Lowest points of the model and every shallow down-facing surface, sampled
-/// on a staggered grid so density stays even.
+/// Points already chosen, kept in a flat grid so "is there one close by?"
+/// stays quick however many there are.
+struct Nearby {
+    cell: f32,
+    grid: ahash::AHashMap<(i32, i32), Vec<Vec3>>,
+}
+
+impl Nearby {
+    fn new(cell: f32) -> Self {
+        Nearby { cell: cell.max(0.1), grid: ahash::AHashMap::new() }
+    }
+    fn key(&self, p: Vec3) -> (i32, i32) {
+        ((p.x / self.cell).floor() as i32, (p.y / self.cell).floor() as i32)
+    }
+    fn add(&mut self, p: Vec3) {
+        let k = self.key(p);
+        self.grid.entry(k).or_default().push(p);
+    }
+    /// Whether a chosen point lies within `r` sideways and `dz` in height.
+    fn any(&self, p: Vec3, r: f32, dz: f32) -> bool {
+        let (kx, ky) = self.key(p);
+        let reach = (r / self.cell).ceil() as i32;
+        for x in kx - reach..=kx + reach {
+            for y in ky - reach..=ky + reach {
+                if let Some(list) = self.grid.get(&(x, y)) {
+                    if list.iter().any(|o| o.truncate().distance(p.truncate()) < r && (o.z - p.z).abs() < dz) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+}
+
+/// Whether `point`, on the model's surface, is where a ray coming up from
+/// below first enters the solid. A face hidden inside overlapping parts is not.
+fn entered_from_air(bvh: &Bvh, point: Vec3, bottom: f32, top: f32) -> bool {
+    let mut origin = Vec3::new(point.x, point.y, bottom - 1.0);
+    let mut depth = 0i32;
+    for _ in 0..64 {
+        let Some(hit) = bvh.cast(origin, Vec3::Z, top - origin.z + 1.0) else {
+            return false;
+        };
+        if (hit.point.z - point.z).abs() < 0.02 {
+            return depth == 0 && hit.normal.z < 0.0;
+        }
+        if hit.point.z > point.z {
+            return false;
+        }
+        depth = (depth + if hit.normal.z < 0.0 { 1 } else { -1 }).max(0);
+        origin = hit.point + Vec3::Z * 0.01;
+    }
+    false
+}
+
+/// Whether `point` lies inside the model, counted along a ray from below.
+fn solid_at(bvh: &Bvh, point: Vec3, bottom: f32) -> bool {
+    let mut origin = Vec3::new(point.x, point.y, bottom - 1.0);
+    let mut depth = 0i32;
+    for _ in 0..64 {
+        match bvh.cast(origin, Vec3::Z, point.z - origin.z) {
+            Some(hit) => {
+                depth = (depth + if hit.normal.z < 0.0 { 1 } else { -1 }).max(0);
+                origin = hit.point + Vec3::Z * 0.01;
+            }
+            None => break,
+        }
+    }
+    depth > 0
+}
+
+/// The outer rims of down-facing areas: edges where a face that needs support
+/// meets a wall rising from it. Rims are where a layer starts to peel and
+/// curl, so they are held first, with a little more density than the inside.
+/// A rim where a ledge meets a wall going down is left alone: the wall holds it.
+fn rim_points(mesh: &Mesh, bvh: &Bvh, cos_limit: f32, step: f32, inset: f32) -> Vec<Target> {
+    let q = |v: Vec3| ((v.x * 1e4).round() as i64, (v.y * 1e4).round() as i64, (v.z * 1e4).round() as i64);
+    let normals: Vec<Vec3> = (0..mesh.t.len()).map(|i| mesh.tri_normal(i)).collect();
+    let needs = |i: usize| -normals[i].z > cos_limit;
+    // Every edge of a face that needs support, and the faces on its other side.
+    let mut edges: ahash::AHashMap<((i64, i64, i64), (i64, i64, i64)), (u32, Option<u32>)> = ahash::AHashMap::new();
+    let key = |a: Vec3, b: Vec3| {
+        let (ka, kb) = (q(a), q(b));
+        if ka < kb { (ka, kb) } else { (kb, ka) }
+    };
+    for (i, t) in mesh.t.iter().enumerate() {
+        if !needs(i) {
+            continue;
+        }
+        for k in 0..3 {
+            let (a, b) = (mesh.v[t[k] as usize], mesh.v[t[(k + 1) % 3] as usize]);
+            edges.insert(key(a, b), (i as u32, None));
+        }
+    }
+    if edges.is_empty() {
+        return Vec::new();
+    }
+    let (mn, mx) = mesh.bounds();
+    for (i, t) in mesh.t.iter().enumerate() {
+        if needs(i) {
+            continue;
+        }
+        for k in 0..3 {
+            let (a, b) = (mesh.v[t[k] as usize], mesh.v[t[(k + 1) % 3] as usize]);
+            if let Some(e) = edges.get_mut(&key(a, b)) {
+                e.1 = Some(i as u32);
+            }
+        }
+    }
+    let mut out: Vec<Target> = Vec::new();
+    let mut near = Nearby::new(step);
+    let mut list: Vec<_> = edges.into_iter().filter_map(|(_, (face, other))| other.map(|o| (face, o))).collect();
+    list.sort_unstable();
+    for (face, other) in list {
+        let (face, other) = (face as usize, other as usize);
+        // Only a sharp rim with a wall going up from it; a smooth surface that
+        // gently turns steeper is not one.
+        if -normals[other].z > 0.34 {
+            continue;
+        }
+        let ft = mesh.t[face];
+        let ot = mesh.t[other];
+        let shared: Vec<Vec3> = ft.iter().map(|&c| mesh.v[c as usize]).filter(|v| ot.iter().any(|&o| q(mesh.v[o as usize]) == q(*v))).collect();
+        if shared.len() != 2 {
+            continue;
+        }
+        let (a, b) = (shared[0], shared[1]);
+        let Some(apex_o) = ot.iter().map(|&c| mesh.v[c as usize]).find(|v| q(*v) != q(a) && q(*v) != q(b)) else { continue };
+        let Some(apex_f) = ft.iter().map(|&c| mesh.v[c as usize]).find(|v| q(*v) != q(a) && q(*v) != q(b)) else { continue };
+        if apex_o.z <= a.z.max(b.z) + 1e-3 {
+            continue;
+        }
+        // Step in from the rim along the face, so the tip sits fully on it.
+        let along = (b - a).normalize_or_zero();
+        let to_apex = apex_f - a;
+        let inward = (to_apex - along * to_apex.dot(along)).normalize_or_zero();
+        // Just outside and below a true rim there is air. Where the model goes
+        // on down instead (a ledge built against a wall), it is no rim.
+        let outside = (a + b) * 0.5 - Vec3::new(inward.x, inward.y, 0.0).normalize_or_zero() * 0.6 - Vec3::Z * 0.6;
+        if solid_at(bvh, outside, mn.z) {
+            continue;
+        }
+        let len = a.distance(b);
+        let count = (len / step).floor() as usize;
+        for k in 0..=count {
+            let t = if count == 0 { 0.5 } else { (k as f32 + 0.5) / (count + 1) as f32 };
+            let point = a.lerp(b, t) + inward * inset;
+            if point.z <= 0.1 || near.any(point, step * 0.9, step) {
+                continue;
+            }
+            if entered_from_air(bvh, point, mn.z, mx.z) {
+                near.add(point);
+                out.push(Target { pos: point, normal: normals[face], critical: false });
+            }
+        }
+    }
+    out
+}
+
+/// Where the model needs holding: the lowest point of every part that would
+/// start in mid-air, the rims of down-facing areas, and the rest of every
+/// down-facing surface sampled on a staggered grid. Flat surfaces get the full
+/// density; slopes that nearly hold themselves get fewer supports.
 pub fn find_points(mesh: &Mesh, p: &ResinProcess) -> Vec<Target> {
     let mut out: Vec<Target> = Vec::new();
     if mesh.is_empty() {
@@ -49,6 +211,7 @@ pub fn find_points(mesh: &Mesh, p: &ResinProcess) -> Vec<Target> {
     let (mn, mx) = mesh.bounds();
     let spacing = p.support_spacing.max(0.5);
     let cos_limit = p.support_angle.to_radians().cos();
+    let mut near = Nearby::new(spacing);
 
     // Slice coarsely and find every part that starts with nothing beneath it.
     // Each of those would fall off without a support at its lowest point.
@@ -121,10 +284,21 @@ pub fn find_points(mesh: &Mesh, p: &ResinProcess) -> Vec<Target> {
             }
             let n = corner_normal[i as usize].normalize_or_zero();
             let n = if n.z < -0.05 { n } else { -Vec3::Z };
-            if !out.iter().any(|o| o.pos.distance(p) < 0.6) {
+            if !near.any(p, 0.6, 0.6) {
                 // Where a part starts in mid-air: it must be held.
+                near.add(p);
                 out.push(Target { pos: p, normal: n, critical: true });
             }
+        }
+    }
+
+    // The rims next, a little denser than the rest of the surface.
+    let rim_step = spacing * 0.7;
+    let inset = (p.tip_diameter * 0.5 + 0.3).min(rim_step * 0.25);
+    for t in rim_points(mesh, &bvh, cos_limit, rim_step, inset) {
+        if !near.any(t.pos, rim_step * 0.6, spacing) {
+            near.add(t.pos);
+            out.push(t);
         }
     }
 
@@ -153,10 +327,12 @@ pub fn find_points(mesh: &Mesh, p: &ResinProcess) -> Vec<Target> {
                 depth += if facing_down > 0.0 { 1 } else { -1 };
                 depth = depth.max(0);
                 if entering_from_air && facing_down > cos_limit && hit.point.z > 0.1 {
-                    let close = out
-                        .iter()
-                        .any(|o| o.pos.truncate().distance(hit.point.truncate()) < spacing * 0.55 && (o.pos.z - hit.point.z).abs() < spacing);
-                    if !close {
+                    // 1 for a flat ceiling, 0 right at the support angle: the
+                    // steeper the slope, the further apart its supports.
+                    let flatness = ((facing_down - cos_limit) / (1.0 - cos_limit).max(1e-3)).clamp(0.0, 1.0);
+                    let r = spacing * (0.55 + 0.75 * (1.0 - flatness));
+                    if !near.any(hit.point, r, r * 1.5) {
+                        near.add(hit.point);
                         out.push(Target { pos: hit.point, normal: hit.normal, critical: false });
                     }
                 }
@@ -186,12 +362,20 @@ struct Pillar {
     top: f32,
     bottom: f32,
     branches: u32,
+    /// Radius at the foot.
+    radius: f32,
+}
+
+/// A pillar's radius at its foot. Tall pillars sway and bend in the peel, so
+/// from 20 mm up they get thicker, up to half as thick again at 50 mm.
+pub fn pillar_radius(shaft_r: f32, height: f32) -> f32 {
+    shaft_r * (1.0 + ((height - 20.0) / 60.0).clamp(0.0, 0.5))
 }
 
 /// Room kept between any support and the model, so supports never fuse to
 /// it anywhere but at their tips.
 const CLEARANCE: f32 = 0.5;
-/// Most branches one pillar takes (PrusaSlicer uses 3 too).
+/// Most branches one pillar takes.
 const MAX_BRANCHES: u32 = 3;
 /// Steepest a head or branch may lean away from straight down.
 const MAX_LEAN_DEG: f32 = 45.0;
@@ -218,8 +402,9 @@ pub fn build_structure(points: &[Target], model: &Mesh, p: &ResinProcess) -> Str
     let max_lean = MAX_LEAN_DEG.to_radians();
 
     // A straight rod of radius `r` from a to b stays clear of the model when
-    // its centre line and lines along its sides all miss it.
-    let clear = |a: Vec3, b: Vec3, r: f32| -> bool {
+    // its centre line and lines along its sides all miss it. `strict` also
+    // checks its sides directly (see below).
+    let clear_rod = |a: Vec3, b: Vec3, r: f32, strict: bool| -> bool {
         let d = b - a;
         let len = d.length();
         if len < 1e-3 {
@@ -233,12 +418,23 @@ pub fn build_structure(points: &[Target], model: &Mesh, p: &ResinProcess) -> Str
         if bvh.cast(a, dir, len).is_some() {
             return false;
         }
-        (0..8).all(|k| {
-            let an = k as f32 / 8.0 * std::f32::consts::TAU;
-            let off = (u * an.cos() + w * an.sin()) * reach;
-            bvh.cast(a + off, dir, len).is_none()
-        })
+        let ring: Vec<Vec3> = (0..8)
+            .map(|k| {
+                let an = k as f32 / 8.0 * std::f32::consts::TAU;
+                u * an.cos() + w * an.sin()
+            })
+            .collect();
+        // Lines along the rod's sides catch the model crossing its path. A side
+        // line that starts inside the model crosses nothing, though, so casts
+        // outward from the centre line also check the rod's sides directly.
+        ring.iter().all(|off| bvh.cast(a + *off * reach, dir, len).is_none())
+            && (!strict
+                || [0.0f32, 0.5, 1.0].iter().all(|t| {
+                    let c = a + d * *t;
+                    ring.iter().all(|off| bvh.cast(c, *off, reach).is_none())
+                }))
     };
+    let clear = |a: Vec3, b: Vec3, r: f32| clear_rod(a, b, r, true);
     // A pillar from here straight down to the plate.
     let drops_clear = |from: Vec3| clear(from, Vec3::new(from.x, from.y, base_z), shaft_r);
 
@@ -273,11 +469,14 @@ pub fn build_structure(points: &[Target], model: &Mesh, p: &ResinProcess) -> Str
         }
         // The thin tip may sit right against the surface; from just past it the
         // head must be clear by its full width.
-        let head_clear = |d: &Vec3| {
+        let head_clear = |d: &Vec3, strict: bool| {
             let start = point + *d * (tip_r * 2.0 + CLEARANCE).min(p.tip_length * 0.5);
-            clear(start, point + *d * p.tip_length, neck_r)
+            clear_rod(start, point + *d * p.tip_length, neck_r, strict)
         };
-        let Some(leave) = tries.into_iter().find(|d| d.dot(normal) > -0.2 && head_clear(d)) else {
+        // A part that would fall off may take a head through a tight gap.
+        let leave = tries.iter().copied().find(|d| d.dot(normal) > -0.2 && head_clear(d, true));
+        let leave = leave.or_else(|| if t.critical { tries.iter().copied().find(|d| d.dot(normal) > -0.2 && head_clear(d, false)) } else { None });
+        let Some(leave) = leave else {
             s.unreachable += t.critical as usize;
             s.skipped += (!t.critical) as usize;
             continue;
@@ -336,7 +535,9 @@ pub fn build_structure(points: &[Target], model: &Mesh, p: &ResinProcess) -> Str
                 continue;
             }
             match bvh.cast(joint, -Vec3::Z, joint.z + 1.0) {
-                Some(hit) if hit.normal.z > 0.3 && clear(joint, hit.point + Vec3::Z * (p.tip_length * 0.5), neck_r) => Some(hit.point),
+                // The last resort for a part that would fall off: a tight gap
+                // is accepted here, since holding the part matters more.
+                Some(hit) if hit.normal.z > 0.3 && clear_rod(joint, hit.point + Vec3::Z * (p.tip_length * 0.5), neck_r, false) => Some(hit.point),
                 _ => {
                     s.unreachable += 1;
                     continue;
@@ -375,17 +576,19 @@ pub fn build_structure(points: &[Target], model: &Mesh, p: &ResinProcess) -> Str
             s.branches += 1;
         }
         let foot = Vec3::new(top.x, top.y, base_z);
-        out.append(&make_frustum(top, foot, neck_r, shaft_r, sides));
+        let foot_r = pillar_radius(shaft_r, top.z - base_z);
+        out.append(&make_frustum(top, foot, neck_r, foot_r, sides));
         if !p.raft {
             // Flared foot so it grips the build plate.
             let flare = Vec3::new(top.x, top.y, (0.8f32).min(top.z));
-            out.append(&make_frustum(foot, flare, p.base_diameter * 0.5, shaft_r, 14));
+            out.append(&make_frustum(foot, flare, (p.base_diameter * 0.5).max(foot_r * 1.5), foot_r, 14));
         }
         pillars.push(Pillar {
             xy: top.truncate(),
             top: top.z,
             bottom: base_z,
             branches: 0,
+            radius: foot_r,
         });
         s.pillars += 1;
     }
@@ -431,17 +634,32 @@ pub fn build_structure(points: &[Target], model: &Mesh, p: &ResinProcess) -> Str
     if p.raft && !pillars.is_empty() {
         let feet: Vec<(DVec2, f64)> = pillars
             .iter()
-            .map(|pil| (DVec2::new(pil.xy.x as f64, pil.xy.y as f64), (shaft_r + p.raft_margin) as f64))
+            .map(|pil| (DVec2::new(pil.xy.x as f64, pil.xy.y as f64), (pil.radius + p.raft_margin) as f64))
             .collect();
-        out.append(&build_raft(&feet, (p.base_diameter * 0.5) as f64, p));
+        out.append(&build_raft(&feet, (p.base_diameter * 0.5) as f64, &on_the_plate(model, p.raft_height + CLEARANCE), p));
     }
     s.mesh = out;
     s
 }
 
+/// What the model covers up to `height` above the plate, grown by the
+/// clearance: a raft kept out of it can't fuse to a model standing on the plate.
+fn on_the_plate(model: &Mesh, height: f32) -> geom::Region {
+    let (mn, _) = model.bounds();
+    if model.is_empty() || mn.z > height {
+        return Vec::new();
+    }
+    let steps = 4;
+    let zs: Vec<f64> = (0..steps).map(|k| (mn.z.max(0.0) + (height - mn.z.max(0.0)) * (k as f32 + 0.5) / steps as f32) as f64).collect();
+    let (loops, _) = crate::slicing::slice_mesh(model, &zs);
+    let region: geom::Region = loops.iter().flatten().filter(|l| l.len() >= 3).map(|l| geom::path_from(l)).collect();
+    geom::offset_round(&geom::union(&region), CLEARANCE as f64)
+}
+
 /// The raft under all pillar feet: a convex outline around them, optionally
-/// with a sloped outer edge and round vent holes between the pillars.
-pub fn build_raft(feet: &[(DVec2, f64)], base_r: f64, p: &ResinProcess) -> Mesh {
+/// with a sloped outer edge and round vent holes between the pillars. It keeps
+/// out of `keep_clear`, where the model itself stands on the plate.
+pub fn build_raft(feet: &[(DVec2, f64)], base_r: f64, keep_clear: &geom::Region, p: &ResinProcess) -> Mesh {
     let circles: geom::Region = feet.iter().map(|(c, r)| geom::circle(*c, *r, 16)).collect();
     let hull = convex_hull(&circles);
     if hull.len() < 3 {
@@ -489,6 +707,7 @@ pub fn build_raft(feet: &[(DVec2, f64)], base_r: f64, p: &ResinProcess) -> Mesh 
         let top = h * (k + 1) as f32 / steps as f32;
         let outline = geom::offset(&hull_region, grow);
         let region = if vents.is_empty() { outline } else { geom::diff(&outline, &vents) };
+        let region = if keep_clear.is_empty() { region } else { geom::diff(&region, keep_clear) };
         mesh.append(&extrude_region(&region, 0.0, top));
     }
     mesh
@@ -668,7 +887,7 @@ mod tests {
 
     #[test]
     fn plain_raft_is_a_solid_slab() {
-        let r = build_raft(&feet(), 2.5, &solid());
+        let r = build_raft(&feet(), 2.5, &Vec::new(), &solid());
         let (mn, mx) = r.bounds();
         assert!(mn.z.abs() < 1e-4 && (mx.z - 1.0).abs() < 1e-4);
         // 36 mm square plus the pillar margin on each side, roughly.
@@ -677,10 +896,10 @@ mod tests {
 
     #[test]
     fn vent_holes_remove_raft_but_keep_the_rim_and_pillar_feet() {
-        let solid = build_raft(&feet(), 2.5, &solid());
+        let solid = build_raft(&feet(), 2.5, &Vec::new(), &solid());
         let p = proc();
         assert!(p.raft_vents, "vent holes are on by default");
-        let vented = build_raft(&feet(), 2.5, &p);
+        let vented = build_raft(&feet(), 2.5, &Vec::new(), &p);
         // Same outline: holes never reach the edge.
         let (a0, a1) = solid.bounds();
         let (b0, b1) = vented.bounds();
@@ -710,23 +929,39 @@ mod tests {
             }
         }
         let start = std::time::Instant::now();
-        let vented = build_raft(&feet, 2.5, &proc());
+        let vented = build_raft(&feet, 2.5, &Vec::new(), &proc());
         let took = start.elapsed();
-        let solid = build_raft(&feet, 2.5, &solid());
+        let solid = build_raft(&feet, 2.5, &Vec::new(), &solid());
         let saved = 1.0 - vented.volume() / solid.volume();
         assert!(saved > 0.2, "saves {:.0} % of the raft", saved * 100.0);
         assert!(took.as_secs_f32() < 2.0, "built in {took:?}");
     }
 
     #[test]
+    fn raft_keeps_clear_of_a_model_standing_on_the_plate() {
+        // A block standing on the plate in the middle of the pillar feet.
+        let block = make_box(Vec3::new(8.0, 8.0, 10.0)).transformed(&Mat4::from_translation(Vec3::new(22.0, 22.0, 0.0)));
+        let keep = on_the_plate(&block, proc().raft_height + CLEARANCE);
+        let (mn, mx) = geom::bbox(&keep).unwrap();
+        assert!((mn.x - (22.0 - CLEARANCE as f64)).abs() < 0.05 && (mx.y - (30.0 + CLEARANCE as f64)).abs() < 0.05, "{mn:?} {mx:?}");
+        let plain = build_raft(&feet(), 2.5, &Vec::new(), &solid());
+        let around = build_raft(&feet(), 2.5, &keep, &solid());
+        let cut = (8.0 + 2.0 * CLEARANCE) * (8.0 + 2.0 * CLEARANCE) * proc().raft_height;
+        assert!((plain.volume() - around.volume() - cut).abs() < cut * 0.03, "{} vs {}", plain.volume() - around.volume(), cut);
+        // A model lifted off the plate leaves the raft whole.
+        let lifted = block.transformed(&Mat4::from_translation(Vec3::Z * 5.0));
+        assert!(on_the_plate(&lifted, proc().raft_height + CLEARANCE).is_empty());
+    }
+
+    #[test]
     fn sloped_edge_makes_the_foot_wider_than_the_top() {
         let p = ResinProcess { raft_chamfer: 1.0, ..solid() };
-        let r = build_raft(&feet(), 2.5, &p);
+        let r = build_raft(&feet(), 2.5, &Vec::new(), &p);
         let (mn, mx) = r.bounds();
-        let (fmn, fmx) = build_raft(&feet(), 2.5, &solid()).bounds();
+        let (fmn, fmx) = build_raft(&feet(), 2.5, &Vec::new(), &solid()).bounds();
         assert!(mn.x < fmn.x - 0.9 && mx.x > fmx.x + 0.9, "foot grows by the slope");
         // Wider at the bottom than at the top: more resin than the plain slab.
-        assert!(r.volume() > build_raft(&feet(), 2.5, &solid()).volume());
+        assert!(r.volume() > build_raft(&feet(), 2.5, &Vec::new(), &solid()).volume());
     }
 
     #[test]
@@ -746,6 +981,92 @@ mod tests {
         let model = make_box(Vec3::splat(20.0)).transformed(&Mat4::from_translation(Vec3::new(40.0, 40.0, 6.0)));
         SupportPreset::Heavy.apply(&mut h);
         assert!(find_points(&model, &h).len() > find_points(&model, &l).len());
+    }
+
+    #[test]
+    fn rims_of_a_flat_underside_are_held_all_along() {
+        let p = proc();
+        let m = make_box(Vec3::new(30.0, 20.0, 10.0)).transformed(&Mat4::from_translation(Vec3::new(40.0, 40.0, 6.0)));
+        let points = find_points(&m, &p);
+        let step = p.support_spacing * 0.7;
+        // Along each of the four bottom edges, supports sit close to the edge
+        // and no stretch of it is left without one.
+        // (distance from the edge, position along it, start, end)
+        type Edge = (fn(&Target) -> f32, fn(&Target) -> f32, f32, f32);
+        let edges: [Edge; 4] = [
+            (|t| t.pos.y - 40.0, |t| t.pos.x, 40.0, 70.0),
+            (|t| 60.0 - t.pos.y, |t| t.pos.x, 40.0, 70.0),
+            (|t| t.pos.x - 40.0, |t| t.pos.y, 40.0, 60.0),
+            (|t| 70.0 - t.pos.x, |t| t.pos.y, 40.0, 60.0),
+        ];
+        for (off, along, from, to) in edges {
+            let mut xs: Vec<f32> = points.iter().filter(|t| (t.pos.z - 6.0).abs() < 0.01 && off(t) < 1.0).map(along).collect();
+            xs.sort_by(|a, b| a.total_cmp(b));
+            assert!(xs.len() >= 4, "{xs:?}");
+            let mut last = from;
+            for x in xs.iter().copied().chain([to]) {
+                assert!(x - last <= step * 1.5, "a {:.1} mm stretch of the rim has no support: {xs:?}", x - last);
+                last = x;
+            }
+        }
+        // Every point still faces down and sits on the underside.
+        assert!(points.iter().all(|t| (t.pos.z - 6.0).abs() < 0.01 && t.normal.z < 0.0));
+    }
+
+    #[test]
+    fn a_ledge_meeting_a_wall_below_gets_no_rim_supports() {
+        // One solid T, standing up: a stem 6 mm wide and arms 30 mm across on
+        // top. The arms' undersides meet the stem, which holds them there.
+        let r = |x0: f64, y0: f64, x1: f64, y1: f64| geom::rect(DVec2::new(x0, y0), DVec2::new(x1, y1));
+        let profile = geom::union(&vec![r(47.0, 0.0, 53.0, 20.0), r(35.0, 20.0, 65.0, 24.0)]);
+        // Stand the profile up: its y becomes the height, the extrusion runs along -y.
+        let m = extrude_region(&profile, 0.0, 20.0).transformed(&Mat4::from_rotation_x(90f32.to_radians()));
+        let (mn, mx) = m.bounds();
+        assert!(mn.z.abs() < 1e-3 && (mx.z - 24.0).abs() < 1e-3 && (mn.y + 20.0).abs() < 1e-3, "{mn:?} {mx:?}");
+        let bvh = Bvh::new(&m);
+        let rims = rim_points(&m, &bvh, proc().support_angle.to_radians().cos(), 3.5, 0.4);
+        // The arms' outer ends are rims ...
+        assert!(rims.iter().any(|t| (t.pos.x - 35.0).abs() < 1.0), "{rims:?}");
+        assert!(rims.iter().any(|t| (t.pos.x - 65.0).abs() < 1.0), "{rims:?}");
+        // ... but where the arms meet the stem, away from the front and back, nothing.
+        for t in &rims {
+            assert!((t.pos.z - 20.0).abs() < 1e-3, "{:?}", t.pos);
+            let mid = t.pos.y < -1.5 && t.pos.y > -18.5;
+            assert!(!(mid && ((t.pos.x - 47.0).abs() < 1.0 || (t.pos.x - 53.0).abs() < 1.0)), "rim support next to the stem at {:?}", t.pos);
+        }
+    }
+
+    #[test]
+    fn slopes_that_nearly_hold_themselves_get_fewer_supports() {
+        let p = proc();
+        let size = Vec3::new(60.0, 60.0, 4.0);
+        let lift = Mat4::from_translation(Vec3::new(20.0, 20.0, 40.0));
+        let tilt = Mat4::from_rotation_x(32f32.to_radians());
+        let centre = Mat4::from_translation(-size * 0.5);
+        let inner = |frame: Mat4| {
+            let m = make_box(size).transformed(&(lift * frame * centre));
+            let back = (lift * frame * centre).inverse();
+            // Only the inside of the underside, away from its rims.
+            find_points(&m, &p)
+                .iter()
+                .map(|t| back.transform_point3(t.pos))
+                .filter(|q| q.z < 0.01 && q.x > 5.0 && q.x < size.x - 5.0 && q.y > 5.0 && q.y < size.y - 5.0)
+                .count()
+        };
+        let flat = inner(Mat4::IDENTITY);
+        let sloped = inner(tilt);
+        assert!(flat > 40, "{flat}");
+        assert!((sloped as f32) < flat as f32 * 0.8, "flat {flat}, sloped {sloped}");
+        assert!(sloped > 0, "a slope inside the support angle still gets supports");
+    }
+
+    #[test]
+    fn tall_pillars_are_thicker() {
+        assert_eq!(pillar_radius(0.6, 10.0), 0.6);
+        assert_eq!(pillar_radius(0.6, 20.0), 0.6);
+        assert!((pillar_radius(0.6, 50.0) - 0.9).abs() < 1e-5);
+        assert!((pillar_radius(0.6, 200.0) - 0.9).abs() < 1e-5);
+        assert!(pillar_radius(0.6, 35.0) > 0.6 && pillar_radius(0.6, 35.0) < 0.9);
     }
 
     #[test]

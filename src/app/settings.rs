@@ -831,7 +831,7 @@ fn fdm_tab(ui: &mut egui::Ui, r: &mut Rows, tab: usize, p: &mut FdmProcess, b: &
             r.pick(ui, "Support style", "Snug supports follow the outline of what they hold up; grid supports fill a rectangle around it.", &mut p.support_style, b.support_style, &SupportStyle::ALL, SupportStyle::label, true);
             r.num(ui, "Support from angle", "Surfaces shallower than this get supports.", &mut p.support_angle, b.support_angle, 5.0..=85.0, "°", 0, false);
             r.flag(ui, "Only from the plate", "Never build supports on top of the model.", &mut p.support_plate_only, b.support_plate_only, false);
-            r.int(ui, "Top gap", "Empty layers between support and model, for easy removal.", &mut p.support_z_gap, b.support_z_gap, 0..=5, true);
+            r.int(ui, "Top gap", "Empty layers between support and model, for easy removal. Support that stands on the model keeps the same gap below it.", &mut p.support_z_gap, b.support_z_gap, 0..=5, true);
             r.num(ui, "Side gap", "", &mut p.support_xy_gap, b.support_xy_gap, 0.0..=5.0, "mm", 2, true);
             r.num(ui, "Support spacing", "", &mut p.support_spacing, b.support_spacing, 0.5..=20.0, "mm", 1, true);
             r.int(ui, "Interface layers", "Dense layers just under the model.", &mut p.support_interface_layers, b.support_interface_layers, 0..=10, true);

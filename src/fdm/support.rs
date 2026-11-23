@@ -35,7 +35,11 @@ pub struct Prepared {
     kind: SupportKind,
     over: Vec<Region>,
     clear: Vec<Region>,
+    /// Where tree branches may not go on each layer: the model with its gap, and
+    /// with "on build plate only" also everything above any part of the model.
     clear_idx: Vec<EdgeIndex>,
+    /// With "on build plate only", the model's shadow on each layer (tree supports).
+    shadow: Vec<Region>,
 }
 
 /// Where the user painted support enforcers and blockers, layer by layer.
@@ -59,7 +63,7 @@ pub fn prepare(slices: &[Region], heights: &[f64], p: &FdmProcess, painted: &Pai
     };
     let auto = p.support != SupportKind::None;
     if kind == SupportKind::None {
-        return Prepared { kind, over: Vec::new(), clear: Vec::new(), clear_idx: Vec::new() };
+        return Prepared { kind, over: Vec::new(), clear: Vec::new(), clear_idx: Vec::new(), shadow: Vec::new() };
     }
     let mut over = if auto { overhangs(slices, heights, p.support_angle as f64) } else { vec![Vec::new(); slices.len()] };
     over.par_iter_mut().enumerate().for_each(|(i, o)| {
@@ -79,8 +83,15 @@ pub fn prepare(slices: &[Region], heights: &[f64], p: &FdmProcess, painted: &Pai
             *c = geom::union2(c, b);
         }
     });
-    let clear_idx = if kind == SupportKind::Tree { clear.par_iter().map(EdgeIndex::new).collect() } else { Vec::new() };
-    Prepared { kind, over, clear, clear_idx }
+    // On the plate only, a branch may not stand on the model, so it keeps out of
+    // the model's whole shadow: everything at or below the layer.
+    let shadow = if kind == SupportKind::Tree && p.support_plate_only { shadows(&clear) } else { Vec::new() };
+    let clear_idx = match kind {
+        SupportKind::Tree if !shadow.is_empty() => shadow.par_iter().map(EdgeIndex::new).collect(),
+        SupportKind::Tree => clear.par_iter().map(EdgeIndex::new).collect(),
+        _ => Vec::new(),
+    };
+    Prepared { kind, over, clear, clear_idx, shadow }
 }
 
 /// Supports from the groundwork `prepare` made.
@@ -97,6 +108,39 @@ fn clearance(slices: &[Region], xy: f64) -> Vec<Region> {
         .par_iter()
         .map(|s| geom::offset_round(s, xy))
         .collect()
+}
+
+/// Everything the regions cover at or below each layer.
+fn shadows(regions: &[Region]) -> Vec<Region> {
+    let mut out = Vec::with_capacity(regions.len());
+    let mut acc: Region = Vec::new();
+    for r in regions {
+        if !r.is_empty() {
+            acc = geom::simplify_region(&geom::union2(&acc, r), SUPPORT_TOLERANCE_MM);
+        }
+        out.push(acc.clone());
+    }
+    out
+}
+
+/// Support resting on the model keeps the same gap below it as above, so it
+/// comes off the surface it stands on instead of fusing to it.
+fn off_the_model_below(body: &Region, clear: &[Region], i: usize, gap: usize) -> Region {
+    if gap == 0 || body.is_empty() {
+        return body.clone();
+    }
+    let Some((lo, hi)) = geom::bbox(body) else {
+        return body.clone();
+    };
+    let pad = DVec2::splat(1.0);
+    let mut under: Region = Vec::new();
+    for c in &clear[i.saturating_sub(gap)..i] {
+        under.extend(geom::crop(c, lo - pad, hi + pad));
+    }
+    if under.is_empty() {
+        return body.clone();
+    }
+    geom::remove_small(&geom::diff(body, &under), 0.2)
 }
 
 /// Everything the model occupies at or below each layer.
@@ -251,7 +295,8 @@ fn block_supports(prep: Prepared, slices: &[Region], p: &FdmProcess) -> Vec<Supp
     let mut out: Vec<SupportLayer> = (0..n)
         .into_par_iter()
         .map(|i| {
-            if body[i].is_empty() {
+            let body = off_the_model_below(&body[i], &clear, i, gap);
+            if body.is_empty() {
                 return SupportLayer::default();
             }
             let mut interface: Region = Vec::new();
@@ -262,9 +307,9 @@ fn block_supports(prep: Prepared, slices: &[Region], p: &FdmProcess) -> Vec<Supp
                     }
                 }
             }
-            let interface = geom::inter(&body[i], &interface);
+            let interface = geom::inter(&body, &interface);
             SupportLayer {
-                body: geom::diff(&body[i], &interface),
+                body: geom::diff(&body, &interface),
                 interface,
             }
         })
@@ -278,17 +323,51 @@ struct Node {
     p: DVec2,
     radius: f64,
     weight: u32,
+    /// The branch this node belongs to. Branches that meet share one group.
+    group: u32,
+}
+
+/// Which branches have joined, and which ended on the model.
+#[derive(Default)]
+struct Groups {
+    parent: Vec<u32>,
+    landed: Vec<bool>,
+}
+
+impl Groups {
+    fn add(&mut self) -> u32 {
+        self.parent.push(self.parent.len() as u32);
+        self.landed.push(false);
+        self.parent.len() as u32 - 1
+    }
+    fn find(&mut self, mut g: u32) -> u32 {
+        while self.parent[g as usize] != g {
+            let up = self.parent[self.parent[g as usize] as usize];
+            self.parent[g as usize] = up;
+            g = up;
+        }
+        g
+    }
+    fn join(&mut self, a: u32, b: u32) -> u32 {
+        let (a, b) = (self.find(a), self.find(b));
+        if a != b {
+            self.parent[a as usize] = b;
+            self.landed[b as usize] |= self.landed[a as usize];
+        }
+        b
+    }
 }
 
 /// Branches grow from the overhang tips down to the bed, merging as they go.
 fn tree_supports(prep: Prepared, n: usize, heights: &[f64], p: &FdmProcess) -> Vec<SupportLayer> {
-    let Prepared { over, clear, clear_idx, .. } = prep;
+    let Prepared { over, clear, clear_idx, shadow, .. } = prep;
     let gap = p.support_z_gap as usize;
     let spacing = (p.support_spacing as f64 * 1.6).max(2.0);
     let tip = p.tree_tip_radius as f64;
     let tan_branch = (p.tree_branch_angle as f64).to_radians().tan();
     let mut nodes: Vec<Node> = Vec::new();
     let mut layers: Vec<Vec<Node>> = vec![Vec::new(); n];
+    let mut groups = Groups::default();
 
     for i in (0..n).rev() {
         // New tips below every overhang.
@@ -308,6 +387,7 @@ fn tree_supports(prep: Prepared, n: usize, heights: &[f64], p: &FdmProcess) -> V
                                 p: a.lerp(b, t),
                                 radius: tip,
                                 weight: 1,
+                                group: groups.add(),
                             });
                         }
                     }
@@ -318,6 +398,7 @@ fn tree_supports(prep: Prepared, n: usize, heights: &[f64], p: &FdmProcess) -> V
                                 p: (mn + mx) * 0.5,
                                 radius: tip,
                                 weight: 1,
+                                group: groups.add(),
                             });
                         }
                     }
@@ -380,6 +461,8 @@ fn tree_supports(prep: Prepared, n: usize, heights: &[f64], p: &FdmProcess) -> V
                         true
                     } else {
                         // Landed on the model: the branch stops here.
+                        let g = groups.find(nd.group);
+                        groups.landed[g as usize] = true;
                         false
                     }
                 }
@@ -402,6 +485,7 @@ fn tree_supports(prep: Prepared, n: usize, heights: &[f64], p: &FdmProcess) -> V
                                 other.p = (other.p * other.weight as f64 + nd.p * nd.weight as f64) / w;
                                 other.weight += nd.weight;
                                 other.radius = (tip * (other.weight as f64).sqrt() * 0.75).clamp(tip, 6.0);
+                                other.group = groups.join(nd.group, other.group);
                                 continue 'outer;
                             }
                         }
@@ -417,6 +501,17 @@ fn tree_supports(prep: Prepared, n: usize, heights: &[f64], p: &FdmProcess) -> V
         }
         nodes = merged;
         layers[i] = nodes.clone();
+    }
+
+    // On the plate only: a branch that ended on the model is taken out whole,
+    // from its tips down, rather than left standing on the model.
+    if p.support_plate_only {
+        for layer in layers.iter_mut() {
+            layer.retain(|nd| {
+                let g = groups.find(nd.group);
+                !groups.landed[g as usize]
+            });
+        }
     }
 
     let iface_count = p.support_interface_layers as usize;
@@ -435,8 +530,8 @@ fn tree_supports(prep: Prepared, n: usize, heights: &[f64], p: &FdmProcess) -> V
             if i == 0 {
                 u = geom::offset_round(&u, 1.2);
             }
-            let body = geom::diff(&u, &clear[i]);
-            let body = geom::remove_small(&body, 0.2);
+            let body = geom::diff(&u, shadow.get(i).unwrap_or(&clear[i]));
+            let body = off_the_model_below(&geom::remove_small(&body, 0.2), &clear, i, gap);
             let mut interface: Region = Vec::new();
             for j in 0..iface_count {
                 if let Some(o) = over.get(i + gap + 1 + j) {
@@ -454,4 +549,82 @@ fn tree_supports(prep: Prepared, n: usize, heights: &[f64], p: &FdmProcess) -> V
         .collect();
     out.truncate(n);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A post on the left holding a long ledge, and a low block under the far
+    /// end of the ledge: supports there must stand on the block.
+    fn ledge_over_block() -> (Vec<Region>, Vec<f64>) {
+        let rect = |x0: f64, y0: f64, x1: f64, y1: f64| geom::rect(DVec2::new(x0, y0), DVec2::new(x1, y1));
+        let mut slices = Vec::new();
+        for i in 0..60 {
+            let mut r: Region = vec![rect(0.0, 0.0, 6.0, 10.0)];
+            if i < 15 {
+                r.push(rect(24.0, 0.0, 34.0, 10.0));
+            }
+            if (40..45).contains(&i) {
+                r.push(rect(0.0, 0.0, 34.0, 10.0));
+            }
+            slices.push(geom::union(&r));
+        }
+        (slices, vec![0.2; 60])
+    }
+
+    fn block_footprint() -> Region {
+        vec![geom::rect(DVec2::new(24.0, 0.0), DVec2::new(34.0, 10.0))]
+    }
+
+    fn run(kind: SupportKind, plate_only: bool) -> Vec<SupportLayer> {
+        let (slices, heights) = ledge_over_block();
+        let p = FdmProcess { support: kind, support_plate_only: plate_only, ..FdmProcess::default() };
+        let prep = prepare(&slices, &heights, &p, &Painted::default());
+        generate_from(prep, &slices, &heights, &p)
+    }
+
+    fn area(l: &SupportLayer) -> f64 {
+        geom::region_area(&l.body) + geom::region_area(&l.interface)
+    }
+
+    fn over_block(l: &SupportLayer) -> f64 {
+        let all: Region = l.body.iter().chain(l.interface.iter()).cloned().collect();
+        geom::region_area(&geom::inter(&geom::union(&all), &block_footprint()))
+    }
+
+    #[test]
+    fn support_on_the_model_keeps_a_gap_above_it() {
+        for kind in [SupportKind::Normal, SupportKind::Tree] {
+            let s = run(kind, false);
+            // The block's top layer is 14; the default gap is one layer.
+            assert!(over_block(&s[15]) < 0.01, "{kind:?}: support fused to the block's top: {}", over_block(&s[15]));
+            // Further up the support stands over the block again.
+            let above: f64 = (17..38).map(|i| over_block(&s[i])).sum();
+            assert!(above > 1.0, "{kind:?}: support reaches down onto the block ({above})");
+            // And under the free part of the ledge it goes down to the plate.
+            assert!(area(&s[0]) > 1.0, "{kind:?}: nothing on the plate");
+        }
+    }
+
+    #[test]
+    fn tree_on_the_plate_only_never_stands_on_the_model() {
+        let s = run(SupportKind::Tree, true);
+        for (i, l) in s.iter().enumerate().skip(15) {
+            assert!(over_block(l) < 0.01, "layer {i}: a branch stands above the block ({})", over_block(l));
+        }
+        // The free span between post and block still gets support from the plate.
+        let free = vec![geom::rect(DVec2::new(8.0, 0.0), DVec2::new(22.0, 10.0))];
+        let held = |i: usize| {
+            let all: Region = s[i].body.iter().chain(s[i].interface.iter()).cloned().collect();
+            geom::region_area(&geom::inter(&geom::union(&all), &free))
+        };
+        assert!(held(38) > 1.0 && held(0) > 0.5, "{} at the top, {} on the plate", held(38), held(0));
+        // Every branch that has a layer reaches the plate: no support floats.
+        for i in 1..s.len() {
+            if area(&s[i]) > 0.0 {
+                assert!(area(&s[i - 1]) > 0.0 || i >= 39, "layer {i} has support with nothing under it");
+            }
+        }
+    }
 }
