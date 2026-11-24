@@ -2,7 +2,7 @@
 //! G-code the way a printer would and compares the plastic used with the model.
 
 use super::*;
-use crate::mesh::{make_box, make_cylinder, Mesh};
+use crate::mesh::{make_box, make_cylinder, make_frustum, Mesh};
 use crate::profiles::*;
 use glam::{Mat4, Vec3};
 
@@ -1591,4 +1591,19 @@ fn a_dome_gets_its_walls_lowered_toward_the_curve() {
         .filter(|s| s.b[2] < r0.layers[s.layer as usize].z - 0.02)
         .count();
     assert!(lowered0 < lowered, "{lowered0} vs {lowered}");
+}
+
+#[test]
+fn skirt_goes_round_a_part_that_leans_out_over_its_base() {
+    // A cone standing on its tip: 5 mm round at the bed, 15 mm round at the top. The skirt has
+    // to clear the widest layer, not just the small first one (issue #111).
+    let cone = make_frustum(Vec3::ZERO, Vec3::new(0.0, 0.0, 15.0), 5.0, 15.0, 64);
+    let p = FdmProcess::default();
+    let want = 15.0 + p.skirt_distance;
+    let r = slice(&job(centered(cone), p), &Progress::default()).unwrap();
+    let skirt: Vec<f32> = r.segs.iter().filter(|s| s.feature == Feature::Skirt as u32).map(|s| ((s.a[0] - 90.0).powi(2) + (s.a[1] - 90.0).powi(2)).sqrt()).collect();
+    assert!(!skirt.is_empty(), "no skirt");
+    let nearest = skirt.iter().cloned().fold(f32::MAX, f32::min);
+    assert!(nearest > want - 0.5, "skirt comes within {nearest:.1} mm of the middle, wanted {want:.1}");
+    assert!(nearest < want + 1.0, "skirt is {nearest:.1} mm out, wanted {want:.1}");
 }

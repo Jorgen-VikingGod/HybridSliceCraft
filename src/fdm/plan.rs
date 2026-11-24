@@ -1216,8 +1216,11 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
             }
         }
         if p.skirt_loops > 0 && !p.spiral_vase {
+            // The skirt goes round the shadow of the whole print, not just the first layer, so a
+            // part that leans out over its base doesn't print over the skirt line (issue #111).
+            let shadow = geom::union2(&footprint, &print_shadow(&all_slices, &all_support));
             let d = p.skirt_distance as f64 + if p.brim_width > 0.0 { p.brim_width as f64 } else { 0.0 };
-            let hull = geom::offset_round(&footprint, d);
+            let hull = geom::offset_round(&shadow, d);
             let hull = geom::union(&hull);
             let mut rings = Vec::new();
             for k in 0..p.skirt_loops {
@@ -1244,6 +1247,33 @@ pub fn build_plan(job: &FdmJob, progress: &Progress) -> Result<Plan, String> {
         warnings,
         spiral_from,
     })
+}
+
+/// Everything the print covers seen from above: the outer outlines of every layer of every
+/// object and its supports, joined into one region. Holes are left out, since only the outside
+/// matters for what goes round the print.
+fn print_shadow(all_slices: &[Vec<Region>], all_support: &[Vec<SupportLayer>]) -> Region {
+    let outer = |r: &Region| -> Region { geom::simplify_region(r, 0.02).into_iter().filter(|p| geom::path_area_mm2(p) > 0.0).collect() };
+    let per_object: Vec<Region> = all_slices
+        .par_iter()
+        .zip(all_support.par_iter())
+        .map(|(slices, sup)| {
+            let mut loops: Region = Vec::new();
+            for r in slices {
+                loops.extend(outer(r));
+            }
+            for s in sup {
+                loops.extend(outer(&s.body));
+                loops.extend(outer(&s.interface));
+            }
+            geom::union(&loops)
+        })
+        .collect();
+    let mut all: Region = Vec::new();
+    for r in per_object {
+        all.extend(r);
+    }
+    geom::union(&all)
 }
 
 #[cfg(test)]
