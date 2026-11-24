@@ -60,7 +60,7 @@ impl App {
         }
     }
 
-    fn menu_bar(&self) -> MenuBar {
+    fn menu_bar(&self, fullscreen: bool) -> MenuBar {
         let selected = !self.selection.is_empty();
         let mut file = vec![
             item("file.new", "New project").into(),
@@ -98,6 +98,7 @@ impl App {
         view.extend(VIEWS.iter().enumerate().map(|(k, (name, ..))| with("view.from", k, tr(name)).into()));
         view.push(Node::Separator);
         view.push(item("view.overhangs", "Highlight overhangs").check(self.show_overhang).into());
+        view.push(self.keyed(Command::Fullscreen, "Full screen").check(fullscreen).into());
         view.push(Node::Separator);
         let themes = Theme::ALL.iter().enumerate().map(|(k, t)| with("view.theme", k, tr(t.label())).radio(self.prefs.appearance.theme == *t).into()).collect();
         view.push(Node::submenu(tr("Theme"), themes).role(ItemRole::Appearance));
@@ -152,7 +153,7 @@ impl App {
         // and Linux (Quit last in File, About last in Help); a Mac still sees ⌘.
         let target = if cfg!(windows) { Target::Windows } else { Target::Linux };
         let options = LayoutOptions { label: &translate, ..LayoutOptions::new("HybridSliceCraft") };
-        let bar = craft_menu::desktop_layout(&self.menu_bar(), target, &options).bar;
+        let bar = craft_menu::desktop_layout(&self.menu_bar(frame::fullscreen(ctx)), target, &options).bar;
         let gate = Gate { modal: false, recording_shortcut: self.capturing.is_some(), text_editing: ctx.egui_wants_keyboard_input() };
         // egui's built-in fonts have no ✓ or ●, craft-menu's default marks.
         // TODO: also set `highlight_checked: true` once storytold/craft-libs#2431

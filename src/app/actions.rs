@@ -1177,6 +1177,8 @@ impl App {
             Command::Arrange => self.arrange_now(ctx),
             Command::Orient => self.orient_selected(),
             Command::HomeView => self.frame_all(),
+            // The window fills the screen, without a title bar; F11 again brings it back.
+            Command::Fullscreen => ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!super::frame::fullscreen(ctx))),
             Command::TogglePreview => {
                 self.stage = if self.stage == Stage::Prepare { Stage::Preview } else { Stage::Prepare };
             }

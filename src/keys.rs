@@ -27,10 +27,11 @@ pub enum Command {
     Orient,
     TogglePreview,
     HomeView,
+    Fullscreen,
 }
 
 impl Command {
-    pub const ALL: [Command; 19] = [
+    pub const ALL: [Command; 20] = [
         Command::AddModels,
         Command::SaveProject,
         Command::SaveProjectAs,
@@ -50,6 +51,7 @@ impl Command {
         Command::Orient,
         Command::TogglePreview,
         Command::HomeView,
+        Command::Fullscreen,
     ];
 
     pub fn label(self) -> &'static str {
@@ -73,6 +75,7 @@ impl Command {
             Command::Orient => "Auto-orient",
             Command::TogglePreview => "Prepare / preview",
             Command::HomeView => "Reset the view",
+            Command::Fullscreen => "Full screen",
         }
     }
 
@@ -98,6 +101,7 @@ impl Command {
             Command::Orient => "orient",
             Command::TogglePreview => "toggle_preview",
             Command::HomeView => "home_view",
+            Command::Fullscreen => "fullscreen",
         }
     }
 
@@ -189,6 +193,7 @@ pub fn defaults() -> BTreeMap<Command, Vec<Binding>> {
         (Orient, vec![k(Key::O, false, false)]),
         (TogglePreview, vec![k(Key::Tab, false, false)]),
         (HomeView, vec![k(Key::Home, false, false)]),
+        (Fullscreen, vec![k(Key::F11, false, false)]),
     ])
 }
 

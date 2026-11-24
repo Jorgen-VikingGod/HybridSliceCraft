@@ -153,6 +153,10 @@ pub fn ui_strong() -> Color32 {
 pub fn ui_hover() -> Color32 {
     pick((46, 51, 62), (214, 219, 229))
 }
+/// Under the pointer on the close button in a Windows-style title bar: the same red in both themes.
+pub fn ui_close_hover() -> Color32 {
+    Color32::from_rgb(196, 43, 28)
+}
 /// The bars along the top and bottom of the window.
 pub fn ui_bar() -> Color32 {
     pick((20, 22, 27), (238, 240, 244))

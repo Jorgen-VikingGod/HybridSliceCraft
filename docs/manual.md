@@ -573,6 +573,7 @@ The manual you are reading is also offered to the agent as the resource `hybrids
 | A, O | Arrange the plate, auto-orient |
 | Tab | Prepare / preview |
 | Home | Reset the view |
+| F11 | Full screen, and back |
 
 You can change the keys in **Help → Keyboard shortcuts**.
 

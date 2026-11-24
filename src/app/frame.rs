@@ -88,7 +88,7 @@ fn maximized(ctx: &egui::Context) -> bool {
     ctx.input(|i| i.viewport().maximized.unwrap_or(false))
 }
 
-fn fullscreen(ctx: &egui::Context) -> bool {
+pub fn fullscreen(ctx: &egui::Context) -> bool {
     ctx.input(|i| i.viewport().fullscreen.unwrap_or(false))
 }
 
@@ -134,7 +134,7 @@ fn window_button(ui: &mut Ui, bar: Rect, x: f32, family: CaptionFamily, kind: Bu
     match family {
         CaptionFamily::Windows => {
             if hovered {
-                p.rect_filled(rect, CornerRadius::ZERO, if close { Color32::from_rgb(196, 43, 28) } else { ui_hover() });
+                p.rect_filled(rect, CornerRadius::ZERO, if close { ui_close_hover() } else { ui_hover() });
                 if close {
                     ink = Color32::WHITE;
                 }

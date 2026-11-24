@@ -68,14 +68,17 @@ pub fn track(ctx: &egui::Context) {
     let fullscreen = info.fullscreen.unwrap_or(false);
     let mut p = r.store.get(MAIN).unwrap_or_else(|| Placement::new(SIZE, scale));
     let before = p.clone();
+    // Points here are zoomed points: a physical pixel is `scale * zoom` of them.
+    let pixels = scale * zoom;
     if !maximized && !fullscreen {
-        if let Some(inner) = info.inner_rect {
-            p.normal.size = [inner.width() * zoom, inner.height() * zoom];
-        }
+        // Wayland doesn't tell a window where it is, and then egui has no inner rectangle: the
+        // size is still known from the content.
+        let inner = info.inner_rect.map_or_else(|| ctx.content_rect().size(), |inner| inner.size());
+        p.normal.size = [inner.x * zoom, inner.y * zoom];
         p.position_px = if r.no_position {
             None
         } else {
-            info.outer_rect.map(|o| [(o.min.x * scale).round() as i32, (o.min.y * scale).round() as i32])
+            info.outer_rect.map(|o| [(o.min.x * pixels).round() as i32, (o.min.y * pixels).round() as i32])
         };
         p.normal.pos = p.position_px.map_or([0.0, 0.0], |[x, y]| [x as f32 / scale, y as f32 / scale]);
         p.scale = scale;
@@ -84,7 +87,7 @@ pub fn track(ctx: &egui::Context) {
     p.maximized = maximized;
     p.fullscreen = fullscreen;
     if let Some(size) = info.monitor_size {
-        p.monitor = Some(MonitorKey::new("", [(size.x * scale).round() as u32, (size.y * scale).round() as u32]));
+        p.monitor = Some(MonitorKey::new("", [(size.x * pixels).round() as u32, (size.y * pixels).round() as u32]));
     }
     if p != before && p.normal.size.iter().all(|v| v.is_finite() && *v > 0.0) {
         r.store.set(MAIN, &p);
