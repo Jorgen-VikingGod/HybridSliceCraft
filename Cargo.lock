@@ -466,7 +466,7 @@ dependencies = [
  "bitflags 2.13.2",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "regex",
@@ -1194,6 +1194,15 @@ dependencies = [
  "x11rb",
  "xcap",
  "zbus",
+]
+
+[[package]]
+name = "craft-png"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=e9da0dfb37ab5e35c4c6f35949b36f09b8dcfcf9#e9da0dfb37ab5e35c4c6f35949b36f09b8dcfcf9"
+dependencies = [
+ "png 0.18.1",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2512,6 +2521,7 @@ dependencies = [
  "craft-menu",
  "craft-mesh",
  "craft-platform",
+ "craft-png",
  "craft-quit",
  "craft-settings",
  "craft-sniff",
@@ -2535,7 +2545,6 @@ dependencies = [
  "truck-stepio",
  "truck-topology",
  "ureq",
- "zip",
 ]
 
 [[package]]
@@ -6894,7 +6903,6 @@ dependencies = [
  "nix",
  "typed-path",
  "windows-sys 0.61.2",
- "zopfli",
 ]
 
 [[package]]
@@ -6908,18 +6916,6 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
-
-[[package]]
-name = "zopfli"
-version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aaf7fc5d30c28483d93805c4a5e12b05bbb52407fa67c5f8bd552374cd01fb11"
-dependencies = [
- "bumpalo",
- "crc32fast",
- "log",
- "simd-adler32",
-]
 
 [[package]]
 name = "zune-core"

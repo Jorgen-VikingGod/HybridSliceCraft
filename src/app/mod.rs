@@ -985,6 +985,6 @@ fn save_png(path: &std::path::Path, w: u32, h: u32, rgba: &[u8]) -> Result<(), S
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
     }
-    let bytes = crate::resin::export::encode_png(w, h, rgba, png::ColorType::Rgba)?;
+    let bytes = crate::resin::export::encode_png(w, h, rgba, craft_png::Layout::Rgba)?;
     crate::save::write(path, &bytes)
 }

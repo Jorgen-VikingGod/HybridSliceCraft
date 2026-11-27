@@ -55,8 +55,8 @@ rayon = "1"
 clipper2-rust = "1.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Reading PNGs (the window icon, tests); writing goes through craft-png.
 png = "0.18"
-zip = { version = "9", default-features = false, features = ["deflate"] }
 pollster = "0.4"
 ahash = "0.8"
 # Checking for and downloading new versions (HTTPS through rustls, no system libraries).
@@ -71,6 +71,7 @@ ruststep = "0.4"
 # https://github.com/storytold/craft-libs. Update every pin together, and keep the
 # [patch.crates-io] revisions at the bottom the same as craft-libs' own at that commit.
 craft-atomic = { git = "https://github.com/storytold/craft-libs", rev = "e9da0dfb37ab5e35c4c6f35949b36f09b8dcfcf9" }
+craft-png = { git = "https://github.com/storytold/craft-libs", rev = "e9da0dfb37ab5e35c4c6f35949b36f09b8dcfcf9" }
 craft-mesh = { git = "https://github.com/storytold/craft-libs", rev = "e9da0dfb37ab5e35c4c6f35949b36f09b8dcfcf9", default-features = false, features = ["stl", "obj", "ply", "gltf", "fbx"] }
 craft-mcp-server = { git = "https://github.com/storytold/craft-libs", rev = "e9da0dfb37ab5e35c4c6f35949b36f09b8dcfcf9" }
 craft-zip = { git = "https://github.com/storytold/craft-libs", rev = "e9da0dfb37ab5e35c4c6f35949b36f09b8dcfcf9" }

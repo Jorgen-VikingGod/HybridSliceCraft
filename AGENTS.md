@@ -18,6 +18,9 @@ workspace.
 - Headless checks without a window: `--export <file>` slices and saves (`.gcode`, or `.sl1`,
   `.ctb`, `.goo`, `.pwmx` and others with `--resin`), `--bench-resin <model>` prints timings,
   `--screenshot <file.png>` draws the window and exits.
+- Driving the open window: `HYBRIDSLICECRAFT_CONTROL_PORT=0` starts craft-automation's control
+  server (clicks, keys, `ui.menu.invoke`, `ui.screenshot`, `app.state`; see `src/app/control.rs`).
+  `docs/automation/control.py` runs a JSON list of steps against a fresh settings folder.
 - Use `HYBRIDSLICECRAFT_CONFIG=<dir>` to run with a throwaway settings folder instead of the
   user's own.
 - **Don't run `cargo fmt`** on the whole tree. The code is not rustfmt-formatted: lines are long
@@ -31,7 +34,7 @@ Every file starts with a `//!` comment saying what it is for; read it first.
 | Path | What |
 | --- | --- |
 | `src/main.rs` | Command-line options (`HELP`) and start-up |
-| `src/app/` | The window: `settings.rs` (left panel, every setting row), `actions.rs` (import, slice, export, support cache keys), `panels.rs`, `view.rs`, `preview.rs`, `theme.rs`, `menu.rs`, `top.rs` |
+| `src/app/` | The window: `settings.rs` (left panel, every setting row), `actions.rs` (import, slice, export, support cache keys), `panels.rs`, `view.rs`, `preview.rs`, `theme.rs`, `menu.rs`, `top.rs`, `craft.rs` (the craft-ui runtime), `control.rs` (the control server) |
 | `src/profiles.rs` | Every setting the slicers understand (`FdmPrinter`, `Filament`, `FdmProcess`, `ResinPrinter`, `ResinMaterial`, `ResinProcess`), their `Default`s and the built-in presets |
 | `src/fdm/` | Filament slicer: `plan.rs` (mesh to layer plans), `writer.rs`, `gcode.rs`, `infill.rs`, `support.rs`, `contour.rs`; end-to-end tests in `tests.rs` |
 | `src/resin/` | Resin slicer: `supports.rs` (automatic supports and raft), `hollow.rs`, `raster.rs`, `gpu.rs`, and file formats `export.rs`, `goo.rs`, `anycubic.rs` |
@@ -45,7 +48,24 @@ Every file starts with a `//!` comment saying what it is for; read it first.
 | `packaging/` | Flatpak manifest and metadata, apt repository, release signing key |
 
 Shared libraries come from `storytold/craft-libs` (`craft-*` crates), all pinned to **one**
-commit in `Cargo.toml`. If you move one pin, move them all to the same commit.
+commit in `Cargo.toml`. If you move one pin, move them all to the same commit, and set the
+`[patch.crates-io]` revisions of storytold's egui and winit forks at the bottom of `Cargo.toml`
+to the ones in craft-libs' own root `Cargo.toml` at that commit. Prefer a craft crate over a
+new dependency or code of our own when one does the job.
+
+## The window on the craft-ui runtime
+
+- The craft-ui runtime is installed on the window (`src/app/craft.rs`) and owns keyboard focus,
+  Escape, F10 and the close path. Before each frame it gets the menu bar, light or dark and the
+  mode's accent; `eframe::App::raw_input_hook`, `logic` and `ui` call its `embed` hooks.
+- The menu bar is `App::menu_bar` (`menu.rs`), a craft-menu model. A choice comes back as a
+  fired command and runs in `App::run_menu` at the start of the next frame. One of a list ends
+  its command id in its number (`view.theme.2`); `key.<id>` entries are commands from `keys.rs`.
+  Give every label its English name (`.english(...)`), so mnemonics and `ui.menu.invoke` find it.
+- The runtime only leaves a key in egui's input for the app's own focused widget or for the
+  window's document canvas. The plate view registers as that canvas (`view.rs`) and claims every
+  bound key (`App::canvas_keys`), which is why `keys.rs` still sees them. A bare Tab with nothing
+  focused arrives as a panel toggle and runs whatever is bound to Tab (`craft::TAB`).
 
 ## Adding or changing a setting
 

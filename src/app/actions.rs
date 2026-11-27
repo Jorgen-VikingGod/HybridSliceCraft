@@ -810,7 +810,7 @@ impl App {
                 .collect();
             let meshes: Vec<Arc<Mesh>> = job.objects.iter().map(|o| Arc::new(o.mesh.clone())).collect();
             let (w, h, rgb) = project::render_thumbnail(&meshes, 220, 124, tint);
-            if let Ok(png) = export::encode_png(w, h, &rgb, png::ColorType::Rgb) {
+            if let Ok(png) = export::encode_png(w, h, &rgb, craft_png::Layout::Rgb) {
                 job.thumbnail = Some((w, h, png));
             }
             let res = fdm::slice(&job, progress)?;
