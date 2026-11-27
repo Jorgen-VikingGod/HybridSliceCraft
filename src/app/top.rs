@@ -83,7 +83,8 @@ impl App {
         if let Some((command, slot)) = self.capturing {
             let pressed = ctx.input(|i| {
                 i.events.iter().find_map(|e| match e {
-                    egui::Event::Key { key, pressed: true, repeat: false, modifiers, .. } => Some((*key, *modifiers)),
+                    // A modifier on its own keeps waiting for the key it is held with.
+                    egui::Event::Key { key, pressed: true, repeat: false, modifiers, .. } if Binding::usable(*key) => Some((*key, *modifiers)),
                     _ => None,
                 })
             });

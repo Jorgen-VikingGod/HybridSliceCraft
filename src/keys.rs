@@ -124,6 +124,13 @@ impl Binding {
         Binding { key, ctrl, shift, alt }
     }
 
+    /// Whether `key` can end a shortcut. A modifier on its own (Shift, Ctrl, Alt, which the
+    /// window reports as keys too) can't: while a new key is picked, it is held down on the way
+    /// to the real one, as in Ctrl+Shift+F.
+    pub fn usable(key: Key) -> bool {
+        craft_keymap::Key::from_egui(key).is_some()
+    }
+
     pub fn modifiers(&self) -> Modifiers {
         Modifiers {
             alt: self.alt,
@@ -165,7 +172,8 @@ impl Binding {
                 name => key = Some(Key::from_name(name)?),
             }
         }
-        b.key = key?;
+        // A modifier saved as the key (an older version could record one) is dropped.
+        b.key = key.filter(|k| Binding::usable(*k))?;
         Some(b)
     }
 }
@@ -355,6 +363,18 @@ impl Keymap {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_modifier_alone_is_no_shortcut() {
+        assert!(Binding::usable(Key::F) && Binding::usable(Key::F11) && Binding::usable(Key::Tab));
+        let modifiers: Vec<Key> = Key::ALL.iter().copied().filter(|k| !Binding::usable(*k)).collect();
+        assert!(!modifiers.is_empty());
+        for k in modifiers {
+            assert_eq!(Binding::parse(k.name()), None, "{}", k.name());
+            assert_eq!(Binding::parse(&format!("Ctrl+{}", k.name())), None, "{}", k.name());
+        }
+        assert_eq!(Binding::parse("Ctrl+Shift+F"), Some(Binding::new(Key::F, true, true, false)));
+    }
 
     #[test]
     fn a_key_can_be_changed_or_added_one_at_a_time() {
