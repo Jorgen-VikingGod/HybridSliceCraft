@@ -64,7 +64,7 @@ jobs:
       WINDOWS_SIGNING_SET: ${{ (secrets.WINDOWS_CERTIFICATE != '' || secrets.AZURE_CLIENT_SECRET != '') && 'true' || 'false' }}
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
 
@@ -113,7 +113,7 @@ jobs:
 
       - name: Set up Windows signing
         if: runner.os == 'Windows'
-        uses: storytold/craft-common-actions/actions/setup-windows-signing@ecb64b2acb8731f0e2eb8f55fd2f45424bef75d0 # main, 2026-11-19
+        uses: storytold/craft-common-actions/actions/setup-windows-signing@3dee18226ed28134896f69fb8b280fff9247ec7f # main, 2026-11-19
         with:
           product-name: HybridSliceCraft
 
@@ -133,7 +133,7 @@ jobs:
 
       - name: Import the macOS signing certificate
         if: runner.os == 'macOS'
-        uses: storytold/craft-common-actions/actions/import-macos-certificate@ecb64b2acb8731f0e2eb8f55fd2f45424bef75d0 # main, 2026-11-19
+        uses: storytold/craft-common-actions/actions/import-macos-certificate@3dee18226ed28134896f69fb8b280fff9247ec7f # main, 2026-11-19
         with:
           certificate: ${{ secrets.APPLE_CERTIFICATE }}
           certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -272,7 +272,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
 
@@ -284,7 +284,7 @@ jobs:
 
       - name: Import the Linux signing key
         id: key
-        uses: storytold/craft-common-actions/actions/import-signing-key@ecb64b2acb8731f0e2eb8f55fd2f45424bef75d0 # main, 2026-11-19
+        uses: storytold/craft-common-actions/actions/import-signing-key@3dee18226ed28134896f69fb8b280fff9247ec7f # main, 2026-11-19
         with:
           key: ${{ secrets.LINUX_SIGNING_KEY }}
 
@@ -344,7 +344,7 @@ jobs:
       DISPLAY: ":99"
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
 
