@@ -63,6 +63,12 @@
     <display_length compare="ge">1000</display_length>
   </requires>
   <releases>
+    <release version="0.22.0" date="2026-11-27">
+      <description>
+        <p>The window gets the look and menus of the other Craft apps: the right-click menus work like the menu bar, and the keyboard shortcut list changes one key at a time and records combinations such as Ctrl+Shift+F whole. Saving the same plate twice gives the same file, and printer instructions are unchanged.</p>
+      </description>
+      <url>https://github.com/Jorgen-VikingGod/HybridSliceCraft/releases/tag/v0.22.0</url>
+    </release>
     <release version="0.21.1" date="2026-11-24">
       <description>
         <p>The skirt goes round the whole print instead of only the first layer, so parts that lean out over a small base no longer print over it. F11 puts the window in full screen, and the window comes back in its place also with a zoomed interface and on Wayland.</p>

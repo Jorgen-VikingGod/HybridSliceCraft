@@ -187,7 +187,7 @@ sudo apt update && sudo apt install hybrid-slice-craft
 The Flatpak file installs with:
 
 ```bash
-flatpak install --user HybridSliceCraft-0.21.1-x86_64.flatpak
+flatpak install --user HybridSliceCraft-0.22.0-x86_64.flatpak
 ```
 
 **Updates.** At start the program asks GitHub once for the newest release (nothing else is sent; turn it off in
