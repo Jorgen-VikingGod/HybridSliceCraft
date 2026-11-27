@@ -1,0 +1,42 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Architectures: amd64
+Codename: stable
+Components: main
+Date: Fri, 27 Nov 2026 16:47:28 +0000
+Label: HybridSliceCraft
+Origin: HybridSliceCraft
+Suite: stable
+MD5Sum:
+ 3cc4ab5a3efa881628dc196a32e6e3e3              156 Release
+ d4bdbc294f0ecea49c0ad0e94f5f1861             3570 main/binary-amd64/Packages
+ e14cf87b09e33af89a13e45b741af9e2             1308 main/binary-amd64/Packages.gz
+SHA1:
+ f94cc6016fa037103589dd3c56128710462e9a65              156 Release
+ 84f3371a3a18b88b94beb12ffe6dd9a16c08e776             3570 main/binary-amd64/Packages
+ 1e0394cb691f2272921411aed3a56fb9185eb005             1308 main/binary-amd64/Packages.gz
+SHA256:
+ bb6357ef77ac5cedc0bff79e88cf620077af47faabdc4b31e24e23d5fd385912              156 Release
+ 167e7ee817a612a1a1e33e062c68f889af1145ecbf2f907d4633deed4641f509             3570 main/binary-amd64/Packages
+ 686b5960df777971417bcab37e1ae43382ae2728febaa0f3c4d2ee688722a7fd             1308 main/binary-amd64/Packages.gz
+SHA512:
+ 6d7994e5758abfdcb93b5f5777dc76975e1958d7bb1690694aeced6856733494713c78715a38da57116b0eeac54ffafad6ca6683807b75e3d955f20f4b97b903              156 Release
+ b0942a2e2a2f0d4186bc38bc66cdfb74bd156b2ab6e660a4d331d5d274841bcf93c3580201aaef6e8dc71e2c4b7fca65b1b664c0ea8d421810197b431a476c87             3570 main/binary-amd64/Packages
+ 49e1a1fb88c523dbf0fd69b25c064e4c93a907643468716dfca52e7923275c59900c445b5254a667df21aae1164c3d88836fa5f49660b22ce8dd8c7c1ef46e5c             1308 main/binary-amd64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCgAdFiEEQMC6jGHgk4uzzOD8Hybws6dxEZ8FAmsJtCAACgkQHybws6dx
+EZ9WZw//WYIm+ew3M7hDQ5OI31TFUEZJIO5jmIWoaxWlr/IVLX9OKDw288VzUtoS
+aJ5+FpQ8ifumfsaT2nrRa5s3DTUYpGI5Q97W4wCXPjlW3itP2dM88tzjajej8vTp
+xc1YXq8b6Pasys3TNsFTV5D5TEftM1Afkk6/7dnDgqfMICVXETq7GXDg9i8DidhF
+8i7MSMLHla+hflF288BYLnmnJYMAQnGGRNElS6+2DQhoAOOeDktjWDOCPdgqDvPh
+A6ieREryKjloErLWNfgQ8QNLNYqFc0LRPJApdqmxohk9rDBo+RN6iQq3zaNMZNR/
+cmGD7JpK/BCuaNi29DuS31v4dl4j7S946REKN2OBQMcoAgiupv0EGzIZ6KmydkY0
+RMJ/x7NYRqTsCBYjuAY9zLsZUo8kmWokt51CLaRGNhUAtN7+sFrL/bijcGtZ72eQ
+R2v1PScbi9UX85sq0yvgQryjqW/TDkFFOnr3Xq+qPU7bGD2rPW6iKjC7GmoS6VAr
+PHIy8wmzwMtQKY50VQiDQRkPgEWatUX7a5KoKADbrW2HT84+OLBpKb9RYqDiTMq5
+f+xhUbqPDKrJB2x8DO6I+fCl8U1oIQ8r0cTWHY4/6ZT8mOEpklO7fVOhj4HdqiMC
++hg6QJLDFH93LcwncfgmgVKwmVV21FRtH4/1nvMg2iZxwcOA7Tc=
+=HnPA
+-----END PGP SIGNATURE-----
