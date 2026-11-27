@@ -1137,9 +1137,7 @@ impl App {
         if self.capturing.is_some() || ctx.egui_wants_keyboard_input() {
             return;
         }
-        // An open menu, or the menu bar holding the keyboard (Alt or F10), drives
-        // the keys; a command shortcut such as Ctrl+S still leaves the bar and runs.
-        craft_menu::bar::leave_for_shortcut(ctx);
+        // An open menu, or the menu bar holding the keyboard (Alt or F10), drives the keys.
         if craft_menu::bar::is_open(ctx) || craft_menu::bar::is_focused(ctx) {
             return;
         }

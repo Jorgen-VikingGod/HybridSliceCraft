@@ -120,7 +120,7 @@ impl App {
                     draw_icon(ui.painter(), rect, Icon::Layers, self.accent());
                     ui.label(RichText::new(crate::i18n::tr("HybridSliceCraft")).size(15.0).strong());
                     ui.add_space(8.0);
-                    self.menu_bar_ui(ui, &ctx);
+                    self.menu_bar_ui(ui);
                     ui.add_space(14.0);
 
                     let accent = self.accent();

@@ -121,6 +121,8 @@ impl App {
             (full, None)
         };
         let resp = ui.allocate_rect(rect, Sense::click_and_drag());
+        // The window's document canvas: with nothing focused, the bound keys stay with the app.
+        craft_ui::runtime::focus::host_canvas(ui.ctx(), resp.id, self.canvas_keys());
         self.camera.aspect = rect.width() / rect.height().max(1.0);
         // The window's real shape is only known once it's on screen, and the
         // split preview changes the shape of this view.

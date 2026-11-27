@@ -2,6 +2,8 @@
 //! heavy work to background threads so the interface never freezes.
 
 mod actions;
+mod control;
+pub mod craft;
 mod dialogs;
 mod dock;
 mod menu;
@@ -330,8 +332,12 @@ pub struct App {
 
     pub screenshot: Option<PathBuf>,
     pub frames: u32,
-    /// macOS: what `NSWindow.movable` was last set to (craft-window's title bar).
-    title_bar_movable: Option<bool>,
+    /// What the craft-ui runtime is told before each frame (`craft.rs`).
+    craft: craft::Runtime,
+    /// Menu entries chosen last frame, run at the start of this one.
+    menu_fired: Vec<craft_menu::CommandRef>,
+    /// The control server, when `HYBRIDSLICECRAFT_CONTROL_PORT` asks for one (craft-automation).
+    control: Option<control::Control>,
     pub screenshot_sent: bool,
     pub auto_slice: bool,
     pub frame_times: [f32; 30],
@@ -486,7 +492,7 @@ impl App {
             toasts: Vec::new(),
             dialogs: {
                 let ctx = cc.egui_ctx.clone();
-                craft_dialogs::Dialogs::new(std::sync::Arc::new(move || ctx.request_repaint()))
+                craft_dialogs::Dialogs::new(craft_dialogs::Wake::new(move || ctx.request_repaint()))
             },
             settings_filter: String::new(),
             advanced: false,
@@ -505,7 +511,9 @@ impl App {
             last_export_gcode: None,
             screenshot: opts.screenshot.clone(),
             frames: 0,
-            title_bar_movable: None,
+            craft: craft::Runtime::default(),
+            menu_fired: Vec::new(),
+            control: control::Control::start(&cc.egui_ctx),
             screenshot_sent: false,
             auto_slice: opts.slice,
             frame_times: [0.016; 30],
@@ -616,19 +624,31 @@ impl App {
                 o.refresh_paint();
             }
         }
-        match opts.window.as_deref() {
-            Some("printer") => self.show_printer = true,
-            Some("material") => self.show_material = true,
-            Some("send") => self.show_send = true,
-            Some("note") => self.show_note = true,
-            Some("lists") => self.show_lists = true,
-            Some("update") => {
+        if let Some(what) = opts.window.as_deref() {
+            self.open_window(what);
+        }
+    }
+
+    /// Opens a window by name, as `--window` (and the control server's `ui.open`) asks for:
+    /// printer, material, send, note, lists, update, mixes, about or shortcuts. False for an
+    /// unknown name.
+    pub fn open_window(&mut self, what: &str) -> bool {
+        match what {
+            "printer" => self.show_printer = true,
+            "material" => self.show_material = true,
+            "send" => self.show_send = true,
+            "note" => self.show_note = true,
+            "lists" => self.show_lists = true,
+            "about" => self.show_about = true,
+            "shortcuts" => self.show_shortcuts = true,
+            "update" => {
                 self.updater.check(false);
                 self.updater.open = true;
             }
-            Some("mixes") => self.open_mix_editor(None),
-            _ => {}
+            "mixes" => self.open_mix_editor(None),
+            _ => return false,
         }
+        true
     }
 
     pub fn plate(&self) -> &Plate {
@@ -790,7 +810,17 @@ impl App {
 impl eframe::App for App {
     /// Pictures for the docs are taken without a mouse pointer, so a hover
     /// tooltip under wherever the window opened doesn't end up in them.
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        // What the runtime gathered last frame (the menu entries chosen), and what it needs for
+        // this one.
+        let model = self.menu_bar(frame::fullscreen(ctx));
+        let accent = self.accent();
+        let mut fired = Vec::new();
+        craft_ui::shell::embed::before_input(ctx, |output| {
+            fired = craft::Runtime::fired(&output);
+            self.craft.frame_input(model, accent)
+        });
+        self.menu_fired.extend(fired);
         if self.screenshot.is_some() {
             raw_input.events.retain(|e| !matches!(e, egui::Event::PointerMoved(_) | egui::Event::PointerButton { .. }));
             raw_input.events.push(egui::Event::PointerGone);
@@ -802,15 +832,33 @@ impl eframe::App for App {
         placement::save();
     }
 
-    /// Closing the window quits the way the system expects (on macOS through
-    /// the application, which otherwise can crash while the window goes away).
-    /// The session is still saved in `on_exit`.
+    /// Closing the window goes through the runtime's close path (craft-ui), which quits the
+    /// way the system expects (on macOS through the application, which otherwise can crash
+    /// while the window goes away). The session is still saved in `on_exit`.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        craft_quit::on_close_request(ctx);
+        self.run_control(ctx);
+        craft_ui::shell::embed::logic(ctx, || craft_ui::shell::embed::CloseDecision::Close);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        craft_ui::shell::embed::before_ui(ui.ctx(), frame);
         let ctx = ui.ctx().clone();
+        for command in std::mem::take(&mut self.menu_fired) {
+            self.run_menu(&ctx, &command);
+        }
+        // An Escape that no field or menu took reaches the window as a cancel (craft-ui): it
+        // stops waiting for a new key in the shortcut list.
+        if self.capturing.is_some() {
+            let mut cancelled = false;
+            craft_ui::runtime::keys::with_window_intents(&ctx, false, |intents| {
+                cancelled = intents.take(craft_ui::runtime::keys::Intent::Cancel);
+                cancelled
+            });
+            if cancelled {
+                self.capturing = None;
+                self.key_notice.clear();
+            }
+        }
         let now = ctx.input(|i| i.time);
         self.frame_times[self.frame_index % 30] = (now - self.last_frame) as f32;
         self.frame_index += 1;
@@ -863,9 +911,11 @@ impl eframe::App for App {
         self.windows(&ctx);
         self.draw_toasts(&ctx);
         frame::window_edges(&ctx);
-        frame::after_ui(&ctx, &mut self.title_bar_movable);
         if self.screenshot.is_none() {
             placement::track(&ctx);
+        }
+        if let Some(control) = &mut self.control {
+            control.after_ui(&ctx);
         }
         // Last, so a dialog asked for anywhere this frame shows now, over this window.
         self.dialogs.show_pending(Some(&*frame));
@@ -880,6 +930,25 @@ impl eframe::App for App {
 }
 
 impl App {
+    /// Runs what scripts asked for through the control server.
+    fn run_control(&mut self, ctx: &egui::Context) {
+        let Some(mut control) = self.control.take() else { return };
+        let wishes = control.run(ctx, self);
+        self.control = Some(control);
+        for wish in wishes {
+            match wish {
+                control::Wish::Menu(command) => self.menu_fired.push(command),
+                control::Wish::Window(what) => {
+                    if !self.open_window(&what) {
+                        eprintln!("hybridslicecraft: no window called `{what}`");
+                    }
+                }
+                control::Wish::Open(path) if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("hscproject")) => self.load_project_from(ctx, path),
+                control::Wish::Open(path) => self.import_files(vec![path]),
+            }
+        }
+    }
+
     fn drive_screenshot(&mut self, ctx: &egui::Context) {
         let Some(path) = self.screenshot.clone() else { return };
         // Wait for any requested slice to land before taking the picture.

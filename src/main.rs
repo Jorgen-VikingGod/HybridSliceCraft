@@ -48,7 +48,8 @@ Options:
   For pictures in the manual:
   --tool <name>             Start with a tool chosen: move, rotate, scale, lay-flat, cut, paint, measure, support-point, drain-hole
   --tab <0-4>               Start on this tab of the print settings
-  --window <name>           Open a window: printer, material, send, note, mixes, lists, update
+  --window <name>           Open a window: printer, material, send, note, mixes, lists, update,
+                            about, shortcuts
   --scheme <name>           Colour the preview by this (Feature, Speed, Flow, Layer height, Filament...)
   --demo-paint              Paint the front of the model with the second filament, or the first mix
   --demo-mixes              Add the 50/50 mixed filaments
@@ -250,7 +251,7 @@ fn main() {
     // In a Flatpak the window must carry the app's id, or the desktop can't match
     // it to its icon and launcher.
     // Who draws the title bar: the app or the system (craft-window), decided once.
-    let frame = app::frame::decide(prefs::Prefs::load().appearance.system_title_bar);
+    let decision = app::frame::decide(prefs::Prefs::load().appearance.system_title_bar);
     let viewport = egui::ViewportBuilder::default()
         .with_title("HybridSliceCraft")
         .with_inner_size(app::placement::SIZE)
@@ -259,7 +260,7 @@ fn main() {
         .with_icon(window_icon());
     // Picture-taking runs keep the default size, so the pictures always match.
     let viewport = if opts.screenshot.is_none() { app::placement::apply(viewport) } else { viewport };
-    let mut viewport = app::frame::install(frame, viewport);
+    let mut viewport = app::frame::install(decision.frame.clone(), viewport);
     if let Ok(id) = std::env::var("FLATPAK_ID") {
         viewport = viewport.with_app_id(id);
     }
@@ -273,7 +274,10 @@ fn main() {
     let run = eframe::run_native(
         "HybridSliceCraft",
         native,
-        Box::new(move |cc| Ok(Box::new(App::new(cc, opts)))),
+        Box::new(move |cc| {
+            app::craft::install(&cc.egui_ctx, decision);
+            Ok(Box::new(App::new(cc, opts)))
+        }),
     );
     if let Err(e) = run {
         eprintln!(
