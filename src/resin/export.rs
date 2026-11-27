@@ -6,7 +6,7 @@ use crate::slicing::Progress;
 use rayon::prelude::*;
 use std::io::Write;
 use std::path::Path;
-use zip::write::SimpleFileOptions;
+use craft_zip::Compression;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResinFormat {
@@ -59,23 +59,17 @@ impl ResinFormat {
     }
 }
 
-pub fn encode_png(width: u32, height: u32, pixels: &[u8], color: png::ColorType) -> Result<Vec<u8>, String> {
+/// An 8-bit PNG with fast compression (craft-png), as every printer file and picture uses.
+pub fn encode_png(width: u32, height: u32, pixels: &[u8], layout: craft_png::Layout) -> Result<Vec<u8>, String> {
     let mut out = Vec::with_capacity(pixels.len() / 16 + 64);
-    {
-        let mut enc = png::Encoder::new(&mut out, width, height);
-        enc.set_color(color);
-        enc.set_depth(png::BitDepth::Eight);
-        enc.set_compression(png::Compression::Fast);
-        let mut w = enc.write_header().map_err(|e| e.to_string())?;
-        w.write_image_data(pixels).map_err(|e| e.to_string())?;
-    }
+    craft_png::write_8bit(&mut out, width, height, layout, pixels).map_err(|e| e.to_string())?;
     Ok(out)
 }
 
 fn layer_png(img: &LayerImage, width: u32, height: u32) -> Result<Vec<u8>, String> {
     let mut buf = vec![0u8; width as usize * height as usize];
     img.decode(&mut buf);
-    encode_png(width, height, &buf, png::ColorType::Grayscale)
+    encode_png(width, height, &buf, craft_png::Layout::Gray)
 }
 
 fn write_zip_of_layers(
@@ -87,12 +81,9 @@ fn write_zip_of_layers(
 ) -> Result<(), String> {
     let spec = res.spec.ok_or("Slice the plate first.")?;
     crate::save::write_with(path, |file| {
-        let mut zip = zip::ZipWriter::new(std::io::BufWriter::new(file));
-        let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
-        let deflated = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        let mut zip = craft_zip::Writer::to_writer(std::io::BufWriter::new(file));
         for (name, bytes) in extras {
-            zip.start_file(name, deflated).map_err(|e| e.to_string())?;
-            zip.write_all(&bytes).map_err(|e| e.to_string())?;
+            zip.add(&name, &bytes, Compression::Deflated).map_err(|e| e.to_string())?;
         }
         let n = res.layers.len();
         for start in (0..n).step_by(64) {
@@ -106,12 +97,11 @@ fn write_zip_of_layers(
                 .collect();
             for (k, png) in pngs?.into_iter().enumerate() {
                 // PNG is already compressed, so it's stored as-is.
-                zip.start_file(name_for(start + k), opts).map_err(|e| e.to_string())?;
-                zip.write_all(&png).map_err(|e| e.to_string())?;
+                zip.add(&name_for(start + k), &png, Compression::Stored).map_err(|e| e.to_string())?;
             }
             progress.set(end as f32 / n as f32 * 0.95, "Saving layers");
         }
-        zip.finish().map_err(|e| e.to_string())?.flush().map_err(|e| e.to_string())
+        zip.finish_into().map_err(|e| e.to_string())?.flush().map_err(|e| e.to_string())
     })
 }
 
@@ -192,7 +182,7 @@ pub fn export(
             let stem = safe_name(&job.name);
             let mut extras = vec![("config.ini".to_string(), sl1_config(job, res).into_bytes())];
             if let Some((w, h, rgb)) = thumb {
-                if let Ok(png) = encode_png(*w, *h, rgb, png::ColorType::Rgb) {
+                if let Ok(png) = encode_png(*w, *h, rgb, craft_png::Layout::Rgb) {
                     extras.push((format!("thumbnail/thumbnail{w}x{h}.png"), png));
                 }
             }
@@ -201,7 +191,7 @@ pub fn export(
         ResinFormat::PngZip => {
             let mut extras = vec![("manifest.json".to_string(), manifest(job, res).into_bytes())];
             if let Some((w, h, rgb)) = thumb {
-                if let Ok(png) = encode_png(*w, *h, rgb, png::ColorType::Rgb) {
+                if let Ok(png) = encode_png(*w, *h, rgb, craft_png::Layout::Rgb) {
                     extras.push(("preview.png".into(), png));
                 }
             }
@@ -641,13 +631,12 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("t.sl1");
         export(&path, ResinFormat::Sl1, &job, &res, None, &Progress::default()).unwrap();
-        let mut zip = zip::ZipArchive::new(std::fs::File::open(&path).unwrap()).unwrap();
+        let file = std::fs::read(&path).unwrap();
+        let mut zip = craft_zip::Archive::open(&file, craft_zip::Limits { max_entries: 10_000, max_total_bytes: 1 << 30 }).unwrap();
         assert_eq!(zip.len(), res.layers.len() + 1);
-        let mut cfg = String::new();
-        zip.by_name("config.ini").unwrap().read_to_string(&mut cfg).unwrap();
+        let cfg = String::from_utf8(zip.read("config.ini", 1 << 20).unwrap().unwrap()).unwrap();
         assert!(cfg.contains("layerHeight = 0.100"));
-        let mut bytes = Vec::new();
-        zip.by_name("Test_part00003.png").unwrap().read_to_end(&mut bytes).unwrap();
+        let bytes = zip.read("Test_part00003.png", 1 << 28).unwrap().unwrap();
         let dec = png::Decoder::new(std::io::Cursor::new(bytes));
         let reader = dec.read_info().unwrap();
         assert_eq!(reader.info().width, job.printer.res_x);

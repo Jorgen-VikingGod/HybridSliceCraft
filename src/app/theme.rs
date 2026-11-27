@@ -42,7 +42,7 @@ impl Theme {
 /// so a change in the system settings shows at once. `None` where there is no portal (macOS and
 /// Windows, where the window library tells instead) or the desktop states no preference.
 fn desktop_theme(ctx: &egui::Context) -> Option<egui::Theme> {
-    use craft_platform::appearance::{Theme as Desktop, Watcher, sync_native_window_theme};
+    use craft_platform::appearance::{Theme as Desktop, Watcher};
     use std::sync::{Arc, OnceLock};
     type Watched = Option<(Watcher, Arc<OnceLock<egui::Context>>)>;
     thread_local! {
@@ -65,12 +65,27 @@ fn desktop_theme(ctx: &egui::Context) -> Option<egui::Theme> {
             .as_ref()?;
         let _ = wake.set(ctx.clone());
         let observed = watcher.current();
-        sync_native_window_theme(ctx, observed);
+        tell_window(ctx, observed);
         observed.map(|t| match t {
             Desktop::Dark => egui::Theme::Dark,
             Desktop::Light => egui::Theme::Light,
         })
     })
+}
+
+/// Where the window library can't see the desktop's setting (the portal knows it, GTK or the
+/// compositor may not), the window's own frame is told, so a system title bar matches.
+fn tell_window(ctx: &egui::Context, observed: Option<craft_platform::appearance::Theme>) {
+    use craft_platform::appearance::Theme as Desktop;
+    static TOLD: AtomicU8 = AtomicU8::new(0);
+    let (code, system) = match observed {
+        Some(Desktop::Dark) => (2, egui::SystemTheme::Dark),
+        Some(_) => (1, egui::SystemTheme::Light),
+        None => return,
+    };
+    if TOLD.swap(code, Ordering::Relaxed) != code {
+        ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(system));
+    }
 }
 
 static CURRENT: AtomicU8 = AtomicU8::new(0);
@@ -376,6 +391,10 @@ pub enum Icon {
     Trash,
     Home,
     Layers,
+    /// A cross: clear or close.
+    Close,
+    /// A curved arrow back: return to the default.
+    Undo,
 }
 
 /// Draw a small line icon inside `rect`.
@@ -505,6 +524,23 @@ pub fn draw_icon(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             poly(&[(0.0, -0.7), (0.75, -0.3), (0.0, 0.1), (-0.75, -0.3)], true);
             poly(&[(-0.75, 0.05), (0.0, 0.45), (0.75, 0.05)], false);
             poly(&[(-0.75, 0.35), (0.0, 0.75), (0.75, 0.35)], false);
+        }
+        Icon::Close => {
+            line((-0.5, -0.5), (0.5, 0.5));
+            line((-0.5, 0.5), (0.5, -0.5));
+        }
+        Icon::Undo => {
+            // An arc over the top from the lower right, ending in a point on the left.
+            let arc: Vec<(f32, f32)> = (0..=12)
+                .map(|i| {
+                    let a = (70.0 - 250.0 * i as f32 / 12.0f32).to_radians();
+                    (0.1 + 0.62 * a.cos(), 0.15 + 0.62 * a.sin())
+                })
+                .collect();
+            poly(&arc, false);
+            let (x, y) = arc[arc.len() - 1];
+            line((x, y), (x - 0.05, y - 0.45));
+            line((x, y), (x + 0.42, y - 0.14));
         }
     }
 }

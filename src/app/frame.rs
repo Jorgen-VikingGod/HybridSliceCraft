@@ -11,7 +11,7 @@
 //! the older `HYBRIDSLICECRAFT_SYSTEM_FRAME=1` still asks for the system's frame.
 
 use super::theme::*;
-use craft_window::policy::{Backend, CaptionFamily, Captions, Frame, TitleBarPref};
+use craft_window::policy::{Backend, CaptionFamily, Captions, Decision, Frame, TitleBarPref};
 use craft_window::{Button, Layout, Prefix};
 use egui::{Color32, CornerRadius, CursorIcon, Id, Pos2, Rect, ResizeDirection, Sense, Stroke, StrokeKind, Ui, ViewportCommand, vec2};
 use std::sync::OnceLock;
@@ -22,15 +22,16 @@ const EDGE: f32 = 6.0;
 
 static FRAME: OnceLock<Frame> = OnceLock::new();
 
-/// Decide the frame once, before the window is created.
-pub fn decide(system_title_bar: bool) -> Frame {
+/// Decide the frame once, before the window is created. The craft-ui runtime is told too
+/// (`craft.rs`), so it knows who draws the title bar.
+pub fn decide(system_title_bar: bool) -> Decision {
     let legacy = std::env::var_os("HYBRIDSLICECRAFT_SYSTEM_FRAME").is_some();
     let pref = if system_title_bar || legacy { TitleBarPref::System } else { TitleBarPref::Integrated };
-    let mut frame = craft_window::policy::decide_for(Prefix::new("HYBRIDSLICECRAFT"), Backend::from_env(), pref).frame;
-    if let Frame::Integrated(c) = &mut frame {
+    let mut decision = craft_window::policy::decide_for(Prefix::new("HYBRIDSLICECRAFT"), Backend::from_env(), pref);
+    if let Frame::Integrated(c) = &mut decision.frame {
         c.layout = all_buttons(&c.layout);
     }
-    frame
+    decision
 }
 
 /// The desktop's button order, with minimize and maximize added where the desktop leaves them out
@@ -111,7 +112,7 @@ fn slot(family: CaptionFamily) -> f32 {
     match family {
         CaptionFamily::Windows => 46.0,
         CaptionFamily::Breeze => 30.0,
-        CaptionFamily::Adwaita | CaptionFamily::Generic => 34.0,
+        _ => 34.0,
     }
 }
 
@@ -149,7 +150,7 @@ fn window_button(ui: &mut Ui, bar: Rect, x: f32, family: CaptionFamily, kind: Bu
                 }
             }
         }
-        CaptionFamily::Adwaita | CaptionFamily::Generic => {
+        _ => {
             let fill = match (close, hovered) {
                 (true, true) => ui_red(),
                 (_, true) => ui_hover(),
@@ -176,7 +177,7 @@ fn window_button(ui: &mut Ui, bar: Rect, x: f32, family: CaptionFamily, kind: Bu
         Button::Maximize => {
             p.rect_stroke(Rect::from_center_size(centre, vec2(2.0 * s, 2.0 * s)), 1.0, stroke, StrokeKind::Middle);
         }
-        Button::Close => {
+        _ => {
             p.line_segment([centre + vec2(-s, -s), centre + vec2(s, s)], stroke);
             p.line_segment([centre + vec2(-s, s), centre + vec2(s, -s)], stroke);
         }
@@ -185,14 +186,14 @@ fn window_button(ui: &mut Ui, bar: Rect, x: f32, family: CaptionFamily, kind: Bu
         Button::Minimize => "Minimize",
         Button::Maximize if is_max => "Restore",
         Button::Maximize => "Maximize",
-        Button::Close => "Close",
+        _ => "Close",
     };
     let response = response.on_hover_text(crate::i18n::tr(tip));
     if response.clicked() {
         ui.ctx().send_viewport_cmd(match kind {
             Button::Minimize => ViewportCommand::Minimized(true),
             Button::Maximize => ViewportCommand::Maximized(!is_max),
-            Button::Close => ViewportCommand::Close,
+            _ => ViewportCommand::Close,
         });
     }
 }
@@ -221,7 +222,7 @@ pub fn title_bar(ui: &mut Ui, title: &str) {
             ui.painter().rect_filled(rect, CornerRadius { nw: corner, ne: corner, sw: 0, se: 0 }, ui_bar());
             ui.painter().line_segment([rect.left_bottom(), rect.right_bottom()], Stroke::new(1.0, ui_line()));
             // Before the buttons, so they sit on top and take their own clicks.
-            craft_window::title_bar::empty_area(ui, rect);
+            drag_area(ui, rect, is_max);
             ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, title, egui::FontId::proportional(13.5), ui_text());
             if let Some(c) = captions() {
                 let w = slot(c.family);
@@ -237,14 +238,15 @@ pub fn title_bar(ui: &mut Ui, title: &str) {
         });
 }
 
-/// Once per frame after the UI: on macOS, keeps AppKit from moving the window when a drag
-/// starts on a control over the title bar.
-pub fn after_ui(ctx: &egui::Context, applied: &mut Option<bool>) {
-    #[cfg(target_os = "macos")]
-    if matches!(current(), Frame::Inset(_)) {
-        craft_window::title_bar::sync_movable(ctx, applied);
+/// The empty part of the title bar: dragging it moves the window, and a double click maximizes
+/// or restores it, as the desktop's own title bars do.
+fn drag_area(ui: &mut Ui, rect: Rect, is_max: bool) {
+    let response = ui.interact(rect, Id::NULL.with("title_bar_drag"), Sense::click_and_drag());
+    if response.double_clicked() {
+        ui.ctx().send_viewport_cmd(ViewportCommand::Maximized(!is_max));
+    } else if response.drag_started() {
+        ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);
     }
-    let _ = (ctx, applied);
 }
 
 /// Invisible handles along the window's edges for resizing, and a thin outline, when the app

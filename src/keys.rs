@@ -124,6 +124,13 @@ impl Binding {
         Binding { key, ctrl, shift, alt }
     }
 
+    /// Whether `key` can end a shortcut. A modifier on its own (Shift, Ctrl, Alt, which the
+    /// window reports as keys too) can't: while a new key is picked, it is held down on the way
+    /// to the real one, as in Ctrl+Shift+F.
+    pub fn usable(key: Key) -> bool {
+        craft_keymap::Key::from_egui(key).is_some()
+    }
+
     pub fn modifiers(&self) -> Modifiers {
         Modifiers {
             alt: self.alt,
@@ -165,7 +172,8 @@ impl Binding {
                 name => key = Some(Key::from_name(name)?),
             }
         }
-        b.key = key?;
+        // A modifier saved as the key (an older version could record one) is dropped.
+        b.key = key.filter(|k| Binding::usable(*k))?;
         Some(b)
     }
 }
@@ -239,6 +247,9 @@ impl Keymap {
         self.map.iter().find(|(_, v)| v.contains(&b)).map(|(c, _)| *c)
     }
 
+    /// Make `b` the one key for `c`. The shortcut list changes one key at a time
+    /// ([`set_at`](Self::set_at)); the tests set whole commands.
+    #[cfg(test)]
     /// Make `b` the one key for `c`. If another command had it, that command
     /// loses it and is returned, so the person can be told.
     pub fn set(&mut self, c: Command, b: Binding) -> Option<Command> {
@@ -249,6 +260,27 @@ impl Keymap {
             }
         }
         self.map.insert(c, vec![b]);
+        taken
+    }
+
+    /// Put `b` in place of the key at `slot` of `c`, or add it as one more key when `slot` is
+    /// `None` (or past the end). As with [`set`](Self::set), a command that had `b` loses it and
+    /// is returned.
+    pub fn set_at(&mut self, c: Command, slot: Option<usize>, b: Binding) -> Option<Command> {
+        let taken = self.owner(b).filter(|o| *o != c);
+        if let Some(o) = taken {
+            if let Some(v) = self.map.get_mut(&o) {
+                v.retain(|x| *x != b);
+            }
+        }
+        let keys = self.map.entry(c).or_default();
+        match slot.filter(|i| *i < keys.len()) {
+            Some(i) => keys[i] = b,
+            None => keys.push(b),
+        }
+        // The same key twice on one command would show twice.
+        let mut seen = Vec::new();
+        keys.retain(|x| if seen.contains(x) { false } else { seen.push(*x); true });
         taken
     }
 
@@ -331,6 +363,35 @@ impl Keymap {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_modifier_alone_is_no_shortcut() {
+        assert!(Binding::usable(Key::F) && Binding::usable(Key::F11) && Binding::usable(Key::Tab));
+        let modifiers: Vec<Key> = Key::ALL.iter().copied().filter(|k| !Binding::usable(*k)).collect();
+        assert!(!modifiers.is_empty());
+        for k in modifiers {
+            assert_eq!(Binding::parse(k.name()), None, "{}", k.name());
+            assert_eq!(Binding::parse(&format!("Ctrl+{}", k.name())), None, "{}", k.name());
+        }
+        assert_eq!(Binding::parse("Ctrl+Shift+F"), Some(Binding::new(Key::F, true, true, false)));
+    }
+
+    #[test]
+    fn a_key_can_be_changed_or_added_one_at_a_time() {
+        let mut k = Keymap::default();
+        // Redo has Ctrl+Shift+Z and Ctrl+Y: change the second, then add a third.
+        let f9 = Binding::new(Key::F9, false, false, false);
+        assert_eq!(k.set_at(Command::Redo, Some(1), f9), None);
+        assert_eq!(k.bindings(Command::Redo), [Binding::new(Key::Z, true, true, false), f9]);
+        // Taking Duplicate's key adds it here and leaves Duplicate without it.
+        let ctrl_d = Binding::new(Key::D, true, false, false);
+        assert_eq!(k.set_at(Command::Redo, None, ctrl_d), Some(Command::Duplicate));
+        assert_eq!(k.bindings(Command::Redo).len(), 3);
+        assert!(k.bindings(Command::Duplicate).is_empty());
+        // Adding a key the command already has keeps one of it.
+        k.set_at(Command::Redo, None, f9);
+        assert_eq!(k.bindings(Command::Redo).len(), 3);
+    }
 
     #[test]
     fn default_keys_do_one_thing_each() {

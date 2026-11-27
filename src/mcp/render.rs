@@ -82,7 +82,7 @@ pub fn fdm_layer(res: &FdmResult, layer: usize, bed: (f32, f32), width_px: u32) 
             draw(s.a, s.b, s.width, colour(s.feature));
         }
     }
-    crate::resin::export::encode_png(w, h, &px, png::ColorType::Rgb)
+    crate::resin::export::encode_png(w, h, &px, craft_png::Layout::Rgb)
 }
 
 /// One layer of a resin print as a grey picture, shrunk to at most `max_px` wide.
@@ -105,5 +105,5 @@ pub fn resin_layer(res: &ResinResult, layer: usize, max_px: u32) -> Result<Vec<u
             out[y * ow + x] = (sum / (k * k) as u32) as u8;
         }
     }
-    crate::resin::export::encode_png(ow as u32, oh as u32, &out, png::ColorType::Grayscale)
+    crate::resin::export::encode_png(ow as u32, oh as u32, &out, craft_png::Layout::Gray)
 }

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
-use zip::write::SimpleFileOptions;
+use craft_zip::Compression::Deflated;
 
 #[derive(Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -79,8 +79,7 @@ pub fn save(path: &Path, plates: &[Plate], s: &ProjectSettings) -> Result<(), St
 }
 
 fn write_project(file: &mut std::fs::File, plates: &[Plate], s: &ProjectSettings) -> Result<(), String> {
-    let mut zip = zip::ZipWriter::new(std::io::BufWriter::new(file));
-    let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let mut zip = craft_zip::Writer::to_writer(std::io::BufWriter::new(file));
     let mut saved = Vec::new();
     let mut next = 0usize;
     for plate in plates {
@@ -88,20 +87,17 @@ fn write_project(file: &mut std::fs::File, plates: &[Plate], s: &ProjectSettings
         for o in &plate.objects {
             let file = format!("meshes/{next}.stl");
             next += 1;
-            zip.start_file(&file, opts).map_err(|e| e.to_string())?;
-            zip.write_all(&o.mesh.stl_bytes()?).map_err(|e| e.to_string())?;
+            zip.add(&file, &o.mesh.stl_bytes()?, Deflated).map_err(|e| e.to_string())?;
             let mut paint_file = None;
             if let Some(p) = o.paint.as_ref().filter(|p| p.len() == o.mesh.t.len()) {
                 let name = format!("paint/{}.bin", next - 1);
-                zip.start_file(&name, opts).map_err(|e| e.to_string())?;
-                zip.write_all(p).map_err(|e| e.to_string())?;
+                zip.add(&name, p, Deflated).map_err(|e| e.to_string())?;
                 paint_file = Some(name);
             }
             let mut marks_file = None;
             if let Some(p) = o.marks.as_ref().filter(|p| p.len() == o.mesh.t.len()) {
                 let name = format!("marks/{}.bin", next - 1);
-                zip.start_file(&name, opts).map_err(|e| e.to_string())?;
-                zip.write_all(p).map_err(|e| e.to_string())?;
+                zip.add(&name, p, Deflated).map_err(|e| e.to_string())?;
                 marks_file = Some(name);
             }
             list.push(SavedObject {
@@ -146,10 +142,9 @@ fn write_project(file: &mut std::fs::File, plates: &[Plate], s: &ProjectSettings
         resin_process: s.resin_process.clone(),
         resin: s.resin.clone(),
     };
-    zip.start_file("project.json", opts).map_err(|e| e.to_string())?;
     let text = serde_json::to_vec_pretty(&project).map_err(|e| e.to_string())?;
-    zip.write_all(&text).map_err(|e| e.to_string())?;
-    zip.finish().map_err(|e| e.to_string())?.flush().map_err(|e| e.to_string())
+    zip.add("project.json", &text, Deflated).map_err(|e| e.to_string())?;
+    zip.finish_into().map_err(|e| e.to_string())?.flush().map_err(|e| e.to_string())
 }
 
 /// The largest part of a project read back: a mesh of about 40 million triangles.

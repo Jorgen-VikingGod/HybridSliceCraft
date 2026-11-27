@@ -82,7 +82,8 @@ fn store() -> &'static Mutex<SettingsStore<Prefs>> {
     static STORE: OnceLock<Mutex<SettingsStore<Prefs>>> = OnceLock::new();
     STORE.get_or_init(|| {
         let dir = crate::profiles::config_dir();
-        let legacy = vec![LegacyFile { path: dir.join("preferences.json"), parse: parse_old }];
+        // Every value of the old file was read or kept its default: nothing to report.
+        let legacy = vec![LegacyFile { path: dir.join("preferences.json"), parse: |bytes| parse_old(bytes).map(|p| (p, Vec::new())) }];
         let (mut store, report) = SettingsStore::open_with(OpenOptions::new(Location::Dir(dir)).legacy(legacy));
         // Settings taken over from preferences.json are written to config.toml straight away.
         if store.is_dirty() {

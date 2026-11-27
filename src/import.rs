@@ -1023,15 +1023,9 @@ mod tests {
 
     #[test]
     fn reads_a_zip_bundle() {
-        use std::io::Write;
-        let mut buf = Vec::new();
-        {
-            let mut z = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
-            let o = zip::write::SimpleFileOptions::default();
-            z.start_file("process/a.json", o).unwrap();
-            z.write_all(br#"{"type":"process","name":"Zipped","wall_loops":"6"}"#).unwrap();
-            z.finish().unwrap();
-        }
+        let mut z = craft_zip::Writer::new();
+        z.add("process/a.json", br#"{"type":"process","name":"Zipped","wall_loops":"6"}"#, craft_zip::Compression::Deflated).unwrap();
+        let buf = z.finish().unwrap();
         let dir = std::env::temp_dir().join(format!("hsc-import-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("x.orca_printer");

@@ -121,6 +121,8 @@ impl App {
             (full, None)
         };
         let resp = ui.allocate_rect(rect, Sense::click_and_drag());
+        // The window's document canvas: with nothing focused, the bound keys stay with the app.
+        craft_ui::runtime::focus::host_canvas(ui.ctx(), resp.id, self.canvas_keys());
         self.camera.aspect = rect.width() / rect.height().max(1.0);
         // The window's real shape is only known once it's on screen, and the
         // split preview changes the shape of this view.
@@ -370,56 +372,10 @@ impl App {
                 }
             }
         }
-        resp.context_menu(|ui| {
-            let has = !self.selection.is_empty();
-            if has {
-                if ui.button(crate::i18n::tr("Duplicate")).clicked() {
-                    self.duplicate_selected();
-                    ui.close();
-                }
-                ui.menu_button(crate::i18n::tr("Mirror"), |ui| {
-                    for (k, name) in [crate::i18n::tr("Left-right (X)"), crate::i18n::tr("Front-back (Y)"), crate::i18n::tr("Top-bottom (Z)")].into_iter().enumerate() {
-                        if ui.button(crate::i18n::tr(name)).clicked() {
-                            self.mirror_selected(k);
-                            ui.close();
-                        }
-                    }
-                });
-                if ui.button(crate::i18n::tr("Delete")).clicked() {
-                    self.delete_selected();
-                    ui.close();
-                }
-                if ui.button(crate::i18n::tr("Auto-orient")).clicked() {
-                    self.orient_selected();
-                    ui.close();
-                }
-                if ui.button(crate::i18n::tr("Repair")).clicked() {
-                    self.repair_selected(&ctx);
-                    ui.close();
-                }
-                if ui.button(crate::i18n::tr("Split into parts")).clicked() {
-                    self.split_selected(&ctx);
-                    ui.close();
-                }
-                if self.selection.len() > 1 && ui.button(crate::i18n::tr("Merge into one")).clicked() {
-                    self.merge_selected(&ctx);
-                    ui.close();
-                }
-                if ui.button(crate::i18n::tr("Save selection as STL…")).clicked() {
-                    self.export_stl(&ctx, true);
-                    ui.close();
-                }
-                ui.separator();
-            }
-            if ui.button(crate::i18n::tr("Add models…")).clicked() {
-                self.import_dialog();
-                ui.close();
-            }
-            if ui.button(crate::i18n::tr("Arrange the plate")).clicked() {
-                self.arrange_now(&ctx);
-                ui.close();
-            }
-        });
+        let nodes = self.plate_menu();
+        if let Some(command) = super::context::show(ui, &resp, crate::i18n::tr("Edit"), &nodes) {
+            self.run_menu(&ctx, &command);
+        }
     }
 
     fn add_point(&mut self, id: u64, hit: Vec3, n: Vec3) {

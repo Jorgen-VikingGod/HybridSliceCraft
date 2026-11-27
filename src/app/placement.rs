@@ -6,7 +6,9 @@
 //! windows where they are, so there only the size and maximized state come back.
 
 use craft_window::policy::Backend;
-use craft_window::restore::{Defaults, MAIN, MonitorKey, Placement, Store, place};
+use craft_behavior::monitor::MonitorKey;
+use craft_behavior::placement::{Defaults, Placement, place};
+use craft_window::restore::{MAIN, Store};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 

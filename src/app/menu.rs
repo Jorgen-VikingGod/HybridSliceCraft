@@ -1,18 +1,19 @@
 //! The menu bar (craft-menu): drawn like a desktop app's menus, with the
 //! shortcuts in their own column. A press on a title opens its menu, moving
 //! onto another title opens that one, submenus open on hover, and the arrow
-//! keys, Alt and F10 work as in other programs.
+//! keys, Alt and F10 work as in other programs. `craft.rs` hands the bar to the
+//! craft-ui runtime, and a choice comes back as a fired command.
 //!
 //! Each item runs a command id. `key.<id>` is a command that also has a key
 //! ([`Command`]), so its shortcut shows in the menu; the rest are menu-only.
+//! One of a list (a theme, a language, a view) ends in its number: `view.theme.2`.
 
 use super::theme::Theme;
 use super::*;
 use crate::i18n::tr;
 use crate::keys::{Binding, Command};
 use crate::shapes;
-use craft_menu::{Chord, CommandRef, Gate, Item, ItemRole, LayoutOptions, Menu, MenuBar, MenuBarUi, MenuRole, Node, Target};
-use serde_json::json;
+use craft_menu::{Chord, CommandRef, Item, ItemRole, Menu, MenuBar, MenuBarUi, MenuRole, Node};
 
 /// The four ways to look at the plate from a side: name, yaw, pitch.
 const VIEWS: [(&str, f32, f32); 4] = [
@@ -39,28 +40,31 @@ fn chord(b: &Binding) -> Option<Chord> {
 }
 
 fn item(id: &str, label: &str) -> Item {
-    Item::new(CommandRef::new(id), tr(label))
+    Item::new(CommandRef::new(id), tr(label)).english(label)
 }
 
+/// One of a list, translated: its number ends the command id.
 fn with(id: &str, n: usize, label: &str) -> Item {
-    Item::new(CommandRef::with_params(id, json!(n)), label)
+    numbered(id, n, tr(label)).english(label)
 }
 
-fn translate(english: &'static str) -> String {
-    tr(english).to_string()
+/// One of a list, shown as it is (a language's own name).
+fn numbered(id: &str, n: usize, label: &str) -> Item {
+    Item::new(CommandRef::new(format!("{id}.{n}")), label)
 }
 
 impl App {
     /// An item for a command with a key, showing that key.
     fn keyed(&self, c: Command, label: &str) -> Item {
-        let it = Item::new(CommandRef::new(format!("key.{}", c.id())), tr(label));
+        let it = Item::new(CommandRef::new(format!("key.{}", c.id())), tr(label)).english(label);
         match self.keys.bindings(c).first().and_then(chord) {
             Some(ch) => it.shortcut(ch),
             None => it,
         }
     }
 
-    fn menu_bar(&self, fullscreen: bool) -> MenuBar {
+    /// The menus as they are now, before craft-menu lays them out.
+    pub(super) fn menu_bar(&self, fullscreen: bool) -> MenuBar {
         let selected = !self.selection.is_empty();
         let mut file = vec![
             item("file.new", "New project").into(),
@@ -80,7 +84,7 @@ impl App {
         file.push(Node::Separator);
         file.push(item("file.quit", "Quit").role(ItemRole::Quit).into());
 
-        let mirror = ["Left-right (X)", "Front-back (Y)", "Top-bottom (Z)"].iter().enumerate().map(|(k, name)| with("edit.mirror", k, tr(name)).enabled(selected).into()).collect();
+        let mirror = ["Left-right (X)", "Front-back (Y)", "Top-bottom (Z)"].iter().enumerate().map(|(k, name)| with("edit.mirror", k, name).enabled(selected).into()).collect();
         let edit = vec![
             self.keyed(Command::Undo, "Undo").enabled(!self.undo.is_empty()).into(),
             self.keyed(Command::Redo, "Redo").enabled(!self.redo.is_empty()).into(),
@@ -88,24 +92,24 @@ impl App {
             self.keyed(Command::SelectAll, "Select all").into(),
             self.keyed(Command::Duplicate, "Duplicate").enabled(selected).into(),
             item("edit.merge", "Merge into one").enabled(self.selection.len() > 1).into(),
-            Node::submenu(tr("Mirror"), mirror),
+            Node::submenu(tr("Mirror"), mirror).english("Mirror"),
             self.keyed(Command::Delete, "Delete").enabled(selected).into(),
             Node::Separator,
             item("edit.clear", "Clear the plate").into(),
         ];
 
         let mut view: Vec<Node> = vec![self.keyed(Command::HomeView, "Home view").into()];
-        view.extend(VIEWS.iter().enumerate().map(|(k, (name, ..))| with("view.from", k, tr(name)).into()));
+        view.extend(VIEWS.iter().enumerate().map(|(k, (name, ..))| with("view.from", k, name).into()));
         view.push(Node::Separator);
         view.push(item("view.overhangs", "Highlight overhangs").check(self.show_overhang).into());
         view.push(self.keyed(Command::Fullscreen, "Full screen").check(fullscreen).into());
         view.push(Node::Separator);
-        let themes = Theme::ALL.iter().enumerate().map(|(k, t)| with("view.theme", k, tr(t.label())).radio(self.prefs.appearance.theme == *t).into()).collect();
-        view.push(Node::submenu(tr("Theme"), themes).role(ItemRole::Appearance));
+        let themes = Theme::ALL.iter().enumerate().map(|(k, t)| with("view.theme", k, t.label()).radio(self.prefs.appearance.theme == *t).into()).collect();
+        view.push(Node::submenu(tr("Theme"), themes).english("Theme").role(ItemRole::Appearance));
         let chosen = self.prefs.general.language.as_str();
         let mut langs: Vec<Node> = vec![item("view.language_auto", "System language").radio(chosen == crate::i18n::AUTO).into(), Node::Separator];
-        langs.extend(crate::i18n::languages().into_iter().enumerate().map(|(k, (code, name))| with("view.language", k, name).radio(chosen == code).into()));
-        view.push(Node::submenu(tr("Language"), langs).role(ItemRole::Language));
+        langs.extend(crate::i18n::languages().into_iter().enumerate().map(|(k, (code, name))| numbered("view.language", k, name).radio(chosen == code).into()));
+        view.push(Node::submenu(tr("Language"), langs).english("Language").role(ItemRole::Language));
         view.push(item("view.system_title_bar", "Use system title bar").check(self.prefs.appearance.system_title_bar).into());
         view.push(Node::Separator);
         view.push(item("view.restore_layout", "Restore default layout").into());
@@ -134,44 +138,76 @@ impl App {
             item("help.about", "About HybridSliceCraft").role(ItemRole::About).into(),
         ];
 
-        MenuBar {
-            menus: vec![
-                Menu::new(tr("File"), file).role(MenuRole::File),
-                Menu::new(tr("Edit"), edit).role(MenuRole::Edit),
-                Menu::new(tr("View"), view).role(MenuRole::View),
-                Menu::new(tr("Add"), add),
-                Menu::new(tr("Calibrate"), calibrate),
-                Menu::new(tr("Help"), help).role(MenuRole::Help),
-            ],
-            documents: Vec::new(),
+        MenuBar::new(vec![
+            Menu::new(tr("File"), file).english("File").role(MenuRole::File),
+            Menu::new(tr("Edit"), edit).english("Edit").role(MenuRole::Edit),
+            Menu::new(tr("View"), view).english("View").role(MenuRole::View),
+            Menu::new(tr("Add"), add).english("Add"),
+            Menu::new(tr("Calibrate"), calibrate).english("Calibrate"),
+            Menu::new(tr("Help"), help).english("Help").role(MenuRole::Help),
+        ])
+    }
+
+    /// Draw the menu bar in the current row. It gets the room its titles took last frame, so the
+    /// mode switches follow right after it; what is chosen comes back through the runtime.
+    pub(super) fn menu_bar_ui(&mut self, ui: &mut egui::Ui) {
+        let id = egui::Id::NULL.with("menu_bar_width");
+        let width = ui.ctx().data(|d| d.get_temp::<f32>(id)).unwrap_or(300.0);
+        let height = ui.available_height();
+        let keyboard = self.capturing.is_none();
+        let shown = ui
+            .allocate_ui_with_layout(egui::vec2(width, height), egui::Layout::left_to_right(egui::Align::Center), |ui| MenuBarUi::new(&self.craft.bar).keyboard(keyboard).show(ui))
+            .inner;
+        let titles = shown.titles.width();
+        if titles.is_finite() && titles > 0.0 && (titles - width).abs() > 0.5 {
+            ui.ctx().data_mut(|d| d.insert_temp(id, titles));
+            ui.ctx().request_repaint();
         }
     }
 
-    /// Draw the menu bar in the current row and run what was chosen.
-    pub(super) fn menu_bar_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        // The menus stay in the window on every system, laid out as on Windows
-        // and Linux (Quit last in File, About last in Help); a Mac still sees ⌘.
-        let target = if cfg!(windows) { Target::Windows } else { Target::Linux };
-        let options = LayoutOptions { label: &translate, ..LayoutOptions::new("HybridSliceCraft") };
-        let bar = craft_menu::desktop_layout(&self.menu_bar(frame::fullscreen(ctx)), target, &options).bar;
-        let gate = Gate { modal: false, recording_shortcut: self.capturing.is_some(), text_editing: ctx.egui_wants_keyboard_input() };
-        // egui's built-in fonts have no ✓ or ●, craft-menu's default marks.
-        // TODO: also set `highlight_checked: true` once storytold/craft-libs#2431
-        // is merged and the pin moves past it.
-        let style = craft_menu::BarStyle { check_mark: "•".into(), radio_mark: "•".into(), ..craft_menu::BarStyle::from_style(ui.style()) };
-        let chosen = MenuBarUi::new(&bar).style(style).gate(gate).label(&translate).shrink_to_fit(f32::INFINITY).show(ui);
-        for command in chosen {
-            self.run_menu(ctx, &command);
+    /// The right-click menu of the plate: what can be done with the models chosen, then with the
+    /// plate. Drawn like the menu bar's menus (`context.rs`), with the keys shown.
+    pub(super) fn plate_menu(&self) -> Vec<Node> {
+        let mut nodes = Vec::new();
+        if !self.selection.is_empty() {
+            let mirror = ["Left-right (X)", "Front-back (Y)", "Top-bottom (Z)"].iter().enumerate().map(|(k, name)| with("edit.mirror", k, name).into()).collect();
+            nodes.push(self.keyed(Command::Duplicate, "Duplicate").into());
+            nodes.push(Node::submenu(tr("Mirror"), mirror).english("Mirror"));
+            nodes.push(self.keyed(Command::Delete, "Delete").into());
+            nodes.push(self.keyed(Command::Orient, "Auto-orient").into());
+            nodes.push(item("model.repair", "Repair").into());
+            nodes.push(item("model.split", "Split into parts").into());
+            if self.selection.len() > 1 {
+                nodes.push(item("edit.merge", "Merge into one").into());
+            }
+            nodes.push(item("file.save_selection_stl", "Save selection as STL…").into());
+            nodes.push(Node::Separator);
         }
+        nodes.push(self.keyed(Command::AddModels, "Add models…").into());
+        nodes.push(self.keyed(Command::Arrange, "Arrange the plate").into());
+        nodes
     }
 
-    fn run_menu(&mut self, ctx: &egui::Context, command: &CommandRef) {
-        let n = command.params.as_u64().unwrap_or(0) as usize;
+    /// The plate view as the window's document canvas, claiming every bound key (`craft.rs`).
+    pub(super) fn canvas_keys(&self) -> craft_ui::runtime::focus::KeyUse {
+        let chords = Command::ALL.iter().flat_map(|c| self.keys.bindings(*c).iter().filter_map(chord)).collect();
+        super::craft::canvas_keys(chords)
+    }
+
+    pub(super) fn run_menu(&mut self, ctx: &egui::Context, command: &CommandRef) {
+        if command.id == super::craft::TAB {
+            let bare_tab = |b: &Binding| b.key == egui::Key::Tab && !b.ctrl && !b.alt && !b.shift;
+            if let Some(c) = Command::ALL.into_iter().find(|c| self.keys.bindings(*c).iter().any(bare_tab)) {
+                self.run_command(c, ctx);
+            }
+            return;
+        }
         if let Some(c) = command.id.strip_prefix("key.").and_then(Command::from_id) {
             self.run_command(c, ctx);
             return;
         }
-        match command.id.as_str() {
+        let (id, n) = super::craft::split_index(&command.id);
+        match id {
             "file.new" => {
                 self.clear_plate();
                 self.project_path = None;
@@ -182,6 +218,8 @@ impl App {
             "file.send" => self.show_send = true,
             "file.quit" => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             "edit.merge" => self.merge_selected(ctx),
+            "model.repair" => self.repair_selected(ctx),
+            "model.split" => self.split_selected(ctx),
             "edit.mirror" => self.mirror_selected(n.min(2)),
             "edit.clear" => self.clear_plate(),
             "view.from" => {
@@ -192,11 +230,11 @@ impl App {
             }
             "view.overhangs" => self.show_overhang = !self.show_overhang,
             "view.theme" | "view.language" | "view.language_auto" => {
-                if command.id == "view.theme" {
+                if id == "view.theme" {
                     if let Some(t) = Theme::ALL.get(n) {
                         self.prefs.appearance.theme = *t;
                     }
-                } else if command.id == "view.language_auto" {
+                } else if id == "view.language_auto" {
                     self.prefs.general.language = crate::i18n::AUTO.into();
                 } else if let Some((code, _)) = crate::i18n::languages().get(n) {
                     self.prefs.general.language = (*code).into();
