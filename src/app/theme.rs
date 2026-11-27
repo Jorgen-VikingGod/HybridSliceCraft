@@ -391,6 +391,10 @@ pub enum Icon {
     Trash,
     Home,
     Layers,
+    /// A cross: clear or close.
+    Close,
+    /// A curved arrow back: return to the default.
+    Undo,
 }
 
 /// Draw a small line icon inside `rect`.
@@ -520,6 +524,23 @@ pub fn draw_icon(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             poly(&[(0.0, -0.7), (0.75, -0.3), (0.0, 0.1), (-0.75, -0.3)], true);
             poly(&[(-0.75, 0.05), (0.0, 0.45), (0.75, 0.05)], false);
             poly(&[(-0.75, 0.35), (0.0, 0.75), (0.75, 0.35)], false);
+        }
+        Icon::Close => {
+            line((-0.5, -0.5), (0.5, 0.5));
+            line((-0.5, 0.5), (0.5, -0.5));
+        }
+        Icon::Undo => {
+            // An arc over the top from the lower right, ending in a point on the left.
+            let arc: Vec<(f32, f32)> = (0..=12)
+                .map(|i| {
+                    let a = (70.0 - 250.0 * i as f32 / 12.0f32).to_radians();
+                    (0.1 + 0.62 * a.cos(), 0.15 + 0.62 * a.sin())
+                })
+                .collect();
+            poly(&arc, false);
+            let (x, y) = arc[arc.len() - 1];
+            line((x, y), (x - 0.05, y - 0.45));
+            line((x, y), (x + 0.42, y - 0.14));
         }
     }
 }

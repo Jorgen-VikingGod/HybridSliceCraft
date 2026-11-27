@@ -338,9 +338,6 @@ Auto-orient the selection	Auswahl automatisch ausrichten	Orienter automatiquemen
 Click, then press the new key	Klicken, dann die neue Taste drücken	Cliquez, puis appuyez sur la nouvelle touche	Haz clic y pulsa la nueva tecla
 Clear	Löschen	Effacer	Borrar
 Reset	Zurücksetzen	Réinitialiser	Restablecer
-Reset all to the defaults	Alle auf Standard zurücksetzen	Tout remettre par défaut	Restablecer todo a los valores predeterminados
-Leave this without a key	Ohne Taste lassen	Laisser sans touche	Dejar sin tecla
-Back to the usual key	Zurück zur üblichen Taste	Revenir à la touche habituelle	Volver a la tecla habitual
 A big flat roof traps resin and pulls hard when peeling. Try Auto-orient, or tilt the model.	Ein großes flaches Dach hält Harz fest und zieht beim Ablösen stark. Versuche die automatische Ausrichtung oder kippe das Modell.	Un grand toit plat retient la résine et tire fort au décollage. Essayez l'orientation automatique ou inclinez le modèle.	Un techo plano grande atrapa resina y tira fuerte al despegar. Prueba la orientación automática o inclina el modelo.
 HOW IT SITS NOW	SO LIEGT ES JETZT	POSITION ACTUELLE	CÓMO ESTÁ AHORA
 Tall and narrow: it may sway while peeling. Laying it down helps.	Hoch und schmal: Es kann beim Ablösen wackeln. Hinlegen hilft.	Haut et étroit : il peut osciller au décollage. Le coucher aide.	Alto y estrecho: puede balancearse al despegar. Tumbarlo ayuda.
@@ -596,3 +593,13 @@ Minimize	Minimieren	Réduire	Minimizar
 Maximize	Maximieren	Agrandir	Maximizar
 Restore	Wiederherstellen	Restaurer	Restaurar
 System language	Systemsprache	Langue du système	Idioma del sistema
+Click a key to change it, or + to add one; Escape stops waiting for a key.	Klicke auf eine Taste, um sie zu ändern, oder auf +, um eine hinzuzufügen; Escape bricht das Warten auf eine Taste ab.	Cliquez sur une touche pour la changer, ou sur + pour en ajouter une ; Échap arrête l’attente d’une touche.	Haz clic en una tecla para cambiarla, o en + para añadir otra; Escape deja de esperar una tecla.
+Reset all	Alle zurücksetzen	Tout réinitialiser	Restablecer todo
+Clear the keys	Tasten entfernen	Retirer les touches	Quitar las teclas
+Back to the default keys	Zurück zu den Standardtasten	Revenir aux touches par défaut	Volver a las teclas predeterminadas
+Add a key	Taste hinzufügen	Ajouter une touche	Añadir una tecla
+Press a key…	Taste drücken…	Appuyez sur une touche…	Pulsa una tecla…
+Not assigned	Nicht belegt	Non attribué	Sin asignar
+{key} was on {command}. It has no key now.	{key} war auf {command}. Das hat jetzt keine Taste mehr.	{key} était sur {command}. Cette commande n’a plus de touche.	{key} estaba en {command}. Ya no tiene tecla.
+Move to the right panel	In die rechte Leiste	Déplacer dans le panneau de droite	Mover al panel derecho
+Move to the left panel	In die linke Leiste	Déplacer dans le panneau de gauche	Mover al panel izquierdo

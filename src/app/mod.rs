@@ -2,6 +2,7 @@
 //! heavy work to background threads so the interface never freezes.
 
 mod actions;
+mod context;
 mod control;
 pub mod craft;
 mod dialogs;
@@ -246,7 +247,8 @@ pub struct App {
     pub array: (u32, u32, f32),
     /// Keyboard shortcuts, and the command waiting for its new key.
     pub keys: crate::keys::Keymap,
-    pub capturing: Option<crate::keys::Command>,
+    /// The command waiting for a new key, and which of its keys it replaces (`None`: one more).
+    pub capturing: Option<(crate::keys::Command, Option<usize>)>,
     pub key_notice: String,
     /// Theme and language.
     pub prefs: crate::prefs::Prefs,

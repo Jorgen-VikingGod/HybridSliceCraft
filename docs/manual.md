@@ -575,7 +575,9 @@ The manual you are reading is also offered to the agent as the resource `hybrids
 | Home | Reset the view |
 | F11 | Full screen, and back |
 
-You can change the keys in **Help → Keyboard shortcuts**.
+You can change the keys in **Help → Keyboard shortcuts**. Each command has a row with its keys. Click a key and press the new one to change it, or click **+** to give the command one more key. The curved arrow puts the command's usual keys back, and **×** leaves it without a key. **Escape** stops waiting for a key, and **Reset all** puts every key back. A key you give to one command is taken away from the command that had it, and the list says which one.
+
+**F10** or **Alt** goes to the menu bar; **Alt** and a letter opens that menu. Right-click a model or the plate for a menu of what you can do with it, and right-click a card's title to fold or move the card.
 
 **Updates.** **Help → Check for updates…** looks for a newer release, and installs it where the program can (AppImage, Windows, macOS). It also looks once at start, quietly; the dialog has a switch to turn that off.
 

@@ -371,30 +371,28 @@ impl App {
             if bar_resp.clicked() {
                 actions.push(CardAction::Fold(sec));
             }
-            bar_resp.on_hover_text(crate::i18n::tr("Click to fold. Drag to move it, even to the other panel. Right-click for more.")).context_menu(|ui| {
-                if ui.button(crate::i18n::tr(if folded { "Unfold" } else { "Fold" })).clicked() {
-                    actions.push(CardAction::Fold(sec));
-                    ui.close();
-                }
-                if index > 0 && ui.button(crate::i18n::tr("Move up")).clicked() {
-                    actions.push(CardAction::Move { sec, to_left: left, index: index - 1 });
-                    ui.close();
-                }
-                if index + 1 < count && ui.button(crate::i18n::tr("Move down")).clicked() {
-                    actions.push(CardAction::Move { sec, to_left: left, index: index + 2 });
-                    ui.close();
-                }
-                let other = if left { "Move to the right panel" } else { "Move to the left panel" };
-                if ui.button(other).clicked() {
-                    actions.push(CardAction::Move { sec, to_left: !left, index: usize::MAX });
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button(crate::i18n::tr("Restore default layout")).clicked() {
-                    actions.push(CardAction::Reset);
-                    ui.close();
-                }
-            });
+            // No tooltip over the card's own menu.
+            let bar_resp = if super::context::was_open(ui.ctx(), bar_resp.id) { bar_resp } else { bar_resp.on_hover_text(crate::i18n::tr("Click to fold. Drag to move it, even to the other panel. Right-click for more.")) };
+            // The card's right-click menu, drawn like the menu bar's menus (`context.rs`).
+            let row = |id: &str, label: &str| -> craft_menu::Node { craft_menu::Item::new(craft_menu::CommandRef::new(id), crate::i18n::tr(label)).english(label).into() };
+            let mut nodes = vec![row("card.fold", if folded { "Unfold" } else { "Fold" })];
+            if index > 0 {
+                nodes.push(row("card.up", "Move up"));
+            }
+            if index + 1 < count {
+                nodes.push(row("card.down", "Move down"));
+            }
+            nodes.push(row("card.other", if left { "Move to the right panel" } else { "Move to the left panel" }));
+            nodes.push(craft_menu::Node::Separator);
+            nodes.push(row("card.reset", "Restore default layout"));
+            match super::context::show(ui, &bar_resp, crate::i18n::tr(sec.title()), &nodes).as_ref().map(|c| c.id.as_str()) {
+                Some("card.fold") => actions.push(CardAction::Fold(sec)),
+                Some("card.up") => actions.push(CardAction::Move { sec, to_left: left, index: index - 1 }),
+                Some("card.down") => actions.push(CardAction::Move { sec, to_left: left, index: index + 2 }),
+                Some("card.other") => actions.push(CardAction::Move { sec, to_left: !left, index: usize::MAX }),
+                Some("card.reset") => actions.push(CardAction::Reset),
+                _ => {}
+            }
             if !folded {
                 ui.add_space(2.0);
                 self.section_body(ui, sec);

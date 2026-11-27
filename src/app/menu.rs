@@ -165,6 +165,29 @@ impl App {
         }
     }
 
+    /// The right-click menu of the plate: what can be done with the models chosen, then with the
+    /// plate. Drawn like the menu bar's menus (`context.rs`), with the keys shown.
+    pub(super) fn plate_menu(&self) -> Vec<Node> {
+        let mut nodes = Vec::new();
+        if !self.selection.is_empty() {
+            let mirror = ["Left-right (X)", "Front-back (Y)", "Top-bottom (Z)"].iter().enumerate().map(|(k, name)| with("edit.mirror", k, name).into()).collect();
+            nodes.push(self.keyed(Command::Duplicate, "Duplicate").into());
+            nodes.push(Node::submenu(tr("Mirror"), mirror).english("Mirror"));
+            nodes.push(self.keyed(Command::Delete, "Delete").into());
+            nodes.push(self.keyed(Command::Orient, "Auto-orient").into());
+            nodes.push(item("model.repair", "Repair").into());
+            nodes.push(item("model.split", "Split into parts").into());
+            if self.selection.len() > 1 {
+                nodes.push(item("edit.merge", "Merge into one").into());
+            }
+            nodes.push(item("file.save_selection_stl", "Save selection as STL…").into());
+            nodes.push(Node::Separator);
+        }
+        nodes.push(self.keyed(Command::AddModels, "Add models…").into());
+        nodes.push(self.keyed(Command::Arrange, "Arrange the plate").into());
+        nodes
+    }
+
     /// The plate view as the window's document canvas, claiming every bound key (`craft.rs`).
     pub(super) fn canvas_keys(&self) -> craft_ui::runtime::focus::KeyUse {
         let chords = Command::ALL.iter().flat_map(|c| self.keys.bindings(*c).iter().filter_map(chord)).collect();
@@ -195,6 +218,8 @@ impl App {
             "file.send" => self.show_send = true,
             "file.quit" => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             "edit.merge" => self.merge_selected(ctx),
+            "model.repair" => self.repair_selected(ctx),
+            "model.split" => self.split_selected(ctx),
             "edit.mirror" => self.mirror_selected(n.min(2)),
             "edit.clear" => self.clear_plate(),
             "view.from" => {

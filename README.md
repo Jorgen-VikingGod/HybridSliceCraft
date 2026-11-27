@@ -307,7 +307,7 @@ All of them are pinned to one commit of craft-libs in `Cargo.toml`.
 | --- | --- |
 | `src/main.rs` | Command-line options and start-up |
 | `src/app/` | The window: settings panel, actions, panels, 3D view, preview, theme, menus, title bar |
-| `src/app/craft.rs`, `src/app/control.rs` | The craft-ui runtime and menu bar, and the control server |
+| `src/app/craft.rs`, `src/app/context.rs`, `src/app/control.rs` | The craft-ui runtime and menu bar, the right-click menus, and the control server |
 | `src/profiles.rs` | Every setting the slicers understand, their defaults and the built-in presets |
 | `src/fdm/` | Filament slicer: layer plans, infill, supports, Z contouring, G-code writer |
 | `src/resin/` | Resin slicer: supports and raft, hollowing, rasterising on the graphics card or processor, file formats |

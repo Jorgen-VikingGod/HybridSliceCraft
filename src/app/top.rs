@@ -44,12 +44,43 @@ fn segmented<T: Copy + PartialEq>(ui: &mut egui::Ui, value: &mut T, options: &[(
     changed
 }
 
+/// A key of a shortcut, as a chip that is clicked to pick a new one; lit while it waits.
+fn key_chip(ui: &mut egui::Ui, label: &str, waiting: bool, accent: egui::Color32) -> egui::Response {
+    let font = egui::FontId::monospace(12.5);
+    let width = ui.painter().layout_no_wrap(label.to_string(), font.clone(), ui_text()).size().x + 18.0;
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 26.0), Sense::click());
+    let (fill, line) = if waiting {
+        (selected_fill(accent, 0.25), accent)
+    } else if response.hovered() {
+        (ui_hover(), ui_line())
+    } else {
+        (ui_panel_2(), ui_line())
+    };
+    ui.painter().rect_filled(rect, 4.0, fill);
+    ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(1.0, line), egui::StrokeKind::Inside);
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, font, ui_text());
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// A small icon button with its tooltip, faint when it can't be used.
+fn small_icon(ui: &mut egui::Ui, icon: Icon, enabled: bool, tip: &str) -> egui::Response {
+    let sense = if enabled { Sense::click() } else { Sense::hover() };
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(26.0), sense);
+    if enabled && response.hovered() {
+        ui.painter().rect_filled(rect, 4.0, ui_hover());
+    }
+    let color = if enabled { ui_text() } else { ui_faint() };
+    draw_icon(ui.painter(), rect.shrink(7.0), icon, color);
+    if enabled { response.on_hover_text(tip) } else { response }
+}
+
 impl App {
-    /// The list of commands with their keys. Click a key to pick a new one.
+    /// The list of commands with their keys, laid out as in GitCraft: a row for each command with
+    /// its keys as chips (click one to change it), then add, back to the default and clear.
     fn shortcut_editor(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         use crate::keys::{Binding, Command};
         // Catch the next key while one is waiting.
-        if let Some(command) = self.capturing {
+        if let Some((command, slot)) = self.capturing {
             let pressed = ctx.input(|i| {
                 i.events.iter().find_map(|e| match e {
                     egui::Event::Key { key, pressed: true, repeat: false, modifiers, .. } => Some((*key, *modifiers)),
@@ -61,8 +92,8 @@ impl App {
                     self.key_notice.clear();
                 } else {
                     let b = Binding::new(key, m.command, m.shift, m.alt);
-                    self.key_notice = match self.keys.set(command, b) {
-                        Some(other) => format!("{} was on {}. It has no key now.", b.text(), other.label()),
+                    self.key_notice = match self.keys.set_at(command, slot, b) {
+                        Some(other) => crate::i18n::tr("{key} was on {command}. It has no key now.").replace("{key}", &b.text()).replace("{command}", crate::i18n::tr(other.label())),
                         None => String::new(),
                     };
                     self.keys.save();
@@ -70,42 +101,61 @@ impl App {
                 self.capturing = None;
             }
         }
-        egui::Grid::new("keys").num_columns(3).spacing([14.0, 5.0]).show(ui, |ui| {
-            for c in Command::ALL {
-                ui.label(crate::i18n::tr(c.label()));
-                let waiting = self.capturing == Some(c);
-                let text = if waiting {
-                    "Press a key…  (Esc cancels)".to_string()
-                } else {
-                    let keys: Vec<String> = self.keys.bindings(c).iter().map(|b| b.text()).collect();
-                    if keys.is_empty() { "—".to_string() } else { keys.join("   ") }
-                };
-                let button = egui::Button::new(RichText::new(text).strong()).min_size(Vec2::new(170.0, 0.0));
-                if ui.add(button).on_hover_text(crate::i18n::tr("Click, then press the new key")).clicked() {
-                    self.capturing = if waiting { None } else { Some(c) };
+        let accent = self.accent();
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(crate::i18n::tr("Click a key to change it, or + to add one; Escape stops waiting for a key.")).size(12.5).color(ui_dim()));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let changed = Command::ALL.iter().any(|c| !self.keys.is_default(*c));
+                if ui.add_enabled(changed, egui::Button::new(crate::i18n::tr("Reset all"))).clicked() {
+                    self.keys.reset_all();
+                    self.keys.save();
                     self.key_notice.clear();
+                    self.capturing = None;
                 }
-                ui.horizontal(|ui| {
-                    if ui.add_enabled(!self.keys.bindings(c).is_empty(), egui::Button::new(crate::i18n::tr("Clear")).small()).on_hover_text(crate::i18n::tr("Leave this without a key")).clicked() {
-                        self.keys.clear(c);
-                        self.keys.save();
-                    }
-                    if ui.add_enabled(!self.keys.is_default(c), egui::Button::new(crate::i18n::tr("Reset")).small()).on_hover_text(crate::i18n::tr("Back to the usual key")).clicked() {
-                        self.keys.reset(c);
-                        self.keys.save();
-                    }
-                });
-                ui.end_row();
-            }
+            });
         });
         if !self.key_notice.is_empty() {
             ui.label(RichText::new(&self.key_notice).small().color(ui_yellow()));
         }
         ui.add_space(4.0);
-        if ui.button(crate::i18n::tr("Reset all to the defaults")).clicked() {
-            self.keys.reset_all();
-            self.keys.save();
-            self.key_notice.clear();
+        for c in Command::ALL {
+            let keys: Vec<Binding> = self.keys.bindings(c).to_vec();
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::hover());
+            ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, egui::Stroke::new(1.0, ui_card_line()));
+            let mut row = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(Layout::left_to_right(Align::Center)));
+            row.label(RichText::new(crate::i18n::tr(c.label())).color(ui_text()));
+            row.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                if small_icon(ui, Icon::Close, !keys.is_empty(), crate::i18n::tr("Clear the keys")).clicked() {
+                    self.keys.clear(c);
+                    self.keys.save();
+                    self.capturing = None;
+                }
+                if small_icon(ui, Icon::Undo, !self.keys.is_default(c), crate::i18n::tr("Back to the default keys")).clicked() {
+                    self.keys.reset(c);
+                    self.keys.save();
+                    self.capturing = None;
+                }
+                let adding = self.capturing == Some((c, None));
+                if adding {
+                    key_chip(ui, crate::i18n::tr("Press a key…"), true, accent);
+                } else if small_icon(ui, Icon::Plus, true, crate::i18n::tr("Add a key")).clicked() {
+                    self.capturing = Some((c, None));
+                    self.key_notice.clear();
+                }
+                // Right to left: the last key first, so they read left to right.
+                for (slot, b) in keys.iter().enumerate().rev() {
+                    let waiting = self.capturing == Some((c, Some(slot)));
+                    let text = if waiting { crate::i18n::tr("Press a key…").to_string() } else { b.text() };
+                    if key_chip(ui, &text, waiting, accent).on_hover_text(crate::i18n::tr("Click, then press the new key")).clicked() {
+                        self.capturing = if waiting { None } else { Some((c, Some(slot))) };
+                        self.key_notice.clear();
+                    }
+                }
+                if keys.is_empty() && !adding {
+                    ui.label(RichText::new(crate::i18n::tr("Not assigned")).size(12.5).color(ui_dim()));
+                }
+            });
         }
     }
 
@@ -298,7 +348,7 @@ impl App {
         self.show_about = open;
 
         let mut open = self.show_shortcuts;
-        dialog(ctx, "Keyboard shortcuts", &mut open, 460.0, |ui| {
+        dialog(ctx, "Keyboard shortcuts", &mut open, 640.0, |ui| {
             self.shortcut_editor(ui, ctx);
         }, |_| {});
         if !open {
